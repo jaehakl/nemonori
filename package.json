@@ -1,0 +1,9 @@
+{
+  "name": "nemonori",
+  "private": true,
+  "packageManager": "pnpm@8.15.5",
+  "scripts": {
+    "dev:text": "pnpm --filter @nori/text-rpg dev",
+    "build": "pnpm -r build"
+  }
+}

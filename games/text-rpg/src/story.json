@@ -1,0 +1,67 @@
+{
+  "start": "intro",
+  "nodes": {
+    "intro": {
+      "text": "해가 저무는 숲 입구. 너는 주머니에 동전 몇 닢과 녹슨 단검 하나를 쥐고 있다.",
+      "choices": [
+        {
+          "text": "주점으로 간다",
+          "goto": "tavern",
+          "effects": [
+            { "type": "resource.add", "k": "gold", "v": 5 },
+            { "type": "log", "msg": "주인은 첫 잔을 공짜로 내어준다." }
+          ]
+        },
+        {
+          "text": "숲으로 들어간다",
+          "goto": "forest",
+          "effects": [ { "type": "log", "msg": "바람이 잎사귀를 스친다." } ]
+        }
+      ]
+    },
+    "tavern": {
+      "text": "시끌벅적한 주점. 수상한 계약서를 흔드는 상인이 보인다.",
+      "choices": [
+        {
+          "text": "계약서를 읽는다 (용병 모집)",
+          "effects": [ { "type": "flag.set", "key": "has_contract", "v": true } ],
+          "goto": "tavern"
+        },
+        {
+          "text": "상인에게서 정보를 산다 (-3 gold)",
+          "effects": [ { "type": "resource.add", "k": "gold", "v": -3 }, { "type": "flag.set", "key": "forest_hint", "v": true } ],
+          "goto": "tavern"
+        },
+        { "text": "숲으로 간다", "goto": "forest" },
+        { "text": "마을 밖으로 떠난다", "goto": "road" }
+      ]
+    },
+    "forest": {
+      "text": "숲속 공터. 발자국이 겹겹이 찍혀 있다.",
+      "choices": [
+        {
+          "text": "흔적을 따라간다 (힌트 필요)",
+          "req": { "key": "forest_hint", "v": true },
+          "effects": [ { "type": "log", "msg": "숨겨진 오두막을 찾았다." } ],
+          "goto": "hut"
+        },
+        { "text": "나무열매를 모은다 (+2 gold)", "effects": [ { "type": "resource.add", "k": "gold", "v": 2 } ], "goto": "forest" },
+        { "text": "마을로 돌아간다", "goto": "tavern" }
+      ]
+    },
+    "hut": {
+      "text": "오두막 안에는 낡은 상자 하나와 봉인된 편지가 있다.",
+      "choices": [
+        { "text": "상자를 연다 (+10 gold)", "effects": [ { "type": "resource.add", "k": "gold", "v": 10 } ], "goto": "hut" },
+        { "text": "편지를 연다 (계약이 활성화되어야 함)", "req": { "key": "has_contract", "v": true }, "effects": [ { "type": "log", "msg": "편지에는 북쪽 폐광에 대한 지도가 있었다." } ], "goto": "road" },
+        { "text": "떠난다", "goto": "road" }
+      ]
+    },
+    "road": {
+      "text": "먼 길이 펼쳐진다. 너는 다음 여정을 떠날 준비가 되었다.",
+      "choices": [
+        { "text": "처음으로", "goto": "intro" }
+      ]
+    }
+  }
+}

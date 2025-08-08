@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Text RPG (JS)</title>
+    <style>
+      body{font-family:system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, sans-serif;background:#0f1115;color:#e5e7eb;margin:0}
+      .wrap{max-width:720px;margin:40px auto;padding:24px}
+      .card{background:#151821;border:1px solid #262a36;border-radius:16px;padding:20px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+      .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+      .btn{background:#1f6feb;border:0;color:white;padding:10px 14px;border-radius:12px;cursor:pointer}
+      .btn:disabled{opacity:.4;cursor:not-allowed}
+      .choice{background:#1b1f2a;border:1px solid #2a3040;padding:12px;border-radius:12px;cursor:pointer}
+      .choice:hover{background:#202638}
+      .log{font-size:12px;opacity:.8;max-height:180px;overflow:auto;border-top:1px dashed #2c3346;margin-top:12px;padding-top:10px}
+      .kpi{background:#141822;border:1px solid #272c3b;border-radius:12px;padding:8px 12px}
+      .title{font-size:20px;font-weight:700;margin-bottom:8px}
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

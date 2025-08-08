@@ -2,6 +2,8 @@
 
 **Nemonori** 프레임워크를 사용한 텍스트 기반 RPG 데모 게임입니다. React + Vite로 구현되었으며, JSON 기반 스토리 시스템을 통해 쉽게 확장할 수 있습니다.
 
+<img width="741" height="394" alt="195358" src="https://github.com/user-attachments/assets/c3569a23-28aa-495c-943f-eafa2502997c" />
+
 ---
 
 ## 🎮 게임 특징

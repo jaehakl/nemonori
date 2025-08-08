@@ -10,13 +10,13 @@ importers:
 
   games/text-rpg:
     dependencies:
-      '@lab/core-kernel':
+      '@nori/core-kernel':
         specifier: workspace:*
         version: link:../../packages/core-kernel
-      '@lab/core-rules':
+      '@nori/core-rules':
         specifier: workspace:*
         version: link:../../packages/core-rules
-      '@lab/narrative':
+      '@nori/narrative':
         specifier: workspace:*
         version: link:../../packages/narrative
       react:
@@ -35,7 +35,7 @@ importers:
 
   packages/core-kernel:
     dependencies:
-      '@lab/core-rules':
+      '@nori/core-rules':
         specifier: workspace:*
         version: link:../core-rules
 

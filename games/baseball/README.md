@@ -2,6 +2,8 @@
 
 간단한 야구 게임입니다. 투수가 되어 타자를 아웃시키는 게임입니다.
 
+<img width="793" height="878" alt="image" src="https://github.com/user-attachments/assets/e1995efc-3e2b-435f-adcf-08f38cabe673" />
+
 ## 게임 규칙
 
 - **투수**: 구종과 위치를 선택해 공을 던집니다

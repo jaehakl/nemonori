@@ -100,41 +100,6 @@ pnpm -r build
 
 ---
 
-## 개발 가이드
-
-### 새로운 게임 추가
-
-1. `games/<your-game>/` 디렉토리 생성
-2. Vite 템플릿 복제 (`games/text-rpg/` 참고)
-3. 공통 패키지 임포트:
-   ```js
-   import { createKernel } from '@nori/core-kernel'
-   import { createNarrative } from '@nori/narrative'
-   ```
-
-### 공통 규칙 확장
-
-`packages/core-rules/src/index.js`의 Effect/Formula에 타입 추가 후 모듈에서 사용:
-
-```js
-// 새로운 Effect 타입 추가
-case 'custom.effect': {
-  // 구현
-  break;
-}
-```
-
-### 상태 저장/복원
-
-```js
-const saveData = kernel.save()  // { v: 1, seed, state }
-kernel.load(saveData)           // 상태 복원
-```
-
-> 로컬 저장은 추후 `indexedDB` 유틸로 제공 예정
-
----
-
 ## 스크립트
 
 - `pnpm dev:text` - 텍스트 RPG 개발 서버

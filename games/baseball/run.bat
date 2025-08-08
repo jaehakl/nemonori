@@ -1,0 +1,3 @@
+@echo off
+echo 야구 게임을 시작합니다...
+npm run dev

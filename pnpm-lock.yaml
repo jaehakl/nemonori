@@ -8,6 +8,19 @@ importers:
 
   .: {}
 
+  games/baseball:
+    dependencies:
+      '@nori/core-kernel':
+        specifier: workspace:*
+        version: link:../../packages/core-kernel
+      '@nori/core-rules':
+        specifier: workspace:*
+        version: link:../../packages/core-rules
+    devDependencies:
+      vite:
+        specifier: ^5.3.0
+        version: 5.4.19
+
   games/text-rpg:
     dependencies:
       '@nori/core-kernel':

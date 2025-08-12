@@ -11,6 +11,9 @@
 
 ## 게임 규칙
 
+<img width="1211" height="1113" alt="image" src="https://github.com/user-attachments/assets/c3c100de-ec99-4f01-9968-a5dd1de9a9c6" />
+
+
 ### 사람 시스템
 - 각 사람은 고유한 성별, 나이, 이름을 가짐
 - 출생 시 성별과 이름은 랜덤하게 결정

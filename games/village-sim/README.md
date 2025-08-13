@@ -9,10 +9,9 @@
 - **식량 시스템**: 농사, 소비, 부족 시 사망
 - **정책 결정**: 추방, 축제 개최
 
-## 게임 규칙
+## 게임 시스템
 
-<img width="1211" height="1113" alt="image" src="https://github.com/user-attachments/assets/c3c100de-ec99-4f01-9968-a5dd1de9a9c6" />
-
+<img width="1207" height="1255" alt="image" src="https://github.com/user-attachments/assets/56d29505-a4fb-4a59-9136-10db1e0733c5" />
 
 ### 사람 시스템
 - 각 사람은 고유한 성별, 나이, 이름을 가짐

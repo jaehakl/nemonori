@@ -1,6 +1,68 @@
 # Nemonori 게임 엔진 개발 매뉴얼
 
-## 1) 아키텍처
+## 1) 프로젝트 개요
+
+### 레포 구조
+
+```
+packages/
+  core-kernel/      # 커널(루프, RNG, 이벤트 버스, 저장 훅)
+  core-rules/       # 이펙트/공식/로그 적용기
+  narrative/        # 대화/선택지/플래그 기반 내러티브 모듈
+
+games/
+  text-rpg/         # 예시 게임(React + Vite)
+```
+
+> 모든 패키지는 **ESM + JavaScript**. 템플릿/게임은 공용 모듈을 가져와 조립합니다.
+
+### 요구 사항
+
+- Node.js ≥ 18
+- pnpm ≥ 8 (권장)
+
+### 설치 & 실행
+
+```bash
+pnpm i             # 루트에서 의존성 설치
+pnpm dev:text      # 텍스트 RPG 개발 서버 실행 (http://localhost:5173)
+```
+
+빌드:
+
+```bash
+pnpm -r build
+```
+
+### 스크립트
+
+- `pnpm dev:text` - 텍스트 RPG 개발 서버
+- `pnpm build` - 모든 패키지 빌드
+- `run_text.bat` - Windows에서 텍스트 RPG 실행 (Chrome 자동 열기)
+
+---
+
+## 2) 핵심 패키지 가이드
+
+### `@nori/core-kernel`
+
+- 시드 기반 RNG, 이벤트 버스, 전역 `state`/`log`
+- `dispatch(modId, action, payload)` → 각 모듈의 액션 실행 → 반환된 Effect[] 를 적용
+- `save()`/`load()`: 상태 저장/복원 기능 제공
+
+### `@nori/core-rules`
+
+- Effect 타입: `resource.add`, `flag.set`, `hp.damage`, `log` 등
+- 공식(Formula) 유틸(F.hitChance 등)과 공통 로깅
+
+### `@nori/narrative`
+
+- 노드/선택지/조건(req)/플래그 기반 내러티브
+- 액션: `start`, `choose({index})`
+
+---
+
+## 3) 아키텍처
 
 ### 핵심 컴포넌트
 
@@ -20,101 +82,9 @@ Kernel.dispatch(mod, action, payload)
         → UI는 bus("effects.applied", Effect[])를 구독하여 갱신
 ```
 
-
 ---
 
-
-## 2) 새로운 게임 추가
-
-1. `games/<your-game>/` 디렉토리 생성
-2. Vite 템플릿 복제 (`games/text-rpg/` 참고)
-3. 공통 패키지 임포트:
-   ```js
-   import { createKernel } from '@nori/core-kernel'
-   import { createNarrative } from '@nori/narrative'
-   ```
-
-### 공통 규칙 확장
-
-`packages/core-rules/src/index.js`의 Effect/Formula에 타입 추가 후 모듈에서 사용:
-
-```js
-// 새로운 Effect 타입 추가
-case 'custom.effect': {
-  // 구현
-  break;
-}
-```
-
-### 상태 저장/복원
-
-```js
-const saveData = kernel.save()  // { v: 1, seed, state }
-kernel.load(saveData)           // 상태 복원
-```
-
-> 로컬 저장은 추후 `indexedDB` 유틸로 제공 예정
-
-
-
-
-
-
----
-
-## 3) 모듈 개발 가이드
-
-### 최소 골격
-
-```js
-export function createMyModule() {
-  return {
-    id: 'myModule',
-    init(ctx) {
-      ctx.state.myModule ??= { ready: true }
-    },
-    actions: {
-      myAction(payload, ctx) {
-        return [
-          { type: 'resource.add', k: 'gold', v: 10 },
-          { type: 'flag.set', key: 'completed', v: true },
-          { type: 'log', msg: '완료!' }
-        ]
-      }
-    },
-    update(dt, ctx) { },
-    save() { return { } },
-    load(data) { }
-  }
-}
-```
-
-### 액션 패턴
-
-```js
-// 단순 액션
-simpleAction(payload, ctx) {
-  return [{ type: 'log', msg: '단순 액션' }]
-}
-
-// 조건부 액션
-conditionalAction(payload, ctx) {
-  if (ctx.state.flags.canDo) return [{ type: 'resource.add', k: 'gold', v: 5 }]
-  return [{ type: 'log', msg: '조건 미충족' }]
-}
-
-// 복잡한 액션
-complexAction(payload, ctx) {
-  const fx = []
-  if (ctx.rand.roll(0.5)) fx.push({ type: 'resource.add', k: 'gold', v: 10 })
-  fx.push({ type: 'flag.set', key: 'visited', v: true })
-  return fx
-}
-```
-
----
-
-## 4) 이펙트(Effect) 카탈로그
+## 4) 이펙트(Effect) 시스템
 
 ### 내장 타입
 
@@ -175,7 +145,61 @@ bus.on('effects.applied', (fx) => { })
 
 ---
 
-## 7) 내러티브(텍스트 RPG) 패턴
+## 7) 모듈 개발 가이드
+
+### 최소 골격
+
+```js
+export function createMyModule() {
+  return {
+    id: 'myModule',
+    init(ctx) {
+      ctx.state.myModule ??= { ready: true }
+    },
+    actions: {
+      myAction(payload, ctx) {
+        return [
+          { type: 'resource.add', k: 'gold', v: 10 },
+          { type: 'flag.set', key: 'completed', v: true },
+          { type: 'log', msg: '완료!' }
+        ]
+      }
+    },
+    update(dt, ctx) { },
+    save() { return { } },
+    load(data) { }
+  }
+}
+```
+
+### 액션 패턴
+
+```js
+// 단순 액션
+simpleAction(payload, ctx) {
+  return [{ type: 'log', msg: '단순 액션' }]
+}
+
+// 조건부 액션
+conditionalAction(payload, ctx) {
+  if (ctx.state.flags.canDo) return [{ type: 'resource.add', k: 'gold', v: 5 }]
+  return [{ type: 'log', msg: '조건 미충족' }]
+}
+
+// 복잡한 액션
+complexAction(payload, ctx) {
+  const fx = []
+  if (ctx.rand.roll(0.5)) fx.push({ type: 'resource.add', k: 'gold', v: 10 })
+  fx.push({ type: 'flag.set', key: 'visited', v: true })
+  return fx
+}
+```
+
+---
+
+## 8) 내러티브(텍스트 RPG) 개발
+
+### 스토리 정의
 
 ```js
 const story = {
@@ -192,77 +216,78 @@ const story = {
 }
 ```
 
----
+### JSON 스토리 구조
 
-## 8) 전투(예시) 모듈 스케치
-
-```js
-export function createCombat() {
-  return {
-    id: 'combat',
-    init(ctx){ ctx.state.combat ??= { hp: { A: 10, B: 10 } } },
-    actions: {
-      attack({ attacker, target, acc=50, eva=50 }, ctx) {
-        const p = (acc - eva) * 0.01 + 0.65
-        const hit = ctx.rand.roll(Math.max(0.05, Math.min(0.95, p)))
-        return hit
-          ? [{ type:'hp.damage', target, amount: 3 }, { type:'log', msg:`${attacker} → ${target} (HIT)` }]
-          : [{ type:'log', msg:`${attacker} → ${target} (MISS)` }]
-      }
+```json
+{
+  "start": "intro",
+  "nodes": {
+    "intro": {
+      "text": "해가 저무는 숲 입구…",
+      "choices": [
+        { "text": "주점으로 간다", "goto": "tavern",
+          "effects": [{"type":"resource.add","k":"gold","v":5}] },
+        { "text": "숲으로 들어간다", "goto": "forest" }
+      ]
     }
   }
 }
 ```
 
----
+### 선택지 조건 설정
 
-## 9) 테스트 전략
+`req: { key, v }`로 선택지 활성화 조건을 걸 수 있습니다:
 
-### 유닛(모듈) 테스트
-
-```js
-it('narrative choose gives gold', () => {
-  const ctx = { state:{ flags:{}, narrative:{} }, log:[], rand:{ roll:()=>true } }
-  const story = { start:'intro', nodes:{ intro:{ text:'', choices:[{ effects:[{ type:'resource.add', k:'gold', v:5 }] }] } } }
-  const mod = createNarrative({ nodes:story.nodes, start:story.start })
-  mod.init(ctx)
-  const fx = mod.actions.choose({ index:0 }, ctx)
-  expect(fx).toEqual([{ type:'resource.add', k:'gold', v:5 }, { type:'log', msg:'▶ undefined' }])
-})
+```json
+{
+  "text": "비밀 문을 연다",
+  "goto": "secret_room",
+  "req": { "key": "hasKey", "v": true }
+}
 ```
 
-### 통합(커널) 테스트
+### 이펙트와 선택지
 
-```js
-it('game flow', () => {
-  const story = { start:'intro', nodes:{ intro:{ text:'', choices:[{ goto:'end' }] }, end:{ text:'끝', choices:[] } } }
-  const k = createKernel('test-seed', [ createNarrative({ nodes:story.nodes, start:story.start }) ])
-  k.dispatch('narrative','start')
-  expect(k.ctx.state.narrative.nodeId).toBe('intro')
-  k.dispatch('narrative','choose', { index:0 })
-  expect(k.ctx.state.narrative.nodeId).toBe('end')
-})
+선택지에서 직접 이펙트를 실행할 수 있습니다:
+
+```json
+{
+  "text": "골드를 받는다",
+  "goto": "next_node",
+  "effects": [
+    {"type": "resource.add", "k": "gold", "v": 10},
+    {"type": "flag.set", "key": "rewarded", "v": true}
+  ]
+}
 ```
 
 ---
 
-## 10) UI 연동 패턴(React)
+## 9) 새로운 게임 추가
+
+1. `games/<your-game>/` 디렉토리 생성
+2. Vite 템플릿 복제 (`games/text-rpg/` 참고)
+3. 공통 패키지 임포트:
+   ```js
+   import { createKernel } from '@nori/core-kernel'
+   import { createNarrative } from '@nori/narrative'
+   ```
+
+### 공통 규칙 확장
+
+`packages/core-rules/src/index.js`의 Effect/Formula에 타입 추가 후 모듈에서 사용:
 
 ```js
-// 간단: dispatch 후 setState로 리렌더
-const choose = (i) => { kernel.dispatch('narrative','choose',{ index:i }); setTick(t=>t+1) }
-
-// 고급: 버스 구독으로 자동 리렌더
-useEffect(()=>{
-  const rerender = () => setTick(t=>t+1)
-  kernel.ctx.bus.on('effects.applied', rerender)
-  return () => {}
-},[])
+// 새로운 Effect 타입 추가
+case 'custom.effect': {
+  // 구현
+  break;
+}
 ```
 
 ---
 
-## 11) 저장/복원 시스템
+## 10) 저장/복원 시스템
 
 ### 스냅샷 규약
 
@@ -355,7 +380,91 @@ kernel.dispatch = (modId, name, payload) => {
 
 ---
 
-## 12) 성능 & 품질 체크리스트
+## 11) UI 연동 패턴(React)
+
+```js
+// 간단: dispatch 후 setState로 리렌더
+const choose = (i) => { kernel.dispatch('narrative','choose',{ index:i }); setTick(t=>t+1) }
+
+// 고급: 버스 구독으로 자동 리렌더
+useEffect(()=>{
+  const rerender = () => setTick(t=>t+1)
+  kernel.ctx.bus.on('effects.applied', rerender)
+  return () => {}
+},[])
+```
+
+---
+
+## 12) 테스트 전략
+
+### 유닛(모듈) 테스트
+
+```js
+it('narrative choose gives gold', () => {
+  const ctx = { state:{ flags:{}, narrative:{} }, log:[], rand:{ roll:()=>true } }
+  const story = { start:'intro', nodes:{ intro:{ text:'', choices:[{ effects:[{ type:'resource.add', k:'gold', v:5 }] }] } } }
+  const mod = createNarrative({ nodes:story.nodes, start:story.start })
+  mod.init(ctx)
+  const fx = mod.actions.choose({ index:0 }, ctx)
+  expect(fx).toEqual([{ type:'resource.add', k:'gold', v:5 }, { type:'log', msg:'▶ undefined' }])
+})
+```
+
+### 통합(커널) 테스트
+
+```js
+it('game flow', () => {
+  const story = { start:'intro', nodes:{ intro:{ text:'', choices:[{ goto:'end' }] }, end:{ text:'끝', choices:[] } } }
+  const k = createKernel('test-seed', [ createNarrative({ nodes:story.nodes, start:story.start }) ])
+  k.dispatch('narrative','start')
+  expect(k.ctx.state.narrative.nodeId).toBe('intro')
+  k.dispatch('narrative','choose', { index:0 })
+  expect(k.ctx.state.narrative.nodeId).toBe('end')
+})
+```
+
+### 테스트 체크리스트
+
+#### 세이브 라운드트립
+```js
+const A = saveGame(k); loadGame(k, A); const B = saveGame(k);
+// deepEqual(A.modules, B.modules) 이어야 한다.
+```
+
+#### 결정론 보장
+같은 seed + 같은 actions 목록 → 최종 스냅샷이 항상 같다.
+
+#### 모듈 단위 검증
+save() 결과에 캐시·임시값이 끼지 않았는지 확인(Map/Set 없을 것).
+
+---
+
+## 13) 예시 모듈
+
+### 전투 모듈 스케치
+
+```js
+export function createCombat() {
+  return {
+    id: 'combat',
+    init(ctx){ ctx.state.combat ??= { hp: { A: 10, B: 10 } } },
+    actions: {
+      attack({ attacker, target, acc=50, eva=50 }, ctx) {
+        const p = (acc - eva) * 0.01 + 0.65
+        const hit = ctx.rand.roll(Math.max(0.05, Math.min(0.95, p)))
+        return hit
+          ? [{ type:'hp.damage', target, amount: 3 }, { type:'log', msg:`${attacker} → ${target} (HIT)` }]
+          : [{ type:'log', msg:`${attacker} → ${target} (MISS)` }]
+      }
+    }
+  }
+}
+```
+
+---
+
+## 14) 성능 & 품질 체크리스트
 
 - 이펙트는 배열 하나로 모아서 반환(루프 내 dispatch 남발 금지)
 - 대형 객체 복사 지양. 필요한 키만 갱신
@@ -364,30 +473,14 @@ kernel.dispatch = (modId, name, payload) => {
 
 ---
 
-## 13) 이벤트/보안 주의
+## 15) 보안 및 주의사항
 
 - eval/동적 함수 생성 금지. 룰 DSL이 필요하면 등록형 조건/행동만 허용
 - 텔레메트리는 PII 없는 집계 이벤트만, 네트워크 실패 시 완전 오프라인
 
 ---
 
-## 14) 테스트 체크리스트
-
-### 세이브 라운드트립
-```js
-const A = saveGame(k); loadGame(k, A); const B = saveGame(k);
-// deepEqual(A.modules, B.modules) 이어야 한다.
-```
-
-### 결정론 보장
-같은 seed + 같은 actions 목록 → 최종 스냅샷이 항상 같다.
-
-### 모듈 단위 검증
-save() 결과에 캐시·임시값이 끼지 않았는지 확인(Map/Set 없을 것).
-
----
-
-## 15) 흔한 실수와 수정
+## 16) 흔한 실수와 수정
 
 - 통합 테스트에서 createNarrative()만 호출하면 시작 노드가 undefined가 될 수 있음 → 반드시 nodes/start를 주입
 - 모듈 단위 테스트에서 init(ctx) 생략 금지(로컬 상태와 ctx.state.* 동기화 필요)
@@ -395,7 +488,7 @@ save() 결과에 캐시·임시값이 끼지 않았는지 확인(Map/Set 없을 
 
 ---
 
-## 16) UI와의 경계
+## 17) UI와의 경계
 
 이벤트는 "알림"만. 게임 규칙 변경은 항상 dispatch() → effects → apply로 간다.
 이벤트(bus.emit)는 UI 업데이트/로그 표시 같은 반응에만 쓰자.
@@ -412,9 +505,56 @@ kernel.bus.on('turn.end', () => kernel.dispatch('combat', 'attack'))
 
 ---
 
-## 로드맵
+## 18) 기여 가이드라인
+
+### 개발 스타일
+
+1. 이슈로 제안/버그 리포트
+2. 브랜치 생성 → 변경 → PR
+3. 스타일: ESM + JS, 간결한 함수, 한국어/영어 주석 환영
+
+### 코드 컨벤션
+
+- **모듈명**: camelCase (`createMyModule`)
+- **액션명**: camelCase (`myAction`)
+- **이펙트 타입**: dot notation (`resource.add`, `flag.set`)
+- **상태 키**: camelCase (`playerGold`, `hasKey`)
+
+---
+
+## 19) FAQ (개발자용)
+
+**Q. TypeScript가 아닌 이유?**\
+A. 초기엔 "빨리 많이 만들기"가 목표라 JS로 마찰을 최소화했습니다. 타입 안정성 필요 시 패키지별로 점진적 TS 도입을 검토합니다.
+
+**Q. 멀티플레이/백엔드는?**\
+A. 현재는 오프라인/싱글 전제. 지표 확인 후 Cloudflare/Supabase 등 가벼운 백엔드를 붙일 수 있습니다.
+
+**Q. 다른 게임 장르는?**\
+A. `tbs`(턴제 전략), `econ-sim`(경영 시뮬) 모듈을 순차적으로 추가할 예정입니다.
+
+**Q. 성능 최적화는?**\
+A. 이펙트 배치 처리, 불필요한 객체 복사 방지, 결정론적 RNG 사용으로 최적화합니다.
+
+**Q. 확장성은?**\
+A. 모듈 기반 아키텍처로 새로운 게임 장르나 기능을 쉽게 추가할 수 있습니다.
+
+---
+
+## 20) 로드맵
 
 - v1: @lab/tbs, @lab/grid, @lab/econ-sim 공개 / 커널 리플레이 기록기(액션 로그)
 - v1.1: 저장 슬롯 + Export/Import(IndexedDB), 리모트 컨피그(옵션)
 - v1.2: 간단 룰 DSL(등록형), 퍼포먼스 가드(effects 길이/프레임 타임 경고)
+
+---
+
+## 21) 라이선스 및 법적 고지사항
+
+- 코드: MIT
+- 스토리/에셋: 각 파일의 헤더 또는 `assets/CREDITS.md` 참고(추가 예정)
+
+### 연락
+
+아이디어/피드백 환영합니다. 이슈 탭에 남겨주세요.
 

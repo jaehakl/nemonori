@@ -16,22 +16,6 @@
 
 ---
 
-## 레포 구조
-
-```
-packages/
-  core-kernel/      # 커널(루프, RNG, 이벤트 버스, 저장 훅)
-  core-rules/       # 이펙트/공식/로그 적용기
-  narrative/        # 대화/선택지/플래그 기반 내러티브 모듈
-
-games/
-  text-rpg/         # 예시 게임(React + Vite)
-```
-
-> 모든 패키지는 **ESM + JavaScript**. 템플릿/게임은 공용 모듈을 가져와 조립합니다.
-
----
-
 ## 빠른 시작
 
 ### 요구 사항
@@ -43,7 +27,45 @@ games/
 
 ```bash
 pnpm i             # 루트에서 의존성 설치
-pnpm dev:text      # 텍스트 RPG 개발 서버 실행 (http://localhost:5173)
+```
+
+### 게임 실행 방법
+
+#### 🎮 Windows 배치 파일 (가장 간단)
+
+**모든 게임 한 번에 실행:**
+```bash
+# 더블클릭으로 실행
+run_all_games.bat
+```
+
+**개별 게임 실행:**
+```bash
+run_text.bat      # Text RPG만 실행
+run_baseball.bat  # Baseball 게임만 실행  
+run_village.bat   # Village Sim만 실행
+```
+
+#### 🎮 통합 런처 (권장)
+
+모든 게임을 한 번에 실행하고 선택할 수 있는 통합 런처를 사용하세요:
+
+```bash
+# 모든 게임 서버를 병렬로 실행
+pnpm dev:all
+
+# 새 터미널에서 런처 실행
+pnpm launcher
+```
+
+브라우저에서 `http://localhost:8080`으로 접속하면 게임 런처가 열립니다.
+
+#### 개별 게임 실행
+
+```bash
+pnpm dev:text      # 텍스트 RPG (http://localhost:5173)
+pnpm dev:baseball  # 야구 게임 (http://localhost:5174)
+pnpm dev:village   # 마을 시뮬레이션 (http://localhost:5175)
 ```
 
 빌드:
@@ -51,26 +73,6 @@ pnpm dev:text      # 텍스트 RPG 개발 서버 실행 (http://localhost:5173)
 ```bash
 pnpm -r build
 ```
-
----
-
-## 핵심 패키지 개요
-
-### `@nori/core-kernel`
-
-- 시드 기반 RNG, 이벤트 버스, 전역 `state`/`log`
-- `dispatch(modId, action, payload)` → 각 모듈의 액션 실행 → 반환된 **Effect[]**를 적용
-- `save()`/`load()`: 상태 저장/복원 기능 제공
-
-### `@nori/core-rules`
-
-- Effect 타입: `resource.add`, `flag.set`, `hp.damage`, `log` 등
-- 공식(Formula) 유틸(F.hitChance 등)과 공통 로깅
-
-### `@nori/narrative`
-
-- 노드/선택지/조건(req)/플래그 기반 내러티브
-- 액션: `start`, `choose({index})`
 
 ---
 
@@ -102,9 +104,75 @@ pnpm -r build
 
 ## 스크립트
 
+### Windows 배치 파일
+- `run_all_games.bat` - 모든 게임 한 번에 실행 (권장)
+- `run_text.bat` - Text RPG만 실행
+- `run_baseball.bat` - Baseball 게임만 실행
+- `run_village.bat` - Village Sim만 실행
+
+### 게임 서버 종료
+- `stop_all_games.bat` - 모든 게임 서버 안전하게 종료 (상세 정보 포함)
+- `kill_games.bat` - 모든 게임 서버 강제 종료 (빠른 종료)
+
+### pnpm 스크립트
+- `pnpm dev:all` - 모든 게임 개발 서버 병렬 실행
+- `pnpm launcher` - 통합 게임 런처 실행 (http://localhost:8080)
 - `pnpm dev:text` - 텍스트 RPG 개발 서버
+- `pnpm dev:baseball` - 야구 게임 개발 서버
+- `pnpm dev:village` - 마을 시뮬레이션 개발 서버
 - `pnpm build` - 모든 패키지 빌드
-- `run_text.bat` - Windows에서 텍스트 RPG 실행 (Chrome 자동 열기)
+
+---
+
+## 문제 해결
+
+### 🚨 런처가 실행되지 않는 경우
+
+1. **런처만 실행해보세요**:
+   ```bash
+   run_launcher_only.bat
+   ```
+
+2. **Python이 설치되어 있다면**:
+   ```bash
+   run_launcher_python.bat
+   ```
+
+3. **수동으로 실행**:
+   ```bash
+   npx http-server . -p 8080
+   ```
+
+### 🛑 게임 서버가 계속 실행되는 경우
+
+터미널을 닫아도 게임 서버가 계속 실행되는 경우:
+
+1. **빠른 종료**:
+   ```bash
+   kill_games.bat
+   ```
+
+2. **상세 정보와 함께 종료**:
+   ```bash
+   stop_all_games.bat
+   ```
+
+3. **수동으로 종료**:
+   ```bash
+   # Node.js 프로세스 종료
+   taskkill /IM node.exe /F
+   
+   # CMD 창들 종료
+   taskkill /IM cmd.exe /F
+   ```
+
+자세한 문제 해결 방법은 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)를 참고하세요.
+
+---
+
+## 개발자 문서
+
+자세한 개발 가이드, API 문서, 아키텍처 설명은 [개발자 매뉴얼](doc/manual.md)을 참고하세요.
 
 ---
 
@@ -133,6 +201,15 @@ A. 현재는 오프라인/싱글 전제. 지표 확인 후 Cloudflare/Supabase �
 
 **Q. 다른 게임 장르는?**\
 A. `tbs`(턴제 전략), `econ-sim`(경영 시뮬) 모듈을 순차적으로 추가할 예정입니다.
+
+**Q. 한글이 깨져요?**\
+A. Windows에서 `chcp 65001` 명령어로 UTF-8 인코딩을 설정했습니다. 배치 파일을 사용하시면 한글이 정상적으로 표시됩니다.
+
+**Q. 런처가 실행되지 않아요?**\
+A. `run_launcher_only.bat`를 실행해보세요. 그래도 안 되면 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)를 참고하세요.
+
+**Q. 게임 서버가 계속 실행되어요?**\
+A. `kill_games.bat`를 실행하면 모든 게임 서버가 종료됩니다.
 
 ---
 

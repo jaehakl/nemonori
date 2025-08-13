@@ -1,11 +1,9 @@
 import React from 'react'
 
-function VillageStatus({ kernel }) {
+function VillageStatus({ kernel, autoPlay, gameSpeed }) {
   const village = kernel.ctx.state.village
-  const food = kernel.ctx.state.food
-  const game = kernel.ctx.state.game
   
-  if (!village || !food || !game) return <div>로딩 중...</div>
+  if (!village) return <div>로딩 중...</div>
 
   const people = village.people || []
   const totalLabor = people.reduce((sum, p) => sum + p.labor, 0)
@@ -32,8 +30,8 @@ function VillageStatus({ kernel }) {
         <div>
           <h3 style={{ margin: '0 0 10px 0', fontSize: '16px' }}>기본 정보</h3>
           <div style={{ fontSize: '14px', lineHeight: '1.6' }}>
-            <div><strong>연도:</strong> {game.year}년</div>
-            <div><strong>월:</strong> {monthNames[game.turn - 1]}</div>
+            <div><strong>연도:</strong> {village.year}년</div>
+            <div><strong>월:</strong> {monthNames[village.turn - 1]}</div>
             <div><strong>총 인구:</strong> {people.length}명</div>
             <div><strong>총 노동력:</strong> {totalLabor}인분</div>
           </div>
@@ -53,14 +51,14 @@ function VillageStatus({ kernel }) {
       <div style={{ marginTop: '15px', padding: '10px', backgroundColor: '#fff', borderRadius: '4px' }}>
         <h3 style={{ margin: '0 0 10px 0', fontSize: '16px' }}>식량 현황</h3>
         <div style={{ fontSize: '14px', lineHeight: '1.6' }}>
-          <div><strong>현재 식량:</strong> {food.current}개</div>
+          <div><strong>현재 식량:</strong> {village.food}개</div>
           <div><strong>월 소비량:</strong> {people.length}개</div>
-          <div><strong>노동력 부족:</strong> {food.laborDeficit}인분</div>
+          <div><strong>노동력 부족:</strong> {village.laborDeficit}인분</div>
           <div style={{ 
-            color: food.current < people.length ? '#e74c3c' : '#27ae60',
+            color: village.food < people.length ? '#e74c3c' : '#27ae60',
             fontWeight: 'bold'
           }}>
-            {food.current < people.length ? '⚠️ 식량 부족!' : '✅ 식량 충분'}
+            {village.food < people.length ? '⚠️ 식량 부족!' : '✅ 식량 충분'}
           </div>
         </div>
       </div>
@@ -78,6 +76,20 @@ function VillageStatus({ kernel }) {
           🎉 축제 진행 중! 출산 확률 증가
         </div>
       )}
+
+      {/* 자동 진행 상태 표시 */}
+      <div style={{ 
+        marginTop: '15px', 
+        padding: '10px', 
+        backgroundColor: autoPlay ? '#27ae60' : '#95a5a6', 
+        color: 'white',
+        borderRadius: '4px',
+        textAlign: 'center',
+        fontWeight: 'bold'
+      }}>
+        {autoPlay ? '🔄 자동 진행 중' : '⏸️ 일시정지됨'} 
+        {autoPlay && ` (${gameSpeed === 1000 ? '1x 보통' : gameSpeed === 100 ? '10x 빠름' : gameSpeed === 33 ? '30x 매우 빠름' : '100x 초고속'})`}
+      </div>
     </div>
   )
 }

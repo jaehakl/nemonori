@@ -4,7 +4,10 @@
   "packageManager": "pnpm@8.15.5",
   "scripts": {
     "dev:text": "pnpm --filter @nori/text-rpg dev",
-    "dev:village": "pnpm --filter village-sim dev",
+    "dev:baseball": "pnpm --filter @nori/baseball dev",
+    "dev:village": "pnpm --filter @nori/village-sim dev",
+    "dev:all": "pnpm --parallel --filter @nori/text-rpg --filter @nori/baseball --filter @nori/village-sim dev",
+    "launcher": "npx http-server . -p 8080 -o",
     "build": "pnpm -r build"
   }
 }

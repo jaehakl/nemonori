@@ -2,12 +2,24 @@
   "name": "nemonori",
   "private": true,
   "packageManager": "pnpm@8.15.5",
+  "type": "module",
   "scripts": {
-    "dev:text": "pnpm --filter @nori/text-rpg dev",
-    "dev:baseball": "pnpm --filter @nori/baseball dev",
-    "dev:village": "pnpm --filter @nori/village-sim dev",
-    "dev:all": "pnpm --parallel --filter @nori/text-rpg --filter @nori/baseball --filter @nori/village-sim dev",
-    "launcher": "npx http-server . -p 8080 -o",
-    "build": "pnpm -r build"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.8.0",
+    "@nori/core-kernel": "workspace:*",
+    "@nori/core-rules": "workspace:*",
+    "@nori/narrative": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@vitejs/plugin-react": "^4.2.1",
+    "vite": "^5.0.8"
   }
 }

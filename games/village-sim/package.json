@@ -3,6 +3,12 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "game": {
+    "displayName": "마을 시뮬레이션",
+    "description": "농촌 마을을 경영하는 시뮬레이션",
+    "icon": "🏘️",
+    "author": "Nemonori Team"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",

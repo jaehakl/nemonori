@@ -31,37 +31,34 @@ pnpm i             # 루트에서 의존성 설치
 
 ### 게임 실행 방법
 
-#### 🎮 Windows 배치 파일 (가장 간단)
+#### 🎮 **통합 Vite 런타임 (권장)**
 
-**모든 게임 한 번에 실행:**
+모든 게임을 하나의 Vite 서버에서 실행하고 URL 경로로 구분합니다:
+
 ```bash
-# 더블클릭으로 실행
-run_all_games.bat
+# 통합 런처 실행
+run_unified.bat
+
+# 또는 수동 실행
+pnpm dev
 ```
 
-**개별 게임 실행:**
+**접속 주소:**
+- 🏠 **런처**: `http://localhost:3000`
+- 📖 **Text RPG**: `http://localhost:3000/text-rpg`
+- ⚾ **Baseball**: `http://localhost:3000/baseball`
+- 🏘️ **Village Sim**: `http://localhost:3000/village-sim`
+
+#### 🎮 개별 게임 실행 (기존 방식)
+
+**Windows 배치 파일:**
 ```bash
 run_text.bat      # Text RPG만 실행
 run_baseball.bat  # Baseball 게임만 실행  
 run_village.bat   # Village Sim만 실행
 ```
 
-#### 🎮 통합 런처 (권장)
-
-모든 게임을 한 번에 실행하고 선택할 수 있는 통합 런처를 사용하세요:
-
-```bash
-# 모든 게임 서버를 병렬로 실행
-pnpm dev:all
-
-# 새 터미널에서 런처 실행
-pnpm launcher
-```
-
-브라우저에서 `http://localhost:8080`으로 접속하면 게임 런처가 열립니다.
-
-#### 개별 게임 실행
-
+**pnpm 스크립트:**
 ```bash
 pnpm dev:text      # 텍스트 RPG (http://localhost:5173)
 pnpm dev:baseball  # 야구 게임 (http://localhost:5174)
@@ -71,7 +68,7 @@ pnpm dev:village   # 마을 시뮬레이션 (http://localhost:5175)
 빌드:
 
 ```bash
-pnpm -r build
+pnpm build
 ```
 
 ---
@@ -104,19 +101,16 @@ pnpm -r build
 
 ## 스크립트
 
-### Windows 배치 파일
-- `run_all_games.bat` - 모든 게임 한 번에 실행 (권장)
+### 통합 런타임 (권장)
+- `run_unified.bat` - 통합 Vite 서버 실행 (모든 게임 포함)
+- `pnpm dev` - 통합 개발 서버 실행
+
+### Windows 배치 파일 (개별 실행)
 - `run_text.bat` - Text RPG만 실행
 - `run_baseball.bat` - Baseball 게임만 실행
 - `run_village.bat` - Village Sim만 실행
 
-### 게임 서버 종료
-- `stop_all_games.bat` - 모든 게임 서버 안전하게 종료 (상세 정보 포함)
-- `kill_games.bat` - 모든 게임 서버 강제 종료 (빠른 종료)
-
-### pnpm 스크립트
-- `pnpm dev:all` - 모든 게임 개발 서버 병렬 실행
-- `pnpm launcher` - 통합 게임 런처 실행 (http://localhost:8080)
+### pnpm 스크립트 (개별 실행)
 - `pnpm dev:text` - 텍스트 RPG 개발 서버
 - `pnpm dev:baseball` - 야구 게임 개발 서버
 - `pnpm dev:village` - 마을 시뮬레이션 개발 서버
@@ -128,19 +122,16 @@ pnpm -r build
 
 ### 🚨 런처가 실행되지 않는 경우
 
-1. **런처만 실행해보세요**:
+1. **통합 런처 사용** (권장):
    ```bash
-   run_launcher_only.bat
+   run_unified.bat
    ```
 
-2. **Python이 설치되어 있다면**:
+2. **개별 게임 실행**:
    ```bash
-   run_launcher_python.bat
-   ```
-
-3. **수동으로 실행**:
-   ```bash
-   npx http-server . -p 8080
+   run_text.bat
+   run_baseball.bat
+   run_village.bat
    ```
 
 ### 🛑 게임 서버가 계속 실행되는 경우
@@ -206,10 +197,13 @@ A. `tbs`(턴제 전략), `econ-sim`(경영 시뮬) 모듈을 순차적으로 추
 A. Windows에서 `chcp 65001` 명령어로 UTF-8 인코딩을 설정했습니다. 배치 파일을 사용하시면 한글이 정상적으로 표시됩니다.
 
 **Q. 런처가 실행되지 않아요?**\
-A. `run_launcher_only.bat`를 실행해보세요. 그래도 안 되면 [TROUBLESHOOTING.md](TROUBLESHOOTING.md)를 참고하세요.
+A. `run_unified.bat`를 실행해보세요. 모든 게임이 하나의 서버에서 실행됩니다.
 
 **Q. 게임 서버가 계속 실행되어요?**\
 A. `kill_games.bat`를 실행하면 모든 게임 서버가 종료됩니다.
+
+**Q. 통합 런타임의 장점은?**\
+A. 하나의 서버에서 모든 게임을 실행하므로 포트 충돌 없고, URL 경로로 게임을 구분하여 더 효율적입니다.
 
 ---
 

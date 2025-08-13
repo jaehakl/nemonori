@@ -1,22 +1,9 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import App from './App.jsx'
-
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-)
-
-
-/*
-
-
 import React, { useMemo, useState } from 'react'
-import { createRoot } from 'react-dom/client'
+import { Link } from 'react-router-dom'
 import { createKernel } from '@nori/core-kernel'
 import { createNarrative } from '@nori/narrative'
 import story from './story.json'
+import './App.css'
 
 function useGame() {
   const kernel = useMemo(() => {
@@ -74,5 +61,4 @@ function App() {
   )
 }
 
-createRoot(document.getElementById('root')).render(<App />)
-*/
+export default App

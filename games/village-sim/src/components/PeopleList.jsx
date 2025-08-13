@@ -6,7 +6,7 @@ function PeopleList({ people, onExile }) {
   
   // 이미지 파일들을 동적으로 가져오기
   const imageFiles = useMemo(() => {
-    const images = import.meta.glob('/images/**/*.jpg', { eager: true })
+    const images = import.meta.glob('../../images/**/*.jpg', { eager: true })
     
     const categorizedImages = {
       'male': [],
@@ -15,17 +15,19 @@ function PeopleList({ people, onExile }) {
       'girl': []
     }
     
-    // 파일 경로를 카테고리별로 분류
+    // 파일 경로를 카테고리별로 분류하고 실제 URL 저장
     Object.keys(images).forEach(path => {
       const fileName = path.split('/').pop()
+      const imageUrl = images[path].default // Vite가 생성한 실제 URL
+      
       if (path.includes('/male/')) {
-        categorizedImages.male.push(fileName)
+        categorizedImages.male.push({ fileName, url: imageUrl })
       } else if (path.includes('/female/')) {
-        categorizedImages.female.push(fileName)
+        categorizedImages.female.push({ fileName, url: imageUrl })
       } else if (path.includes('/boy/')) {
-        categorizedImages.boy.push(fileName)
+        categorizedImages.boy.push({ fileName, url: imageUrl })
       } else if (path.includes('/girl/')) {
-        categorizedImages.girl.push(fileName)
+        categorizedImages.girl.push({ fileName, url: imageUrl })
       }
     })
     
@@ -48,7 +50,7 @@ function PeopleList({ people, onExile }) {
     }
     
     const randomFile = files[Math.floor(Math.random() * files.length)]
-    return `/images/${folder}/${randomFile}`
+    return randomFile.url
   }
 
   // 사람의 초상화 경로를 결정하는 함수
@@ -67,7 +69,7 @@ function PeopleList({ people, onExile }) {
     const index = person.id % files.length
     const selectedFile = files[index]
     
-    return `/images/${folder}/${selectedFile}`
+    return selectedFile.url
   }
 
   const getAgeColor = (age) => {

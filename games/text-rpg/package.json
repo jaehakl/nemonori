@@ -3,6 +3,12 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "game": {
+    "displayName": "Text RPG",
+    "description": "선택지 기반 텍스트 어드벤처 게임",
+    "icon": "📖",
+    "author": "Nemonori Team"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",

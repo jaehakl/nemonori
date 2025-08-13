@@ -1,0 +1,204 @@
+/* 전체 앱 스타일 */
+.app {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* 로딩 스타일 */
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  color: white;
+  font-size: 1.2rem;
+}
+
+/* 런처 스타일 */
+.launcher {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.launcher-header {
+  text-align: center;
+  margin-bottom: 40px;
+  color: white;
+}
+
+.launcher-header h1 {
+  font-size: 3rem;
+  margin-bottom: 10px;
+  font-weight: 700;
+}
+
+.launcher-header p {
+  font-size: 1.2rem;
+  opacity: 0.9;
+}
+
+.games-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  max-width: 900px;
+  width: 100%;
+  margin-bottom: 30px;
+}
+
+.game-card {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 15px;
+  padding: 25px;
+  text-decoration: none;
+  color: inherit;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+  display: block;
+}
+
+.game-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.2);
+  border-color: #667eea;
+}
+
+.game-icon {
+  font-size: 3rem;
+  text-align: center;
+  margin-bottom: 15px;
+}
+
+.game-title {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.game-description {
+  color: #666;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  text-align: center;
+  margin-bottom: 15px;
+}
+
+.game-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+  color: #888;
+  margin-top: 10px;
+}
+
+.game-version {
+  background: #f0f0f0;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.game-author {
+  font-style: italic;
+}
+
+.launcher-footer {
+  text-align: center;
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.launcher-footer a {
+  color: white;
+  text-decoration: none;
+  font-weight: 500;
+  margin: 0 10px;
+}
+
+.launcher-footer a:hover {
+  text-decoration: underline;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+  .launcher-header h1 {
+    font-size: 2.5rem;
+  }
+  
+  .games-grid {
+    grid-template-columns: 1fr;
+    max-width: 400px;
+  }
+  
+  .game-card {
+    padding: 20px;
+  }
+}
+
+/* 게임 페이지 공통 스타일 */
+.game-page {
+  min-height: 100vh;
+  background: #0f1115;
+  color: #e5e7eb;
+}
+
+.game-page .back-button {
+  position: fixed;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: white;
+  border-radius: 8px;
+  cursor: pointer;
+  text-decoration: none;
+  font-size: 14px;
+  backdrop-filter: blur(10px);
+  transition: all 0.2s ease;
+}
+
+.game-page .back-button:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* 게임 컨테이너 스타일 - 런처의 스타일을 완전히 무효화 */
+.game-container {
+  min-height: 100vh;
+  font-family: inherit;
+  margin: 0;
+  padding: 0;
+}
+
+/* 게임 컨테이너 내부의 모든 요소에 대해 런처 스타일 무효화 */
+.game-container .app {
+  background: transparent !important;
+  background-image: none !important;
+  background-color: transparent !important;
+  min-height: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* 런처 관련 요소 완전 숨김 */
+.game-container .launcher {
+  display: none !important;
+}
+
+.game-container .loading {
+  background: transparent !important;
+  color: inherit;
+}
+
+/* 게임 컨테이너 내부의 모든 요소에 대해 여백 제거 */
+.game-container * {
+  margin: 0;
+  padding: 0;
+}

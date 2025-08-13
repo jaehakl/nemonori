@@ -89,7 +89,7 @@ function App() {
       fontFamily: 'Arial, sans-serif'
     }}>
       <h1 style={{ textAlign: 'center', color: '#2c3e50' }}>
-        1700년대 일본 농촌 마을 경영
+        에도 시대 농촌 마을 시뮬레이션
       </h1>
       
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>

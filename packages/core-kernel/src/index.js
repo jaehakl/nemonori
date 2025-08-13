@@ -5,6 +5,15 @@ function createBus() {
   const map = new Map()
   return {
     on(type, fn) { (map.get(type) || map.set(type, []).get(type)).push(fn) },
+    off(type, fn) { 
+      const listeners = map.get(type)
+      if (listeners) {
+        const index = listeners.indexOf(fn)
+        if (index > -1) {
+          listeners.splice(index, 1)
+        }
+      }
+    },
     emit(type, payload) { (map.get(type) || []).forEach(fn => fn(payload)) }
   }
 }

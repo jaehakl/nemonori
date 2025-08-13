@@ -1,4 +1,6 @@
 // 마을 시뮬레이션 통합 모듈
+import generateName from './name.js'
+
 export function createVillage() {
   let people = []
   let nextId = 1
@@ -10,28 +12,9 @@ export function createVillage() {
   let allowMaleBirths = true  // 남자아이 출산 허용 토글
   let allowFemaleBirths = true  // 여자아이 출산 허용 토글
 
-  // 일본식 이름 생성 (발음만 차용하여 한국어로 표기)
-  const familyNames = [
-    '다나카', '사토', '스즈키', '다카하시', '와타나베', '이토', '야마모토', '나카무라', '고바야시', '가토'
-  ]
-  const maleNames = [
-    '타로', '지로', '사부로', '이치로', '켄이치', '마사오', '키요시', '마코토', '히로시', '아키라',
-    '유키', '다이스케', '류타', '유토', '하루토', '소우타', '켄타', '유우키', '다이키', '슌',
-    '카즈야', '토모야', '료우타', '유우야', '켄지', '마사히로', '히로유키', '유우지', '다이스케', '켄',
-    '유우', '다이', '료우', '유우', '켄', '마사', '히로', '유우', '다이', '켄',
-    '타케시', '노부유키', '미츠히로', '요시히로', '카즈히로', '토시히로', '히데유키', '유키히로', '다이스케', '켄지',
-    '마사토', '히로토', '유우토', '다이토', '켄토', '마사키', '히로키', '유우키', '다이키', '켄키']
-  const femaleNames = [
-    '하나코', '요시코', '케이코', '유미', '미호', '아이', '카오리', '미유키', '메구미', '유카',
-    '사치코', '노리코', '미치코', '아키코', '유키코', '마미코', '히로코', '나오코', '미도리', '사쿠라',
-    '아야코', '치에코', '후미코', '준코', '마리코', '에미코', '히토미', '나오미', '미즈키', '사토미',
-    '유코', '마코토', '미나코', '아키', '유키', '마미', '히로', '나오', '미도', '사쿠']
-
-  function generateName(gender) {
-    const family = familyNames[Math.floor(Math.random() * familyNames.length)]
-    const names = gender === 'male' ? maleNames : femaleNames
-    const name = names[Math.floor(Math.random() * names.length)]
-    return family +' '+ name
+  function generateFullName(gender) {
+    const nameObj = generateName(gender)
+    return nameObj.hangul
   }
 
   function createPerson(gender = null, age = 1) {
@@ -41,7 +24,7 @@ export function createVillage() {
     
     return {
       id: nextId++,
-      name: generateName(gender),
+      name: generateFullName(gender),
       gender,
       age,
       labor: getLabor(gender, age)
@@ -53,12 +36,11 @@ export function createVillage() {
       gender = Math.random() < 0.5 ? 'male' : 'female'
     }
     
-    const names = gender === 'male' ? maleNames : femaleNames
-    const name = names[Math.floor(Math.random() * names.length)]
+    const nameObj = generateName(gender)
     
     return {
       id: nextId++,
-      name: familyName + ' ' + name,
+      name: nameObj.hangul,
       gender,
       age,
       labor: getLabor(gender, age)

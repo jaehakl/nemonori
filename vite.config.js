@@ -14,7 +14,7 @@ export default defineConfig({
       '@games': resolve(__dirname, 'games')
     }
   },
-  base: '/nemonori/',
+  base: '/',
   build: {
     outDir: 'docs'
   }

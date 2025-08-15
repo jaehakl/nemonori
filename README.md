@@ -46,7 +46,6 @@ pnpm dev
 **접속 주소:**
 - 🏠 **런처**: `http://localhost:3000`
 - 📖 **Text RPG**: `http://localhost:3000/text-rpg`
-- ⚾ **Baseball**: `http://localhost:3000/baseball`
 - 🏘️ **Village Sim**: `http://localhost:3000/village-sim`
 
 #### 🎮 개별 게임 실행 (기존 방식)
@@ -54,14 +53,12 @@ pnpm dev
 **Windows 배치 파일:**
 ```bash
 run_text.bat      # Text RPG만 실행
-run_baseball.bat  # Baseball 게임만 실행  
 run_village.bat   # Village Sim만 실행
 ```
 
 **pnpm 스크립트:**
 ```bash
 pnpm dev:text      # 텍스트 RPG (http://localhost:5173)
-pnpm dev:baseball  # 야구 게임 (http://localhost:5174)
 pnpm dev:village   # 마을 시뮬레이션 (http://localhost:5175)
 ```
 
@@ -107,12 +104,10 @@ pnpm build
 
 ### Windows 배치 파일 (개별 실행)
 - `run_text.bat` - Text RPG만 실행
-- `run_baseball.bat` - Baseball 게임만 실행
 - `run_village.bat` - Village Sim만 실행
 
 ### pnpm 스크립트 (개별 실행)
 - `pnpm dev:text` - 텍스트 RPG 개발 서버
-- `pnpm dev:baseball` - 야구 게임 개발 서버
 - `pnpm dev:village` - 마을 시뮬레이션 개발 서버
 - `pnpm build` - 모든 패키지 빌드
 
@@ -130,7 +125,6 @@ pnpm build
 2. **개별 게임 실행**:
    ```bash
    run_text.bat
-   run_baseball.bat
    run_village.bat
    ```
 

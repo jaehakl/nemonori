@@ -287,7 +287,8 @@ function PeopleList({ people, onExile }) {
         justifyContent: 'space-between',
         alignItems: 'center'
       }}>
-        <span>💡 노동력: 남성 3인분, 여성 1인분 (15-65세만)</span>
+        <span>💡 노동력: 남성 2인분, 여성 2인분 (12-65세만)</span>
+        <span>💡 여성 가임기: 18-40세</span>
         <span>📊 총 {people.length}명</span>
       </div>
 

@@ -49,7 +49,7 @@ export function createVillage() {
 
   function getLabor(gender, age) {
     if (age < 12 || age > 65) return 0
-    return gender === 'male' ? 3 : 1
+    return gender === 'male' ? 2 : 2
   }
 
   function removePerson(id) {
@@ -115,7 +115,7 @@ export function createVillage() {
         })
         
         // 출산 처리
-        const fertileWomen = people.filter(p => p.gender === 'female' && p.age >= 18 && p.age <= 39)
+        const fertileWomen = people.filter(p => p.gender === 'female' && p.age >= 18 && p.age <= 40)
         const birthChance = ctx.state.village.festival ? 0.10 : 0.03
         
         fertileWomen.forEach(woman => {

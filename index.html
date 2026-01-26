@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nemonori - JavaScript 기반 게임 모노레포</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎮</text></svg>">
+    <script>
+        // https://jp.nemonori.com으로 자동 리다이렉트
+        if (window.location.hostname !== 'jp.nemonori.com') {
+            window.location.href = 'https://jp.nemonori.com' + window.location.pathname + window.location.search + window.location.hash;
+        }
+    </script>
 </head>
 <body>
     <div id="root"></div>

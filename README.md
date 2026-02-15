@@ -31,6 +31,8 @@ npm run dev
 - `app/games/[slug]/page.tsx`: 게임 상세 동적 라우트
 - `app/games/[slug]/page.module.css`: 상세 페이지 전용 스타일
 - `app/games/_components/*`: 실제 게임 컴포넌트 및 게임별 스타일
+- `app/lib/save-protocol.ts`: localStorage 저장 프로토콜 유틸
+- `app/saves/page.tsx`: 세이브 데이터 조회/관리 페이지
 
 ## 4) 게임 추가 표준 절차
 
@@ -64,6 +66,36 @@ npm run dev
 - 라우팅 키(`slug`, `component`)는 데이터와 매핑에서 동일하게 유지
 - 상태 로직은 컴포넌트 내부에 캡슐화하고 외부 공유 상태 최소화
 - 필요 없는 복잡한 추상화보다 명확한 데이터 기반 구조 우선
+
+## 6-1) localStorage 저장 프로토콜
+
+- 프로토콜 버전: `nemonori.save.v1`
+- 키 규칙: `nemonori.arcade:game:{slug}:save`
+- 저장 포맷(Envelope): `protocol`, `gameSlug`, `gameTitle`, `updatedAt`, `data`
+- 충돌 방지 원칙: 반드시 `slug` 기반 키를 사용하고, 직접 `localStorage.setItem`을 호출하지 않고 `app/lib/save-protocol.ts` 유틸만 사용
+- 관리 페이지: `/saves`에서 전체 저장 데이터 조회/개별 삭제/전체 삭제 지원
+
+## 6-2) 한국어 인코딩(UTF-8) 지침
+
+- 모든 소스 파일(`.ts`, `.tsx`, `.css`, `.md`)은 `UTF-8`로 저장
+- 인코딩 문제 재발 방지를 위해 `UTF-8 with BOM`/로컬 코드페이지(CP949 등) 혼용 금지
+- 증상 예시: 한글이 `?` 또는 깨진 문자로 보이거나, 패치 도구가 문맥 매칭을 못함
+- 권장 대응:
+1. 문제가 난 파일을 `UTF-8`로 다시 저장
+2. 터미널 재확인 후 빌드/린트 재실행
+
+PowerShell에서 인코딩 고정 저장 예시:
+
+```powershell
+# BOM 없는 UTF-8로 안전하게 재저장
+$path = "app/games/data.ts"
+$text = Get-Content -Raw -Path $path
+[System.IO.File]::WriteAllText($path, $text, [System.Text.UTF8Encoding]::new($false))
+```
+
+이번 작업에서 적용한 방식:
+- 깨짐이 발생한 파일 내용을 정상 문자열로 재작성하고 UTF-8로 재저장
+- 이후 `npx eslint app --max-warnings=0` 및 `npm run build`로 정상 동작 검증
 
 ## 7) 품질 확인
 

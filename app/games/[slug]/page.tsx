@@ -5,11 +5,15 @@ import type { ComponentType } from "react";
 import { gameCatalog, getGameBySlug, type GameComponentKey } from "../data";
 import { TapRaceGame } from "../_components/TapRaceGame";
 import { MemoryLightsGame } from "../_components/MemoryLightsGame";
+import { TetrisGame } from "../_components/TetrisGame";
+import { RoguelikeRpgGame } from "../_components/RoguelikeRpgGame";
 import styles from "./page.module.css";
 
 const gameViewByComponent: Record<GameComponentKey, ComponentType> = {
   "tap-race": TapRaceGame,
   "memory-lights": MemoryLightsGame,
+  tetris: TetrisGame,
+  "roguelike-rpg": RoguelikeRpgGame,
 };
 
 type Params = {
@@ -56,9 +60,14 @@ export default async function GamePage({
 
   return (
     <main className={styles.shell}>
-      <Link href="/" className={styles.backLink}>
-        {"<- "}메인으로
-      </Link>
+      <div className={styles.navLinks}>
+        <Link href="/" className={styles.backLink}>
+          {"<- "}메인으로
+        </Link>
+        <Link href="/saves" className={styles.saveLink}>
+          세이브 관리
+        </Link>
+      </div>
       <header className={styles.header}>
         <h1>{game.title}</h1>
         <p>{game.summary}</p>

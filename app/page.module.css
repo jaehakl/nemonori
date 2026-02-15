@@ -34,6 +34,20 @@
   color: #334155;
 }
 
+.heroActions {
+  margin-top: 14px;
+}
+
+.manageSavesLink {
+  display: inline-block;
+  text-decoration: none;
+  background: #0369a1;
+  color: #ffffff;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-weight: 700;
+}
+
 .controls {
   max-width: 900px;
   margin: 0 auto 24px;

@@ -23,12 +23,7 @@ export default function HomePage() {
   return (
     <main className={styles.pageShell}>
       <section className={styles.hero}>
-        <p className={styles.kicker}>Nemonori Arcade</p>
-        <h1>수백 개 JS 게임으로 확장 가능한 큐레이션 허브</h1>
-        <p>
-          게임은 데이터 배열에 항목만 추가하면 카드와 라우트가 자동으로 확장됩니다.
-          각 게임은 독립 컴포넌트와 독립 스타일 파일로 관리됩니다.
-        </p>
+        <p className={styles.kicker}><h1>Nemonori Arcade</h1></p>        
         <div className={styles.heroActions}>
           <Link href="/saves" className={styles.manageSavesLink}>
             세이브 데이터 관리

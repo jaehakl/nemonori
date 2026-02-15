@@ -1,15 +1,27 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { loadGameSave, saveGameSave } from "@/app/lib/save-protocol";
 import styles from "./TapRaceGame.module.css";
 
 const ROUND_SECONDS = 10;
+const GAME_SLUG = "tap-race";
+const GAME_TITLE = "Tap Race 10";
 
 export function TapRaceGame() {
   const [running, setRunning] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(ROUND_SECONDS);
   const [score, setScore] = useState(0);
-  const [bestScore, setBestScore] = useState(0);
+  const [bestScore, setBestScore] = useState(() => {
+    if (typeof window === "undefined") {
+      return 0;
+    }
+    const saved = loadGameSave<{ bestScore?: number }>(GAME_SLUG);
+    if (saved?.data && typeof saved.data.bestScore === "number") {
+      return saved.data.bestScore;
+    }
+    return 0;
+  });
 
   useEffect(() => {
     if (!running) {
@@ -28,6 +40,10 @@ export function TapRaceGame() {
 
     return () => window.clearInterval(interval);
   }, [running]);
+
+  useEffect(() => {
+    saveGameSave(GAME_SLUG, GAME_TITLE, { bestScore });
+  }, [bestScore]);
 
   const buttonLabel = useMemo(() => {
     if (secondsLeft === 0) {

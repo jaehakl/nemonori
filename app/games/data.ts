@@ -1,4 +1,4 @@
-﻿export type GameComponentKey = "tap-race" | "memory-lights";
+﻿export type GameComponentKey = "tap-race" | "memory-lights" | "tetris" | "roguelike-rpg";
 
 export type GameDefinition = {
   slug: string;
@@ -32,6 +32,26 @@ export const gameCatalog: GameDefinition[] = [
     accent: "#0ea5e9",
     component: "memory-lights",
   },
+  {
+    slug: "tetris",
+    title: "Pixel Tetris",
+    summary: "블록을 회전/이동해 가로줄을 지우는 클래식 테트리스입니다.",
+    tags: ["classic", "puzzle", "line-clear"],
+    difficulty: "Normal",
+    estPlayMinutes: 5,
+    accent: "#f59e0b",
+    component: "tetris",
+  },
+  {
+    slug: "roguelike-rpg",
+    title: "Drift Rogue",
+    summary: "이동할 때마다 지형이 생성되는 실시간 교전 로그라이크 RPG입니다.",
+    tags: ["roguelike", "rpg", "realtime-combat", "procedural-map"],
+    difficulty: "Hard",
+    estPlayMinutes: 10,
+    accent: "#0f766e",
+    component: "roguelike-rpg",
+  },
 ];
 
 export const allTags = Array.from(new Set(gameCatalog.flatMap((game) => game.tags))).sort();
@@ -39,4 +59,3 @@ export const allTags = Array.from(new Set(gameCatalog.flatMap((game) => game.tag
 export function getGameBySlug(slug: string) {
   return gameCatalog.find((game) => game.slug === slug);
 }
-

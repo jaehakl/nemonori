@@ -1,9 +1,12 @@
 ﻿"use client";
 
 import { useEffect, useState } from "react";
+import { loadGameSave, saveGameSave } from "@/app/lib/save-protocol";
 import styles from "./MemoryLightsGame.module.css";
 
 const TILES = ["A", "B", "C", "D"];
+const GAME_SLUG = "memory-lights";
+const GAME_TITLE = "Memory Lights";
 
 function randomTileIndex() {
   return Math.floor(Math.random() * TILES.length);
@@ -22,7 +25,16 @@ export function MemoryLightsGame() {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [locked, setLocked] = useState(false);
   const [round, setRound] = useState(0);
-  const [bestRound, setBestRound] = useState(0);
+  const [bestRound, setBestRound] = useState(() => {
+    if (typeof window === "undefined") {
+      return 0;
+    }
+    const saved = loadGameSave<{ bestRound?: number }>(GAME_SLUG);
+    if (saved?.data && typeof saved.data.bestRound === "number") {
+      return saved.data.bestRound;
+    }
+    return 0;
+  });
 
   useEffect(() => {
     if (status !== "running" || sequence.length === 0) {
@@ -58,6 +70,10 @@ export function MemoryLightsGame() {
       cancelled = true;
     };
   }, [sequence, status]);
+
+  useEffect(() => {
+    saveGameSave(GAME_SLUG, GAME_TITLE, { bestRound });
+  }, [bestRound]);
 
   const start = () => {
     setStatus("running");

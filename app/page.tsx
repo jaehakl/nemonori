@@ -29,6 +29,11 @@ export default function HomePage() {
           게임은 데이터 배열에 항목만 추가하면 카드와 라우트가 자동으로 확장됩니다.
           각 게임은 독립 컴포넌트와 독립 스타일 파일로 관리됩니다.
         </p>
+        <div className={styles.heroActions}>
+          <Link href="/saves" className={styles.manageSavesLink}>
+            세이브 데이터 관리
+          </Link>
+        </div>
       </section>
 
       <section className={styles.controls}>

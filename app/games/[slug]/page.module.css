@@ -5,8 +5,19 @@
   color: #f8fafc;
 }
 
+.navLinks {
+  display: flex;
+  gap: 10px;
+}
+
 .backLink {
   color: #38bdf8;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.saveLink {
+  color: #facc15;
   text-decoration: none;
   font-weight: 700;
 }
@@ -30,4 +41,3 @@
   max-width: 900px;
   margin: 0 auto;
 }
-

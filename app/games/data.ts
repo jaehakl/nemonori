@@ -5,7 +5,8 @@
   | "roguelike-rpg"
   | "phaser-meteor-dodge"
   | "phaser-border-collie-roundup"
-  | "bakery-tycoon";
+  | "bakery-tycoon"
+  | "phaser-joseon-warfront";
 
 export type GameDefinition = {
   slug: string;
@@ -89,6 +90,17 @@ export const gameCatalog: GameDefinition[] = [
     estPlayMinutes: 12,
     accent: "#c2410c",
     component: "bakery-tycoon",
+  },
+  {
+    slug: "phaser-joseon-warfront",
+    title: "조선 전선",
+    summary:
+      "냉병기 시대 한반도를 배경으로 턴제 전략 지도에서 침공을 결정하고, 실시간 전투에서 주인공 검술과 부하 AI로 영토를 확장하는 전략 시뮬레이션입니다.",
+    tags: ["phaser", "strategy", "simulation", "realtime-combat", "turn-based"],
+    difficulty: "Hard",
+    estPlayMinutes: 10,
+    accent: "#b91c1c",
+    component: "phaser-joseon-warfront",
   },
 ];
 

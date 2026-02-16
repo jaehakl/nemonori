@@ -4,7 +4,8 @@
   | "tetris"
   | "roguelike-rpg"
   | "phaser-meteor-dodge"
-  | "phaser-border-collie-roundup";
+  | "phaser-border-collie-roundup"
+  | "bakery-tycoon";
 
 export type GameDefinition = {
   slug: string;
@@ -77,6 +78,17 @@ export const gameCatalog: GameDefinition[] = [
     estPlayMinutes: 4,
     accent: "#ca8a04",
     component: "phaser-border-collie-roundup",
+  },
+  {
+    slug: "bakery-tycoon",
+    title: "빵집 경영 시뮬레이션",
+    summary:
+      "냉장고-조리대-오븐-진열대 동선을 운영하며 유통기한, 투자, 확장, 종업원 자동 생산까지 관리하는 경영 게임입니다.",
+    tags: ["management", "simulation", "tycoon", "bakery", "economy"],
+    difficulty: "Hard",
+    estPlayMinutes: 12,
+    accent: "#c2410c",
+    component: "bakery-tycoon",
   },
 ];
 

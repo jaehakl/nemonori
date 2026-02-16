@@ -1,13 +1,21 @@
 ﻿"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type Phaser from "phaser";
 import { loadGameSave, saveGameSave } from "@/app/lib/save-protocol";
 import styles from "./RoguelikeRpgGame.module.css";
 
 const GAME_SLUG = "roguelike-rpg";
 const GAME_TITLE = "Drift Rogue";
-const VIEW_RADIUS = 6;
-const MAX_LOG_LINES = 10;
+const VIEW_RADIUS = 7;
+const TILE_SIZE = 34;
+const MAX_LOG_LINES = 12;
+const START_STATS = { strength: 8, agility: 6, maxHp: 42 };
+
+const CANVAS_SIZE = (VIEW_RADIUS * 2 + 1) * TILE_SIZE;
+const CANVAS_HEIGHT = CANVAS_SIZE + 52;
+
+type PhaserRuntime = typeof Phaser;
 
 type Position = {
   x: number;
@@ -20,7 +28,7 @@ type Stats = {
   maxHp: number;
 };
 
-type GearType = "sword" | "armor";
+type GearType = "sword" | "armor" | "potion";
 
 type GearItem = {
   id: number;
@@ -31,6 +39,7 @@ type GearItem = {
   maxHp: number;
   weaponFactor: number;
   defense: number;
+  heal: number;
 };
 
 type Enemy = {
@@ -45,7 +54,7 @@ type Enemy = {
   defense: number;
 };
 
-type SaveData = {
+type RunData = {
   position: Position;
   baseStats: Stats;
   hp: number;
@@ -56,6 +65,35 @@ type SaveData = {
   combatEnemyId: number | null;
   nextEnemyId: number;
   nextItemId: number;
+  killCount: number;
+};
+
+type SaveData = {
+  bestDepth: number;
+  bestKills: number;
+  run: RunData | null;
+};
+
+type RenderSnapshot = {
+  position: Position;
+  enemies: Enemy[];
+  combatEnemyId: number | null;
+  hp: number;
+  maxHp: number;
+};
+
+type PhaserController = {
+  game: Phaser.Game;
+  sync: (snapshot: RenderSnapshot) => void;
+  flashPlayerHit: () => void;
+  flashEnemyHit: (enemyId: number) => void;
+};
+
+type CreateRoguelikeGameOptions = {
+  PhaserRef: PhaserRuntime;
+  parent: HTMLDivElement;
+  onMove: (dx: number, dy: number) => void;
+  onReset: () => void;
 };
 
 const DIRECTIONS: Position[] = [
@@ -116,10 +154,27 @@ function makeEnemy(id: number, distance: number): Enemy {
 }
 
 function makeItem(id: number): GearItem {
-  const type: GearType = Math.random() < 0.5 ? "sword" : "armor";
-  const prefix = ["낡은", "강철", "사파이어", "암흑", "고대"];
+  const roll = Math.random();
+  const type: GearType = roll < 0.38 ? "sword" : roll < 0.76 ? "armor" : "potion";
+  if (type === "potion") {
+    const heal = randomInt(14, 34);
+    const prefix = ["초록빛", "은빛", "응급", "고농축"];
+    return {
+      id,
+      type,
+      name: `${prefix[randomInt(0, prefix.length - 1)]} 힐링 포션`,
+      strength: 0,
+      agility: 0,
+      maxHp: 0,
+      weaponFactor: 1,
+      defense: 0,
+      heal,
+    };
+  }
+
+  const prefix = ["낡은", "강철", "사파이어", "암흑", "고대", "폭풍", "서리"];
   const suffix = type === "sword" ? "검" : "갑옷";
-  const quality = randomInt(1, 6);
+  const quality = randomInt(1, 7);
   return {
     id,
     type,
@@ -127,8 +182,9 @@ function makeItem(id: number): GearItem {
     strength: randomInt(0, quality + 1),
     agility: randomInt(0, quality),
     maxHp: randomInt(0, quality + 2),
-    weaponFactor: type === "sword" ? 1 + quality * 0.12 + Math.random() * 0.22 : 1,
+    weaponFactor: type === "sword" ? 1 + quality * 0.12 + Math.random() * 0.24 : 1,
     defense: type === "armor" ? quality + randomInt(1, 5) : 0,
+    heal: 0,
   };
 }
 
@@ -139,15 +195,360 @@ function formatTime(date: Date) {
   return `${h}:${m}:${s}`;
 }
 
+function centerPx(index: number) {
+  return index * TILE_SIZE + TILE_SIZE / 2;
+}
+
+function worldToScreen(value: number, center: number) {
+  return centerPx(value - center + VIEW_RADIUS);
+}
+
+function createRoguelikePhaserGame({
+  PhaserRef,
+  parent,
+  onMove,
+  onReset,
+}: CreateRoguelikeGameOptions): PhaserController {
+  let gameObjects: Phaser.GameObjects.GameObjectFactory | null = null;
+  let mainCamera: Phaser.Cameras.Scene2D.Camera | null = null;
+  let tweenManager: Phaser.Tweens.TweenManager | null = null;
+  let snapshot: RenderSnapshot | null = null;
+  let playerMarker: Phaser.GameObjects.Arc | null = null;
+  let hpFill: Phaser.GameObjects.Rectangle | null = null;
+  let infoText: Phaser.GameObjects.Text | null = null;
+  let cursors: Phaser.Types.Input.Keyboard.CursorKeys | null = null;
+  let keyW: Phaser.Input.Keyboard.Key | null = null;
+  let keyA: Phaser.Input.Keyboard.Key | null = null;
+  let keyS: Phaser.Input.Keyboard.Key | null = null;
+  let keyD: Phaser.Input.Keyboard.Key | null = null;
+  let keyR: Phaser.Input.Keyboard.Key | null = null;
+  let playerLight: Phaser.GameObjects.Arc | null = null;
+
+  const tileNodes = new Map<string, Phaser.GameObjects.Rectangle>();
+  const enemyNodes = new Map<
+    number,
+    {
+      body: Phaser.GameObjects.Ellipse;
+      hpBack: Phaser.GameObjects.Rectangle;
+      hpFront: Phaser.GameObjects.Rectangle;
+    }
+  >();
+
+  const emitBurst = (x: number, y: number, color: number, amount: number) => {
+    if (!gameObjects || !tweenManager) {
+      return;
+    }
+
+    for (let i = 0; i < amount; i += 1) {
+      const particle = gameObjects.circle(x, y, PhaserRef.Math.Between(2, 4), color, 0.95).setDepth(20);
+      const angle = PhaserRef.Math.FloatBetween(0, Math.PI * 2);
+      const distance = PhaserRef.Math.Between(14, 36);
+      tweenManager.add({
+        targets: particle,
+        x: x + Math.cos(angle) * distance,
+        y: y + Math.sin(angle) * distance,
+        alpha: 0,
+        scale: PhaserRef.Math.FloatBetween(0.5, 1.4),
+        duration: PhaserRef.Math.Between(200, 340),
+        ease: "Quad.Out",
+        onComplete: () => {
+          particle.destroy();
+        },
+      });
+    }
+  };
+
+  const syncView = () => {
+    if (!gameObjects || !snapshot || !playerMarker || !hpFill || !infoText || !playerLight) {
+      return;
+    }
+
+    const visibleTiles = new Set<string>();
+    const visibleEnemies = new Set<number>();
+    const center = snapshot.position;
+
+    for (let wy = center.y - VIEW_RADIUS; wy <= center.y + VIEW_RADIUS; wy += 1) {
+      for (let wx = center.x - VIEW_RADIUS; wx <= center.x + VIEW_RADIUS; wx += 1) {
+        const tileKey = keyOf(wx, wy);
+        visibleTiles.add(tileKey);
+        const sx = worldToScreen(wx, center.x);
+        const sy = worldToScreen(wy, center.y) + 48;
+
+        let tile = tileNodes.get(tileKey);
+        if (!tile) {
+          tile = gameObjects.rectangle(sx, sy, TILE_SIZE - 3, TILE_SIZE - 3, 0x0f766e, 1).setDepth(1);
+          tileNodes.set(tileKey, tile);
+        }
+
+        tile.setPosition(sx, sy);
+        if (wx === center.x && wy === center.y) {
+          tile.setFillStyle(0x0f172a, 0.9);
+        } else if (isPassable(wx, wy)) {
+          const noise = hashToUnit(wx * 2 + 11, wy * 3 + 13);
+          tile.setFillStyle(noise > 0.58 ? 0x115e59 : 0x134e4a, 0.95);
+        } else {
+          tile.setFillStyle(0x052e16, 1);
+        }
+      }
+    }
+
+    for (const [tileKey, tile] of tileNodes) {
+      if (!visibleTiles.has(tileKey)) {
+        tile.destroy();
+        tileNodes.delete(tileKey);
+      }
+    }
+
+    for (const enemy of snapshot.enemies) {
+      const dx = Math.abs(enemy.x - center.x);
+      const dy = Math.abs(enemy.y - center.y);
+      if (dx > VIEW_RADIUS || dy > VIEW_RADIUS) {
+        continue;
+      }
+
+      visibleEnemies.add(enemy.id);
+      const sx = worldToScreen(enemy.x, center.x);
+      const sy = worldToScreen(enemy.y, center.y) + 48;
+      const hpRate = PhaserRef.Math.Clamp(enemy.hp / enemy.maxHp, 0, 1);
+      const isTarget = snapshot.combatEnemyId === enemy.id;
+
+      let node = enemyNodes.get(enemy.id);
+      if (!node) {
+        const body = gameObjects.ellipse(sx, sy, 18, 18, 0xef4444, 1).setDepth(6);
+        const hpBack = gameObjects.rectangle(sx, sy - 13, 20, 3, 0x111827, 0.9).setDepth(7);
+        const hpFront = gameObjects.rectangle(sx - 10, sy - 13, 20, 3, 0x22c55e, 1).setOrigin(0, 0.5).setDepth(8);
+        node = { body, hpBack, hpFront };
+        enemyNodes.set(enemy.id, node);
+      }
+
+      node.body.setPosition(sx, sy);
+      node.body.setStrokeStyle(isTarget ? 2 : 1, isTarget ? 0xfef08a : 0x7f1d1d, 1);
+      node.body.setScale(isTarget ? 1.12 : 1);
+      node.hpBack.setPosition(sx, sy - 13);
+      node.hpFront.setPosition(sx - 10, sy - 13);
+      node.hpFront.displayWidth = Math.max(1, 20 * hpRate);
+      node.hpFront.setFillStyle(hpRate > 0.45 ? 0x22c55e : hpRate > 0.2 ? 0xf59e0b : 0xf43f5e, 1);
+    }
+
+    for (const [enemyId, node] of enemyNodes) {
+      if (!visibleEnemies.has(enemyId)) {
+        node.body.destroy();
+        node.hpBack.destroy();
+        node.hpFront.destroy();
+        enemyNodes.delete(enemyId);
+      }
+    }
+
+    playerMarker.setPosition(centerPx(VIEW_RADIUS), centerPx(VIEW_RADIUS) + 48);
+    playerLight.setPosition(centerPx(VIEW_RADIUS), centerPx(VIEW_RADIUS) + 48);
+    const hpRate = PhaserRef.Math.Clamp(snapshot.hp / Math.max(1, snapshot.maxHp), 0, 1);
+    hpFill.displayWidth = 160 * hpRate;
+    hpFill.setFillStyle(hpRate > 0.42 ? 0x14b8a6 : hpRate > 0.18 ? 0xf59e0b : 0xf43f5e, 1);
+    infoText.setText(`Pos (${center.x}, ${center.y})  Enemies ${snapshot.enemies.length}`);
+  };
+
+  const scene: Phaser.Types.Scenes.SceneType = {
+    key: "DriftRogueScene",
+    create(this: Phaser.Scene) {
+      gameObjects = this.add;
+      mainCamera = this.cameras.main;
+      tweenManager = this.tweens;
+      this.cameras.main.setRoundPixels(true);
+
+      const bg = this.add.graphics().setDepth(-5);
+      bg.fillGradientStyle(0x021616, 0x082f2f, 0x0f3d3d, 0x042f2e, 1);
+      bg.fillRect(0, 0, CANVAS_SIZE, CANVAS_HEIGHT);
+
+      this.add.rectangle(CANVAS_SIZE / 2, CANVAS_HEIGHT / 2 + 24, CANVAS_SIZE - 14, CANVAS_SIZE + 18, 0x0b1f1f, 1).setDepth(-4);
+      this.add.ellipse(CANVAS_SIZE / 2, CANVAS_HEIGHT / 2 + 24, CANVAS_SIZE - 12, CANVAS_SIZE, 0x000000, 0.35).setDepth(2);
+
+      playerMarker = this.add.circle(centerPx(VIEW_RADIUS), centerPx(VIEW_RADIUS) + 48, 9, 0xfde047, 1).setDepth(9);
+      playerMarker.setStrokeStyle(2, 0xffffff, 0.45);
+      playerLight = this.add.circle(centerPx(VIEW_RADIUS), centerPx(VIEW_RADIUS) + 48, 52, 0x5eead4, 0.14).setDepth(5);
+      playerLight.setBlendMode(PhaserRef.BlendModes.ADD);
+
+      for (let i = 0; i < 26; i += 1) {
+        const mote = this.add
+          .circle(
+            PhaserRef.Math.Between(14, CANVAS_SIZE - 14),
+            PhaserRef.Math.Between(58, CANVAS_HEIGHT - 10),
+            PhaserRef.Math.Between(1, 2),
+            0xa7f3d0,
+            PhaserRef.Math.FloatBetween(0.15, 0.35),
+          )
+          .setDepth(4)
+          .setBlendMode(PhaserRef.BlendModes.ADD);
+        this.tweens.add({
+          targets: mote,
+          y: mote.y - PhaserRef.Math.Between(8, 20),
+          alpha: PhaserRef.Math.FloatBetween(0.05, 0.25),
+          duration: PhaserRef.Math.Between(1200, 2400),
+          repeat: -1,
+          yoyo: true,
+          delay: PhaserRef.Math.Between(0, 800),
+          ease: "Sine.InOut",
+        });
+      }
+
+      this.add.text(16, 13, "WASD / Arrow: Move", {
+        color: "#ccfbf1",
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        fontSize: "14px",
+      });
+
+      infoText = this.add.text(CANVAS_SIZE - 16, 13, "", {
+        color: "#99f6e4",
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        fontSize: "14px",
+      }).setOrigin(1, 0);
+
+      this.add.rectangle(16, 34, 160, 8, 0x111827, 1).setOrigin(0, 0.5).setDepth(10);
+      hpFill = this.add.rectangle(16, 34, 160, 8, 0x14b8a6, 1).setOrigin(0, 0.5).setDepth(11);
+
+      if (this.input.keyboard) {
+        cursors = this.input.keyboard.createCursorKeys();
+        keyW = this.input.keyboard.addKey(PhaserRef.Input.Keyboard.KeyCodes.W);
+        keyA = this.input.keyboard.addKey(PhaserRef.Input.Keyboard.KeyCodes.A);
+        keyS = this.input.keyboard.addKey(PhaserRef.Input.Keyboard.KeyCodes.S);
+        keyD = this.input.keyboard.addKey(PhaserRef.Input.Keyboard.KeyCodes.D);
+        keyR = this.input.keyboard.addKey(PhaserRef.Input.Keyboard.KeyCodes.R);
+      }
+
+      syncView();
+    },
+    update(this: Phaser.Scene, time: number) {
+      if (!cursors || !keyW || !keyA || !keyS || !keyD || !keyR) {
+        return;
+      }
+
+      if (
+        PhaserRef.Input.Keyboard.JustDown(cursors.up) ||
+        PhaserRef.Input.Keyboard.JustDown(keyW)
+      ) {
+        onMove(0, -1);
+      } else if (
+        PhaserRef.Input.Keyboard.JustDown(cursors.down) ||
+        PhaserRef.Input.Keyboard.JustDown(keyS)
+      ) {
+        onMove(0, 1);
+      } else if (
+        PhaserRef.Input.Keyboard.JustDown(cursors.left) ||
+        PhaserRef.Input.Keyboard.JustDown(keyA)
+      ) {
+        onMove(-1, 0);
+      } else if (
+        PhaserRef.Input.Keyboard.JustDown(cursors.right) ||
+        PhaserRef.Input.Keyboard.JustDown(keyD)
+      ) {
+        onMove(1, 0);
+      }
+
+      if (PhaserRef.Input.Keyboard.JustDown(keyR)) {
+        onReset();
+      }
+
+      if (snapshot && snapshot.combatEnemyId !== null) {
+        const targetNode = enemyNodes.get(snapshot.combatEnemyId);
+        if (targetNode) {
+          targetNode.body.setScale(1.08 + Math.sin(time / 120) * 0.08);
+        }
+      }
+    },
+  };
+
+  const game = new PhaserRef.Game({
+    type: PhaserRef.AUTO,
+    width: CANVAS_SIZE,
+    height: CANVAS_HEIGHT,
+    parent,
+    backgroundColor: "#031515",
+    scene,
+    scale: {
+      mode: PhaserRef.Scale.FIT,
+      autoCenter: PhaserRef.Scale.CENTER_BOTH,
+    },
+  });
+
+  return {
+    game,
+    sync(nextSnapshot) {
+      snapshot = nextSnapshot;
+      syncView();
+    },
+    flashPlayerHit() {
+      if (!mainCamera || !tweenManager || !playerMarker) {
+        return;
+      }
+
+      playerMarker.setFillStyle(0xfda4af, 1);
+      mainCamera.shake(90, 0.0035);
+      emitBurst(playerMarker.x, playerMarker.y, 0xfda4af, 7);
+      tweenManager.add({
+        targets: playerMarker,
+        scale: 1.24,
+        duration: 90,
+        yoyo: true,
+        onComplete: () => {
+          if (playerMarker) {
+            playerMarker.setFillStyle(0xfde047, 1);
+          }
+        },
+      });
+    },
+    flashEnemyHit(enemyId) {
+      if (!tweenManager) {
+        return;
+      }
+
+      const node = enemyNodes.get(enemyId);
+      if (!node) {
+        return;
+      }
+
+      node.body.setFillStyle(0xfca5a5, 1);
+      emitBurst(node.body.x, node.body.y, 0xfca5a5, 6);
+      tweenManager.add({
+        targets: node.body,
+        angle: 16,
+        duration: 60,
+        yoyo: true,
+        repeat: 1,
+        onComplete: () => {
+          node.body.setFillStyle(0xef4444, 1);
+          node.body.setAngle(0);
+        },
+      });
+    },
+  };
+}
+
 export function RoguelikeRpgGame() {
+  const mountRef = useRef<HTMLDivElement | null>(null);
+  const controllerRef = useRef<PhaserController | null>(null);
+  const moveRef = useRef<(dx: number, dy: number) => void>(() => undefined);
+  const resetRef = useRef<() => void>(() => undefined);
+
   const [position, setPosition] = useState<Position>({ x: 0, y: 0 });
-  const [baseStats, setBaseStats] = useState<Stats>({ strength: 8, agility: 6, maxHp: 42 });
-  const [hp, setHp] = useState(42);
+  const [baseStats, setBaseStats] = useState<Stats>(START_STATS);
+  const [hp, setHp] = useState(START_STATS.maxHp);
   const [sword, setSword] = useState<GearItem | null>(null);
   const [armor, setArmor] = useState<GearItem | null>(null);
   const [inventory, setInventory] = useState<GearItem[]>([]);
   const [enemies, setEnemies] = useState<Enemy[]>([]);
   const [combatEnemyId, setCombatEnemyId] = useState<number | null>(null);
+  const [killCount, setKillCount] = useState(0);
+  const [bestDepth, setBestDepth] = useState(() => {
+    if (typeof window === "undefined") {
+      return 0;
+    }
+    return loadGameSave<SaveData>(GAME_SLUG)?.data?.bestDepth ?? 0;
+  });
+  const [bestKills, setBestKills] = useState(() => {
+    if (typeof window === "undefined") {
+      return 0;
+    }
+    return loadGameSave<SaveData>(GAME_SLUG)?.data?.bestKills ?? 0;
+  });
   const [battleLog, setBattleLog] = useState<string[]>(() => [
     `[${formatTime(new Date())}] 새 여정을 시작했습니다.`,
   ]);
@@ -194,21 +595,21 @@ export function RoguelikeRpgGame() {
 
   const spawnEnemiesNear = useCallback((center: Position) => {
     setEnemies((prev) => {
-      const nearby = prev.filter((enemy) => Math.abs(enemy.x - center.x) <= 7 && Math.abs(enemy.y - center.y) <= 7);
-      if (nearby.length >= 6) {
+      const nearby = prev.filter((enemy) => Math.abs(enemy.x - center.x) <= 8 && Math.abs(enemy.y - center.y) <= 8);
+      if (nearby.length >= 7) {
         return prev;
       }
 
       const occupied = new Set(prev.map((enemy) => keyOf(enemy.x, enemy.y)));
       occupied.add(keyOf(center.x, center.y));
-      const needed = 6 - nearby.length;
+      const needed = 7 - nearby.length;
       const created: Enemy[] = [];
 
       for (let index = 0; index < needed; index += 1) {
         let placed = false;
-        for (let attempt = 0; attempt < 40; attempt += 1) {
-          const dx = randomInt(-8, 8);
-          const dy = randomInt(-8, 8);
+        for (let attempt = 0; attempt < 45; attempt += 1) {
+          const dx = randomInt(-9, 9);
+          const dy = randomInt(-9, 9);
           if (dx === 0 && dy === 0) {
             continue;
           }
@@ -217,8 +618,8 @@ export function RoguelikeRpgGame() {
           if (!isPassable(tx, ty)) {
             continue;
           }
-          const key = keyOf(tx, ty);
-          if (occupied.has(key)) {
+          const mapKey = keyOf(tx, ty);
+          if (occupied.has(mapKey)) {
             continue;
           }
 
@@ -228,10 +629,11 @@ export function RoguelikeRpgGame() {
           enemy.x = tx;
           enemy.y = ty;
           created.push(enemy);
-          occupied.add(key);
+          occupied.add(mapKey);
           placed = true;
           break;
         }
+
         if (!placed) {
           break;
         }
@@ -241,21 +643,75 @@ export function RoguelikeRpgGame() {
     });
   }, []);
 
+  const applyRun = useCallback((run: RunData) => {
+    setPosition(run.position ?? { x: 0, y: 0 });
+    setBaseStats(run.baseStats ?? START_STATS);
+    setHp(typeof run.hp === "number" ? run.hp : START_STATS.maxHp);
+    setSword(run.sword ?? null);
+    setArmor(run.armor ?? null);
+    setInventory(Array.isArray(run.inventory) ? run.inventory : []);
+    setEnemies(Array.isArray(run.enemies) ? run.enemies : []);
+    setCombatEnemyId(typeof run.combatEnemyId === "number" ? run.combatEnemyId : null);
+    setKillCount(typeof run.killCount === "number" ? run.killCount : 0);
+    nextEnemyIdRef.current = typeof run.nextEnemyId === "number" ? run.nextEnemyId : 1;
+    nextItemIdRef.current = typeof run.nextItemId === "number" ? run.nextItemId : 1;
+  }, []);
+
   const resetGame = useCallback(() => {
     nextEnemyIdRef.current = 1;
     nextItemIdRef.current = 1;
     setPosition({ x: 0, y: 0 });
-    setBaseStats({ strength: 8, agility: 6, maxHp: 42 });
-    setHp(42);
+    setBaseStats(START_STATS);
+    setHp(START_STATS.maxHp);
     setSword(null);
     setArmor(null);
     setInventory([]);
     setEnemies([]);
     setCombatEnemyId(null);
+    setKillCount(0);
     setBattleLog([]);
     appendLog("새 여정을 시작했습니다.");
     spawnEnemiesNear({ x: 0, y: 0 });
   }, [appendLog, spawnEnemiesNear]);
+
+  const saveNow = useCallback(() => {
+    const payload: SaveData = {
+      bestDepth,
+      bestKills,
+      run: {
+        position,
+        baseStats,
+        hp,
+        sword,
+        armor,
+        inventory,
+        enemies,
+        combatEnemyId,
+        nextEnemyId: nextEnemyIdRef.current,
+        nextItemId: nextItemIdRef.current,
+        killCount,
+      },
+    };
+
+    const envelope = saveGameSave(GAME_SLUG, GAME_TITLE, payload);
+    if (envelope) {
+      setSaveUpdatedAt(envelope.updatedAt);
+      appendLog("세이브 완료.");
+    }
+  }, [
+    appendLog,
+    armor,
+    baseStats,
+    bestDepth,
+    bestKills,
+    combatEnemyId,
+    enemies,
+    hp,
+    inventory,
+    killCount,
+    position,
+    sword,
+  ]);
 
   const loadFromSave = useCallback(() => {
     const saved = loadGameSave<SaveData>(GAME_SLUG);
@@ -264,44 +720,121 @@ export function RoguelikeRpgGame() {
       return;
     }
 
-    const data = saved.data;
-    setPosition(data.position ?? { x: 0, y: 0 });
-    setBaseStats(data.baseStats ?? { strength: 8, agility: 6, maxHp: 42 });
-    setHp(typeof data.hp === "number" ? data.hp : 42);
-    setSword(data.sword ?? null);
-    setArmor(data.armor ?? null);
-    setInventory(Array.isArray(data.inventory) ? data.inventory : []);
-    setEnemies(Array.isArray(data.enemies) ? data.enemies : []);
-    setCombatEnemyId(typeof data.combatEnemyId === "number" ? data.combatEnemyId : null);
-    nextEnemyIdRef.current = typeof data.nextEnemyId === "number" ? data.nextEnemyId : 1;
-    nextItemIdRef.current = typeof data.nextItemId === "number" ? data.nextItemId : 1;
-    setSaveUpdatedAt(saved.updatedAt);
-    appendLog("세이브를 불러왔습니다.");
-  }, [appendLog]);
+    setBestDepth(typeof saved.data.bestDepth === "number" ? saved.data.bestDepth : 0);
+    setBestKills(typeof saved.data.bestKills === "number" ? saved.data.bestKills : 0);
 
-  const saveNow = useCallback(() => {
-    const payload: SaveData = {
-      position,
-      baseStats,
-      hp,
-      sword,
-      armor,
-      inventory,
-      enemies,
-      combatEnemyId,
-      nextEnemyId: nextEnemyIdRef.current,
-      nextItemId: nextItemIdRef.current,
-    };
-    const envelope = saveGameSave(GAME_SLUG, GAME_TITLE, payload);
-    if (envelope) {
-      setSaveUpdatedAt(envelope.updatedAt);
-      appendLog("중간 세이브 완료.");
+    if (saved.data.run) {
+      applyRun(saved.data.run);
+      appendLog("세이브 데이터를 불러왔습니다.");
+    } else {
+      appendLog("기록만 저장된 상태입니다.");
     }
-  }, [appendLog, armor, baseStats, combatEnemyId, enemies, hp, inventory, position, sword]);
+
+    setSaveUpdatedAt(saved.updatedAt);
+  }, [appendLog, applyRun]);
 
   useEffect(() => {
     spawnEnemiesNear(position);
   }, [position, spawnEnemiesNear]);
+
+  useEffect(() => {
+    const depth = Math.abs(position.x) + Math.abs(position.y);
+    setBestDepth((prev) => (depth > prev ? depth : prev));
+  }, [position.x, position.y]);
+
+  useEffect(() => {
+    setBestKills((prev) => (killCount > prev ? killCount : prev));
+  }, [killCount]);
+
+  const tryMove = useCallback(
+    (dx: number, dy: number) => {
+      if (hp <= 0) {
+        appendLog("사망 상태입니다. R 또는 리셋 버튼으로 재시작하세요.");
+        return;
+      }
+
+      const nx = position.x + dx;
+      const ny = position.y + dy;
+      if (!isPassable(nx, ny)) {
+        appendLog("벽입니다.");
+        return;
+      }
+
+      const enemy = enemies.find((target) => target.x === nx && target.y === ny);
+      if (enemy) {
+        if (combatEnemyId !== null && combatEnemyId !== enemy.id) {
+          appendLog(`적 ${combatEnemyId}과(와) 거리를 벌리고 적 ${enemy.id}(으)로 교전 전환.`);
+        }
+        setCombatEnemyId(enemy.id);
+        appendLog(`적 ${enemy.id}과(와) 교전 시작.`);
+        return;
+      }
+
+      if (combatEnemyId !== null) {
+        setCombatEnemyId(null);
+        appendLog(`적 ${combatEnemyId}과(와)의 교전에서 이탈했습니다.`);
+      }
+
+      setPosition({ x: nx, y: ny });
+      setBaseStats((prev) => ({ ...prev, agility: prev.agility + 1 }));
+    },
+    [appendLog, combatEnemyId, enemies, hp, position.x, position.y],
+  );
+
+  moveRef.current = tryMove;
+  resetRef.current = resetGame;
+
+  useEffect(() => {
+    if (!mountRef.current) {
+      return;
+    }
+
+    let cancelled = false;
+    let createdController: PhaserController | null = null;
+
+    const start = async () => {
+      const phaserModule = await import("phaser");
+      const PhaserRef = ("default" in phaserModule ? phaserModule.default : phaserModule) as PhaserRuntime;
+
+      if (cancelled || !mountRef.current) {
+        return;
+      }
+
+      createdController = createRoguelikePhaserGame({
+        PhaserRef,
+        parent: mountRef.current,
+        onMove: (dx, dy) => {
+          moveRef.current(dx, dy);
+        },
+        onReset: () => {
+          resetRef.current();
+        },
+      });
+
+      controllerRef.current = createdController;
+    };
+
+    void start();
+
+    return () => {
+      cancelled = true;
+      if (createdController) {
+        createdController.game.destroy(true);
+      }
+      controllerRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const snapshot: RenderSnapshot = {
+      position,
+      enemies,
+      combatEnemyId,
+      hp: Math.max(0, Math.min(hp, totalStats.maxHp)),
+      maxHp: totalStats.maxHp,
+    };
+    controllerRef.current?.sync(snapshot);
+  }, [combatEnemyId, enemies, hp, position, totalStats.maxHp]);
 
   useEffect(() => {
     if (!combatEnemy) {
@@ -328,6 +861,7 @@ export function RoguelikeRpgGame() {
         const raw = totalStats.strength * totalStats.swordFactor;
         const damage = Math.max(1, Math.floor(raw - enemy.defense));
         const nextHp = enemy.hp - damage;
+        controllerRef.current?.flashEnemyHit(enemy.id);
         appendLog(`플레이어 공격 ${damage} 피해 (적 ${enemy.id}).`);
 
         if (nextHp <= 0) {
@@ -336,6 +870,7 @@ export function RoguelikeRpgGame() {
           nextItemIdRef.current += 1;
           setInventory((items) => [dropped, ...items]);
           setCombatEnemyId(null);
+          setKillCount((prevKills) => prevKills + 1);
           appendLog(`적 ${enemy.id} 처치. ${dropped.name} 획득.`);
           return next;
         }
@@ -354,7 +889,7 @@ export function RoguelikeRpgGame() {
       return;
     }
 
-    const interval = Math.max(300, 1300 - combatEnemy.agility * 20);
+    const interval = Math.max(320, 1350 - combatEnemy.agility * 20);
     const timer = window.setInterval(() => {
       const playerEvadeChance = Math.min(0.58, totalStats.agility * 0.012);
       if (Math.random() < playerEvadeChance) {
@@ -369,8 +904,9 @@ export function RoguelikeRpgGame() {
         const next = Math.max(0, prev - damage);
         if (next <= 0) {
           setCombatEnemyId(null);
-          appendLog("플레이어가 쓰러졌습니다. 다시 시작하세요.");
+          appendLog("플레이어가 쓰러졌습니다. R 또는 리셋으로 재시작하세요.");
         } else {
+          controllerRef.current?.flashPlayerHit();
           appendLog(`플레이어 피격 ${damage} 피해.`);
         }
         return next;
@@ -391,7 +927,7 @@ export function RoguelikeRpgGame() {
           occupied.delete(keyOf(enemy.x, enemy.y));
           let moved = enemy;
 
-          if (combatEnemyId !== enemy.id && Math.random() < 0.72) {
+          if (combatEnemyId !== enemy.id && Math.random() < 0.74) {
             const dirs = shuffleDirections();
             for (const dir of dirs) {
               const tx = enemy.x + dir.x;
@@ -419,7 +955,7 @@ export function RoguelikeRpgGame() {
           next.push(moved);
         }
 
-        if (triggeredCombatId !== null) {
+        if (triggeredCombatId !== null && combatEnemyId === null) {
           setCombatEnemyId(triggeredCombatId);
           appendLog(`적 ${triggeredCombatId}이(가) 접근해 교전 시작.`);
         }
@@ -431,113 +967,49 @@ export function RoguelikeRpgGame() {
     return () => window.clearInterval(timer);
   }, [appendLog, combatEnemyId, position.x, position.y]);
 
-  useEffect(() => {
-    if (hp > 0) {
-      return;
-    }
+  const equipItem = useCallback(
+    (item: GearItem) => {
+      if (item.type === "potion") {
+        if (hp <= 0) {
+          appendLog("사망 상태에서는 포션을 사용할 수 없습니다.");
+          return;
+        }
+        if (hp >= totalStats.maxHp) {
+          appendLog("HP가 가득 차 있어 포션을 아꼈습니다.");
+          return;
+        }
 
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() === "r") {
-        resetGame();
-      }
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [hp, resetGame]);
-
-  const tryMove = useCallback(
-    (dx: number, dy: number) => {
-      if (hp <= 0) {
-        return;
-      }
-      if (combatEnemyId !== null) {
-        appendLog("교전 중에는 이동할 수 없습니다.");
+        setInventory((prev) => prev.filter((entry) => entry.id !== item.id));
+        setHp((prev) => Math.min(totalStats.maxHp, prev + item.heal));
+        appendLog(`${item.name} 사용. HP ${item.heal} 회복.`);
         return;
       }
 
-      const nx = position.x + dx;
-      const ny = position.y + dy;
-      if (!isPassable(nx, ny)) {
-        appendLog("벽입니다.");
-        return;
+      setInventory((prev) => prev.filter((entry) => entry.id !== item.id));
+
+      if (item.type === "sword") {
+        setSword((current) => {
+          if (current) {
+            setInventory((prev) => [current, ...prev]);
+          }
+          return item;
+        });
+      } else {
+        setArmor((current) => {
+          if (current) {
+            setInventory((prev) => [current, ...prev]);
+          }
+          return item;
+        });
       }
 
-      const enemy = enemies.find((target) => target.x === nx && target.y === ny);
-      if (enemy) {
-        setCombatEnemyId(enemy.id);
-        appendLog(`적 ${enemy.id}과(와) 교전 시작.`);
-        return;
-      }
-
-      setPosition({ x: nx, y: ny });
-      setBaseStats((prev) => ({ ...prev, agility: prev.agility + 1 }));
+      appendLog(`${item.name} 장착.`);
     },
-    [appendLog, combatEnemyId, enemies, hp, position.x, position.y],
+    [appendLog, hp, totalStats.maxHp],
   );
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
-      if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"].includes(key)) {
-        event.preventDefault();
-      }
-
-      if (key === "arrowup" || key === "w") {
-        tryMove(0, -1);
-      } else if (key === "arrowdown" || key === "s") {
-        tryMove(0, 1);
-      } else if (key === "arrowleft" || key === "a") {
-        tryMove(-1, 0);
-      } else if (key === "arrowright" || key === "d") {
-        tryMove(1, 0);
-      }
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [tryMove]);
-
-  const enemiesByPosition = useMemo(() => {
-    const map = new Map<string, Enemy>();
-    enemies.forEach((enemy) => map.set(keyOf(enemy.x, enemy.y), enemy));
-    return map;
-  }, [enemies]);
-
-  const viewCells = useMemo(() => {
-    const cells: { x: number; y: number; type: "player" | "enemy" | "wall" | "floor"; hp: number }[] = [];
-
-    for (let y = position.y - VIEW_RADIUS; y <= position.y + VIEW_RADIUS; y += 1) {
-      for (let x = position.x - VIEW_RADIUS; x <= position.x + VIEW_RADIUS; x += 1) {
-        if (x === position.x && y === position.y) {
-          cells.push({ x, y, type: "player", hp: 0 });
-          continue;
-        }
-
-        const enemy = enemiesByPosition.get(keyOf(x, y));
-        if (enemy) {
-          cells.push({ x, y, type: "enemy", hp: Math.floor((enemy.hp / enemy.maxHp) * 100) });
-          continue;
-        }
-
-        cells.push({ x, y, type: isPassable(x, y) ? "floor" : "wall", hp: 0 });
-      }
-    }
-
-    return cells;
-  }, [enemiesByPosition, position.x, position.y]);
-
-  const equipItem = useCallback((item: GearItem) => {
-    if (item.type === "sword") {
-      setSword(item);
-      appendLog(`${item.name} 장착.`);
-    } else {
-      setArmor(item);
-      appendLog(`${item.name} 장착.`);
-    }
-  }, [appendLog]);
-
   const currentHp = Math.min(hp, totalStats.maxHp);
+  const depth = Math.abs(position.x) + Math.abs(position.y);
 
   return (
     <div className={styles.panel}>
@@ -547,21 +1019,15 @@ export function RoguelikeRpgGame() {
         <span>민첩 {totalStats.agility} (기본 {baseStats.agility})</span>
         <span>방어 {totalStats.armorDefense}</span>
         <span>공격 배율 x{totalStats.swordFactor.toFixed(2)}</span>
+        <span>현재 거리 {depth}</span>
+        <span>처치 {killCount}</span>
+        <span>최고 거리 {bestDepth}</span>
+        <span>최다 처치 {bestKills}</span>
       </header>
 
       <div className={styles.layout}>
-        <section className={styles.map} aria-label="Roguelike map">
-          {viewCells.map((cell) => (
-            <div
-              key={`${cell.x}-${cell.y}`}
-              className={`${styles.cell} ${styles[cell.type]} ${
-                cell.type === "enemy" && combatEnemyId !== null && enemiesByPosition.get(keyOf(cell.x, cell.y))?.id === combatEnemyId
-                  ? styles.target
-                  : ""
-              }`}
-              title={cell.type === "enemy" ? `적 HP ${cell.hp}%` : undefined}
-            />
-          ))}
+        <section className={styles.canvasSection} aria-label="Roguelike map canvas">
+          <div ref={mountRef} className={styles.canvasMount} />
         </section>
 
         <aside className={styles.side}>
@@ -579,11 +1045,12 @@ export function RoguelikeRpgGame() {
           <div className={styles.box}>
             <p>이동</p>
             <div className={styles.controls}>
-              <button type="button" onClick={() => tryMove(0, -1)} className={styles.control}>UP</button>
-              <button type="button" onClick={() => tryMove(-1, 0)} className={styles.control}>LEFT</button>
-              <button type="button" onClick={() => tryMove(0, 1)} className={styles.control}>DOWN</button>
-              <button type="button" onClick={() => tryMove(1, 0)} className={styles.control}>RIGHT</button>
+              <button type="button" onClick={() => tryMove(0, -1)} className={`${styles.control} ${styles.controlUp}`}>UP</button>
+              <button type="button" onClick={() => tryMove(-1, 0)} className={`${styles.control} ${styles.controlLeft}`}>LEFT</button>
+              <button type="button" onClick={() => tryMove(1, 0)} className={`${styles.control} ${styles.controlRight}`}>RIGHT</button>
+              <button type="button" onClick={() => tryMove(0, 1)} className={`${styles.control} ${styles.controlDown}`}>DOWN</button>
             </div>
+            <p className={styles.inlineHelp}>키보드: 방향키/WASD 이동, R 리셋</p>
           </div>
 
           <div className={styles.box}>
@@ -598,9 +1065,13 @@ export function RoguelikeRpgGame() {
               {inventory.slice(0, 8).map((item) => (
                 <li key={item.id}>
                   <span>
-                    {item.name} [+힘 {item.strength} / +민첩 {item.agility} / +HP {item.maxHp}]
+                    {item.type === "potion"
+                      ? `${item.name} [회복 ${item.heal}]`
+                      : `${item.name} [+힘 ${item.strength} / +민첩 ${item.agility} / +HP ${item.maxHp}]`}
                   </span>
-                  <button type="button" onClick={() => equipItem(item)} className={styles.equip}>장착</button>
+                  <button type="button" onClick={() => equipItem(item)} className={styles.equip}>
+                    {item.type === "potion" ? "사용" : "장착"}
+                  </button>
                 </li>
               ))}
               {inventory.length === 0 && <li>아이템 없음</li>}
@@ -619,7 +1090,7 @@ export function RoguelikeRpgGame() {
         </ul>
       </section>
 
-      <p className={styles.help}>이동 시 민첩 +1, 공격 시 힘 +1, 피격 시 최대 HP +1. 방향키/WASD 이동, 사망 시 R로 재시작.</p>
+      <p className={styles.help}>이동 시 민첩 +1, 공격 시 힘 +1, 피격 시 최대 HP +1. 적 처치로 장비를 얻고 더 멀리 이동해 기록을 갱신하세요.</p>
     </div>
   );
 }

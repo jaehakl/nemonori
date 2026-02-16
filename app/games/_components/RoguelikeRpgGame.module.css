@@ -26,45 +26,29 @@
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(260px, 360px) minmax(220px, 1fr);
+  grid-template-columns: minmax(280px, 520px) minmax(220px, 1fr);
   gap: 12px;
   align-items: start;
 }
 
-.map {
-  display: grid;
-  grid-template-columns: repeat(13, minmax(0, 1fr));
-  gap: 2px;
-  background: #052e2b;
+.canvasSection {
   border: 3px solid #0f766e;
   border-radius: 12px;
-  padding: 6px;
+  padding: 8px;
+  background: #031515;
 }
 
-.cell {
-  aspect-ratio: 1 / 1;
-  border-radius: 2px;
+.canvasMount {
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
 }
 
-.floor {
-  background: #115e59;
-}
-
-.wall {
-  background: #022c22;
-}
-
-.player {
-  background: #fde047;
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 65%);
-}
-
-.enemy {
-  background: #ef4444;
-}
-
-.target {
-  outline: 2px solid #fef3c7;
+.canvasMount canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 8px;
 }
 
 .side {
@@ -109,8 +93,32 @@
 
 .controls {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-areas:
+    ". up ."
+    "left down right";
   gap: 6px;
+}
+
+.controlUp {
+  grid-area: up;
+}
+
+.controlLeft {
+  grid-area: left;
+}
+
+.controlRight {
+  grid-area: right;
+}
+
+.controlDown {
+  grid-area: down;
+}
+
+.inlineHelp {
+  margin-top: 8px;
+  color: #0f766e;
 }
 
 .inventory {
@@ -165,12 +173,12 @@
   color: #0f766e;
 }
 
-@media (max-width: 780px) {
+@media (max-width: 920px) {
   .layout {
     grid-template-columns: 1fr;
   }
 
-  .map {
-    max-width: 360px;
+  .canvasSection {
+    max-width: 540px;
   }
 }

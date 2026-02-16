@@ -125,3 +125,11 @@ npm run build
 - `style(page): ...` 페이지 스타일 수정
 - `refactor(game): ...` 게임 로직 리팩터링(동작 변경 없음)
 - `docs: ...` 문서 업데이트
+
+## 10) Phaser Development Essentials
+
+- Dynamically import Phaser inside `useEffect`, and always call `game.destroy(true)` in cleanup.
+- Keep Scene (`create/update`) logic in an external helper/factory, not as an inline class inside the component.
+- Start `update()` with null guards, and only sync React state when values actually change.
+- Use `save-protocol` for persistence, and store only high-value progress (for example, best score).
+- Keep this flow fixed: `component -> data.ts -> [slug]/page.tsx -> eslint(app) -> build`.

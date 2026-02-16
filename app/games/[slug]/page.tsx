@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import type { ComponentType } from "react";
@@ -7,6 +7,7 @@ import { TapRaceGame } from "../_components/TapRaceGame";
 import { MemoryLightsGame } from "../_components/MemoryLightsGame";
 import { TetrisGame } from "../_components/TetrisGame";
 import { RoguelikeRpgGame } from "../_components/RoguelikeRpgGame";
+import { PhaserMeteorDodgeGame } from "../_components/PhaserMeteorDodgeGame";
 import styles from "./page.module.css";
 
 const gameViewByComponent: Record<GameComponentKey, ComponentType> = {
@@ -14,6 +15,7 @@ const gameViewByComponent: Record<GameComponentKey, ComponentType> = {
   "memory-lights": MemoryLightsGame,
   tetris: TetrisGame,
   "roguelike-rpg": RoguelikeRpgGame,
+  "phaser-meteor-dodge": PhaserMeteorDodgeGame,
 };
 
 type Params = {

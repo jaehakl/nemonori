@@ -23,7 +23,7 @@ export default function HomePage() {
   return (
     <main className={styles.pageShell}>
       <section className={styles.hero}>
-        <p className={styles.kicker}><h1>Nemonori Arcade</h1></p>        
+        <h1>Nemonori Arcade</h1>
         <div className={styles.heroActions}>
           <Link href="/saves" className={styles.manageSavesLink}>
             세이브 데이터 관리
@@ -90,4 +90,3 @@ export default function HomePage() {
     </main>
   );
 }
-

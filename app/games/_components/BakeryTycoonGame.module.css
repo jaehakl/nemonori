@@ -9,6 +9,23 @@
     #fffbeb;
 }
 
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.fullscreenBtn {
+  border: none;
+  border-radius: 8px;
+  min-height: 32px;
+  padding: 0 10px;
+  color: #fff;
+  background: #9a3412;
+  cursor: pointer;
+  font-weight: 700;
+}
+
 .floorWrap {
   border: 1px solid #f59e0b;
   border-radius: 12px;
@@ -104,4 +121,58 @@
 
 .slider {
   width: 100%;
+}
+
+.panel:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0;
+  padding: 12px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel:fullscreen .floorWrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.panel:fullscreen .floorMount {
+  width: 100%;
+  height: 100%;
+}
+
+.panel:fullscreen .floorMount canvas {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain;
+}
+
+.panel:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0;
+  padding: 12px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel:-webkit-full-screen .floorWrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.panel:-webkit-full-screen .floorMount {
+  width: 100%;
+  height: 100%;
+}
+
+.panel:-webkit-full-screen .floorMount canvas {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain;
 }

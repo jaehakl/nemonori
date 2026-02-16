@@ -1230,6 +1230,7 @@ function createBakeryTycoonScene({
 }
 
 export function BakeryTycoonGame() {
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const floorRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<SceneBridge | null>(null);
 
@@ -1244,6 +1245,7 @@ export function BakeryTycoonGame() {
 
   const [modal, setModal] = useState<ModalState | null>(null);
   const [snapshot, setSnapshot] = useState<UiSnapshot>(() => toSnapshot(createInitialState(initialBestCash)));
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
     if (!floorRef.current) return;
@@ -1294,14 +1296,69 @@ export function BakeryTycoonGame() {
     controllerRef.current?.setModalOpen(Boolean(modal));
   }, [modal]);
 
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const syncFullscreen = () => {
+      const doc = document as Document & { webkitFullscreenElement?: Element | null };
+      setIsFullscreen(Boolean(document.fullscreenElement || doc.webkitFullscreenElement));
+    };
+
+    document.addEventListener("fullscreenchange", syncFullscreen);
+    document.addEventListener("webkitfullscreenchange", syncFullscreen as EventListener);
+    return () => {
+      document.removeEventListener("fullscreenchange", syncFullscreen);
+      document.removeEventListener("webkitfullscreenchange", syncFullscreen as EventListener);
+    };
+  }, []);
+
   const act = (action: SceneAction) => {
     controllerRef.current?.act(action);
+  };
+
+  const toggleFullscreen = async () => {
+    const root = panelRef.current;
+    if (!root || typeof document === "undefined") return;
+
+    const doc = document as Document & {
+      webkitExitFullscreen?: () => Promise<void> | void;
+      webkitFullscreenElement?: Element | null;
+    };
+    const elem = root as HTMLDivElement & {
+      webkitRequestFullscreen?: () => Promise<void> | void;
+    };
+    const active = Boolean(doc.fullscreenElement || doc.webkitFullscreenElement);
+
+    try {
+      if (active) {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if (doc.webkitExitFullscreen) {
+          await doc.webkitExitFullscreen();
+        }
+        return;
+      }
+
+      if (elem.requestFullscreen) {
+        await elem.requestFullscreen();
+      } else if (elem.webkitRequestFullscreen) {
+        await elem.webkitRequestFullscreen();
+      }
+    } catch {
+      // no-op: browser denied fullscreen request
+    }
   };
 
   const snap = modal?.snapshot ?? snapshot;
 
   return (
-    <div className={styles.panel}>
+    <div ref={panelRef} className={styles.panel}>
+      <header className={styles.toolbar}>
+        <button type="button" className={styles.fullscreenBtn} onClick={() => void toggleFullscreen()}>
+          {isFullscreen ? "전체화면 해제" : "전체화면"}
+        </button>
+      </header>
+
       <section className={styles.floorWrap}>
         <div ref={floorRef} className={styles.floorMount} />
       </section>

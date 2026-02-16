@@ -10,6 +10,7 @@ import { RoguelikeRpgGame } from "../_components/RoguelikeRpgGame";
 import { PhaserMeteorDodgeGame } from "../_components/PhaserMeteorDodgeGame";
 import { PhaserBorderCollieRoundupGame } from "../_components/PhaserBorderCollieRoundupGame";
 import { BakeryTycoonGame } from "../_components/BakeryTycoonGame";
+import { PhaserJoseonWarfrontGame } from "../_components/PhaserJoseonWarfrontGame";
 import styles from "./page.module.css";
 
 const gameViewByComponent: Record<GameComponentKey, ComponentType> = {
@@ -20,6 +21,7 @@ const gameViewByComponent: Record<GameComponentKey, ComponentType> = {
   "phaser-meteor-dodge": PhaserMeteorDodgeGame,
   "phaser-border-collie-roundup": PhaserBorderCollieRoundupGame,
   "bakery-tycoon": BakeryTycoonGame,
+  "phaser-joseon-warfront": PhaserJoseonWarfrontGame,
 };
 
 type Params = {

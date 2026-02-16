@@ -1,4 +1,9 @@
-﻿export type GameComponentKey = "tap-race" | "memory-lights" | "tetris" | "roguelike-rpg";
+export type GameComponentKey =
+  | "tap-race"
+  | "memory-lights"
+  | "tetris"
+  | "roguelike-rpg"
+  | "phaser-meteor-dodge";
 
 export type GameDefinition = {
   slug: string;
@@ -51,6 +56,16 @@ export const gameCatalog: GameDefinition[] = [
     estPlayMinutes: 10,
     accent: "#0f766e",
     component: "roguelike-rpg",
+  },
+  {
+    slug: "phaser-meteor-dodge",
+    title: "Phaser Meteor Dodge",
+    summary: "좌우 이동으로 낙하 운석을 피하며 생존 시간을 겨루는 Phaser 회피 게임입니다.",
+    tags: ["phaser", "arcade", "dodge", "survival"],
+    difficulty: "Easy",
+    estPlayMinutes: 3,
+    accent: "#2563eb",
+    component: "phaser-meteor-dodge",
   },
 ];
 

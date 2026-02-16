@@ -8,6 +8,7 @@ import { MemoryLightsGame } from "../_components/MemoryLightsGame";
 import { TetrisGame } from "../_components/TetrisGame";
 import { RoguelikeRpgGame } from "../_components/RoguelikeRpgGame";
 import { PhaserMeteorDodgeGame } from "../_components/PhaserMeteorDodgeGame";
+import { PhaserBorderCollieRoundupGame } from "../_components/PhaserBorderCollieRoundupGame";
 import styles from "./page.module.css";
 
 const gameViewByComponent: Record<GameComponentKey, ComponentType> = {
@@ -16,6 +17,7 @@ const gameViewByComponent: Record<GameComponentKey, ComponentType> = {
   tetris: TetrisGame,
   "roguelike-rpg": RoguelikeRpgGame,
   "phaser-meteor-dodge": PhaserMeteorDodgeGame,
+  "phaser-border-collie-roundup": PhaserBorderCollieRoundupGame,
 };
 
 type Params = {

@@ -1,9 +1,10 @@
-export type GameComponentKey =
+﻿export type GameComponentKey =
   | "tap-race"
   | "memory-lights"
   | "tetris"
   | "roguelike-rpg"
-  | "phaser-meteor-dodge";
+  | "phaser-meteor-dodge"
+  | "phaser-border-collie-roundup";
 
 export type GameDefinition = {
   slug: string;
@@ -19,8 +20,8 @@ export type GameDefinition = {
 export const gameCatalog: GameDefinition[] = [
   {
     slug: "tap-race",
-    title: "Tap Race 10",
-    summary: "10초 동안 최대한 빠르게 탭해서 최고 점수를 갱신하세요.",
+    title: "탭 레이스 10",
+    summary: "10초 동안 화면을 최대한 빠르게 탭해서 최고 점수를 갱신하세요.",
     tags: ["reflex", "score-attack", "one-button"],
     difficulty: "Easy",
     estPlayMinutes: 1,
@@ -29,8 +30,8 @@ export const gameCatalog: GameDefinition[] = [
   },
   {
     slug: "memory-lights",
-    title: "Memory Lights",
-    summary: "점점 길어지는 빛 순서를 기억해 따라 누르는 초간단 기억력 게임입니다.",
+    title: "메모리 라이트",
+    summary: "점점 길어지는 불빛 순서를 기억하고 정확히 따라 누르는 기억력 게임입니다.",
     tags: ["memory", "pattern", "simon-like"],
     difficulty: "Normal",
     estPlayMinutes: 3,
@@ -39,8 +40,8 @@ export const gameCatalog: GameDefinition[] = [
   },
   {
     slug: "tetris",
-    title: "Pixel Tetris",
-    summary: "블록을 회전/이동해 가로줄을 지우는 클래식 테트리스입니다.",
+    title: "픽셀 테트리스",
+    summary: "블록을 회전하고 배치해 가로줄을 지우는 클래식 퍼즐 게임입니다.",
     tags: ["classic", "puzzle", "line-clear"],
     difficulty: "Normal",
     estPlayMinutes: 5,
@@ -49,8 +50,8 @@ export const gameCatalog: GameDefinition[] = [
   },
   {
     slug: "roguelike-rpg",
-    title: "Drift Rogue",
-    summary: "이동할 때마다 지형이 생성되는 실시간 교전 로그라이크 RPG입니다.",
+    title: "드리프트 로그",
+    summary: "절차적으로 생성된 맵을 탐험하며 실시간 전투를 치르는 로그라이크 RPG입니다.",
     tags: ["roguelike", "rpg", "realtime-combat", "procedural-map"],
     difficulty: "Hard",
     estPlayMinutes: 10,
@@ -59,13 +60,23 @@ export const gameCatalog: GameDefinition[] = [
   },
   {
     slug: "phaser-meteor-dodge",
-    title: "Phaser Meteor Dodge",
-    summary: "좌우 이동으로 낙하 운석을 피하며 생존 시간을 겨루는 Phaser 회피 게임입니다.",
+    title: "운석 피하기",
+    summary: "좌우로 이동하며 떨어지는 운석을 피하고 오래 생존하는 Phaser 액션 게임입니다.",
     tags: ["phaser", "arcade", "dodge", "survival"],
     difficulty: "Easy",
     estPlayMinutes: 3,
     accent: "#2563eb",
     component: "phaser-meteor-dodge",
+  },
+  {
+    slug: "phaser-border-collie-roundup",
+    title: "보더콜리 양몰이",
+    summary: "보더콜리를 움직여 제한 시간 안에 모든 양을 우리(PEN) 안으로 몰아넣으세요.",
+    tags: ["phaser", "herding", "animal", "time-attack"],
+    difficulty: "Normal",
+    estPlayMinutes: 4,
+    accent: "#ca8a04",
+    component: "phaser-border-collie-roundup",
   },
 ];
 

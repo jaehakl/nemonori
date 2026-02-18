@@ -1,0 +1,10 @@
+▲ Next.js 16.1.6 (Turbopack)
+- Local:         http://localhost:3010
+- Network:       http://172.17.32.1:3010
+- Environments: .env.local
+
+✓ Starting...
+✓ Ready in 2.8s
+○ Compiling /games/[slug] ...
+ GET /games/babylon-village-walk 200 in 6.3s (compile: 5.2s, generate-params: 1380ms, render: 1138ms)
+[?25h

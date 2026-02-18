@@ -6,7 +6,8 @@
   | "phaser-meteor-dodge"
   | "phaser-border-collie-roundup"
   | "bakery-tycoon"
-  | "phaser-joseon-warfront";
+  | "phaser-joseon-warfront"
+  | "babylon-village-walk";
 
 export type GameDefinition = {
   slug: string;
@@ -73,8 +74,8 @@ export const gameCatalog: GameDefinition[] = [
   {
     slug: "phaser-border-collie-roundup",
     title: "보더콜리 양몰이",
-    summary: "보더콜리를 움직여 제한 시간 안에 모든 양을 우리(PEN) 안으로 몰아넣으세요.",
-    tags: ["phaser", "herding", "animal", "time-attack"],
+    summary: "Babylon.js 3D 목장에서 보더콜리를 움직여 제한 시간 안에 모든 양을 우리(PEN)로 몰아넣으세요.",
+    tags: ["babylonjs", "3d", "herding", "animal", "time-attack"],
     difficulty: "Normal",
     estPlayMinutes: 4,
     accent: "#ca8a04",
@@ -101,6 +102,16 @@ export const gameCatalog: GameDefinition[] = [
     estPlayMinutes: 10,
     accent: "#b91c1c",
     component: "phaser-joseon-warfront",
+  },
+  {
+    slug: "babylon-village-walk",
+    title: "Babylon Village Walk",
+    summary: "3차원 마을 지형을 걸어다니며 주요 명소를 찾아 완료 시간을 단축하는 Babylon.js 탐험 게임입니다.",
+    tags: ["babylonjs", "3d", "exploration", "village", "time-attack"],
+    difficulty: "Easy",
+    estPlayMinutes: 4,
+    accent: "#0f766e",
+    component: "babylon-village-walk",
   },
 ];
 

@@ -1,4 +1,6 @@
 .panel {
+  display: flex;
+  flex-direction: column;
   border: 1px solid #0f766e;
   border-radius: 18px;
   padding: 16px;
@@ -7,6 +9,15 @@
     radial-gradient(circle at 12% 12%, rgba(16, 185, 129, 0.34) 0%, transparent 42%),
     radial-gradient(circle at 90% 84%, rgba(59, 130, 246, 0.28) 0%, transparent 38%),
     linear-gradient(145deg, #042f2e 0%, #0f172a 100%);
+}
+
+.panelFullscreen {
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  border-radius: 0;
+  border: none;
+  padding: 18px;
 }
 
 .stats {
@@ -26,6 +37,8 @@
 }
 
 .canvasShell {
+  flex: 1;
+  position: relative;
   border: 1px solid #0f766e;
   border-radius: 14px;
   overflow: hidden;
@@ -35,6 +48,7 @@
 .canvasMount {
   width: 100%;
   min-height: 420px;
+  height: 100%;
 }
 
 .canvas {
@@ -44,8 +58,66 @@
   touch-action: none;
 }
 
+.crosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 26px;
+  height: 26px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  filter: drop-shadow(0 0 10px rgba(251, 146, 60, 0.55));
+}
+
+.crosshair span {
+  position: absolute;
+  inset: 0;
+}
+
+.crosshair span::before,
+.crosshair span::after {
+  content: "";
+  position: absolute;
+  background: rgba(255, 248, 220, 0.95);
+  border-radius: 999px;
+}
+
+.crosshair span:first-child::before {
+  top: 12px;
+  left: 0;
+  width: 9px;
+  height: 2px;
+}
+
+.crosshair span:first-child::after {
+  top: 12px;
+  right: 0;
+  width: 9px;
+  height: 2px;
+}
+
+.crosshair span:last-child::before {
+  top: 0;
+  left: 12px;
+  width: 2px;
+  height: 9px;
+}
+
+.crosshair span:last-child::after {
+  bottom: 0;
+  left: 12px;
+  width: 2px;
+  height: 9px;
+}
+
 .footer {
   margin-top: 12px;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .control {
@@ -62,10 +134,32 @@
   transform: scale(0.99);
 }
 
+.controlSecondary {
+  border: 1px solid #2dd4bf;
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  color: #d1fae5;
+  font-weight: 700;
+  background: rgba(8, 47, 73, 0.72);
+}
+
+.controlSecondary:active {
+  transform: scale(0.99);
+}
+
 .help {
   margin-top: 10px;
   color: #d1fae5;
   font-size: 13px;
+}
+
+.panelFullscreen .canvasMount {
+  min-height: 0;
+}
+
+.panelFullscreen .help {
+  margin-bottom: 0;
 }
 
 @media (max-width: 768px) {

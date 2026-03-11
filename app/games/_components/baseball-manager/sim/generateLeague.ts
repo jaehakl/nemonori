@@ -99,6 +99,15 @@ function createRng(seed: number): Rng {
   };
 }
 
+function createRandomSeed() {
+  if (typeof globalThis !== "undefined" && "crypto" in globalThis && typeof globalThis.crypto?.getRandomValues === "function") {
+    const buffer = new Uint32Array(1);
+    globalThis.crypto.getRandomValues(buffer);
+    return buffer[0] ?? Date.now();
+  }
+  return Date.now();
+}
+
 function pick<T>(rng: Rng, items: readonly T[]) {
   return items[Math.floor(rng() * items.length)] as T;
 }
@@ -154,6 +163,7 @@ function createReport(playerId: string, coachId: string, day: number, summary: s
 
 function createPlayer(rng: Rng, teamId: string, index: number, position: Position, major: boolean): Player {
   const role = position === "SP" || position === "RP" ? "pitcher" : "hitter";
+  const outsRecorded = role === "pitcher" ? randomInt(rng, 0, 165) : 0;
   const secondaryPositions: Position[] =
     role === "pitcher" ? ["RP"] : position === "C" ? ["DH"] : position === "CF" ? ["LF", "RF"] : ["LF", "RF", "DH"];
 
@@ -206,13 +216,32 @@ function createPlayer(rng: Rng, teamId: string, index: number, position: Positio
     },
     seasonStats: {
       games: randomInt(rng, 0, 22),
+      gamesStarted: role === "pitcher" ? randomInt(rng, 0, 8) : randomInt(rng, 0, 22),
       plateAppearances: role !== "pitcher" ? randomInt(rng, 0, 90) : randomInt(rng, 0, 12),
+      atBats: role !== "pitcher" ? randomInt(rng, 0, 80) : randomInt(rng, 0, 10),
       hits: role !== "pitcher" ? randomInt(rng, 0, 30) : randomInt(rng, 0, 3),
+      doubles: role !== "pitcher" ? randomInt(rng, 0, 8) : 0,
+      triples: role !== "pitcher" ? randomInt(rng, 0, 3) : 0,
       homeRuns: role !== "pitcher" ? randomInt(rng, 0, 6) : 0,
+      runs: role !== "pitcher" ? randomInt(rng, 0, 24) : 0,
+      runsBattedIn: role !== "pitcher" ? randomInt(rng, 0, 24) : 0,
       walks: randomInt(rng, 0, 16),
+      hitByPitch: randomInt(rng, 0, 4),
+      sacrificeHits: role !== "pitcher" ? randomInt(rng, 0, 4) : 0,
+      sacrificeFlies: role !== "pitcher" ? randomInt(rng, 0, 3) : 0,
       strikeOuts: randomInt(rng, 0, 28),
-      inningsPitched: role === "pitcher" ? randomInt(rng, 0, 55) : 0,
+      stolenBases: role !== "pitcher" ? randomInt(rng, 0, 8) : 0,
+      caughtStealing: role !== "pitcher" ? randomInt(rng, 0, 3) : 0,
+      inningsPitched: role === "pitcher" ? Number(`${Math.floor(outsRecorded / 3)}.${outsRecorded % 3}`) : 0,
+      outsRecorded,
+      battersFaced: role === "pitcher" ? randomInt(rng, 0, 240) : 0,
+      hitsAllowed: role === "pitcher" ? randomInt(rng, 0, 48) : 0,
+      runsAllowed: role === "pitcher" ? randomInt(rng, 0, 24) : 0,
       earnedRuns: role === "pitcher" ? randomInt(rng, 0, 20) : 0,
+      walksAllowed: role === "pitcher" ? randomInt(rng, 0, 20) : 0,
+      hitByPitchAllowed: role === "pitcher" ? randomInt(rng, 0, 4) : 0,
+      strikeOutsThrown: role === "pitcher" ? randomInt(rng, 0, 40) : 0,
+      homeRunsAllowed: role === "pitcher" ? randomInt(rng, 0, 8) : 0,
       pitchCount: role === "pitcher" ? randomInt(rng, 0, 780) : 0,
     },
     usage: {
@@ -344,7 +373,7 @@ export function createLiveMatchSession(gameState: GameState): LiveMatchState | n
   };
 }
 
-export function createNewGameState(seed = 20260311): GameState {
+export function createNewGameState(seed = createRandomSeed()): GameState {
   const rng = createRng(seed);
   const players: LeagueState["players"] = {};
   const coaches: LeagueState["coaches"] = {};
@@ -408,6 +437,11 @@ export function createNewGameState(seed = 20260311): GameState {
     players,
     coaches,
     schedule,
+    stats: {
+      gamesById: {},
+      gameIdsByDay: {},
+      gameIdsByPlayerId: {},
+    },
     draftPoolIds: [],
     standingsOrder: teams.map((team) => team.id),
   };

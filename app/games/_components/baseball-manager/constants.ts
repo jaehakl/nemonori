@@ -35,4 +35,4 @@ export const TEAM_COLORS = [
 ] as const;
 
 export const POSITIONS = ["SP", "RP", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"] as const;
-export const SCREENS = ["dashboard", "roster", "match", "draft"] as const;
+export const SCREENS = ["dashboard", "roster", "games", "match", "draft"] as const;

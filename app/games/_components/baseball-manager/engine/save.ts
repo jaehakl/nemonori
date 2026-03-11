@@ -8,7 +8,16 @@ type BaseballManagerSaveData = {
 
 export function loadBaseballManagerState() {
   const envelope = loadGameSave<BaseballManagerSaveData>(BASEBALL_MANAGER_SLUG);
-  return envelope?.data?.state ?? null;
+  const state = envelope?.data?.state;
+  if (!state || typeof state !== "object") {
+    return null;
+  }
+
+  if (!("season" in state) || !("rosterOps" in state) || !("userTeamId" in state) || !("liveMatch" in state)) {
+    return null;
+  }
+
+  return state as GameState;
 }
 
 export function saveBaseballManagerState(state: GameState) {

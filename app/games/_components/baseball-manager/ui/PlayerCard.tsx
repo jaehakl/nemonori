@@ -14,7 +14,9 @@ export function PlayerCard({ card, selected = false, onClick }: PlayerCardProps)
         <strong>{card.name}</strong>
         <span>{card.badge}</span>
       </div>
+      <p>{card.teamLine}</p>
       <p>{card.profileLine}</p>
+      <p>{card.conditionLine}</p>
       <p>{card.seasonLine}</p>
       <p>{card.recentUsage}</p>
       <p>{card.interview}</p>

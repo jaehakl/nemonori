@@ -10,6 +10,8 @@ export type CoachFocus = "pitching" | "hitting" | "defense" | "mental";
 export type RosterLevel = "major" | "minor";
 export type ReportConfidence = "low" | "medium" | "high";
 export type ReportDirection = "up" | "steady" | "down" | "unclear";
+export type SeasonPhase = "regular-season" | "draft";
+export type MatchStrategy = "auto" | "bunt" | "pinch-hit" | "pinch-run" | "defensive-sub" | "pitching-change";
 
 export type PlayerPublicProfile = {
   id: string;
@@ -180,7 +182,7 @@ export type BasesState = {
   third: string | null;
 };
 
-export type MatchState = {
+export type LiveMatchState = {
   gameId: string;
   day: number;
   awayTeamId: string;
@@ -192,12 +194,25 @@ export type MatchState = {
   fieldingPositions: Partial<Record<Position, string>>;
   eventLog: string[];
   canSubstitute: boolean;
-  pendingStrategy: "auto" | "bunt" | "pinch-hit" | "pinch-run" | "defensive-sub";
+  pendingStrategy: MatchStrategy;
+};
+
+export type SeasonState = {
+  seasonYear: number;
+  currentDay: number;
+  phase: SeasonPhase;
+  nextUserGameId: string | null;
+  pendingUserMatch: boolean;
+};
+
+export type RosterOpsState = {
+  lineup: string[];
+  bench: string[];
+  rotation: string[];
+  bullpen: string[];
 };
 
 export type LeagueState = {
-  seasonYear: number;
-  currentDay: number;
   teams: Team[];
   players: Record<string, Player>;
   coaches: Record<string, Coach>;
@@ -206,31 +221,64 @@ export type LeagueState = {
   standingsOrder: string[];
 };
 
-export type SaveMeta = {
-  lastSavedAt: string | null;
-  dirty: boolean;
-};
-
 export type GameState = {
   seed: number;
+  league: LeagueState;
+  userTeamId: string;
+  season: SeasonState;
+  rosterOps: RosterOpsState;
+  liveMatch: LiveMatchState | null;
+  feedLog: string[];
+};
+
+export type BaseballManagerUiState = {
   currentScreen: ScreenKey;
-  selectedTeamId: string;
   selectedPlayerId: string | null;
   highlightedGameId: string | null;
-  league: LeagueState;
-  activeMatch: MatchState;
-  feedLog: string[];
-  saveMeta: SaveMeta;
+};
+
+export type PlayerDirectorySortKey =
+  | "name"
+  | "team"
+  | "age"
+  | "position"
+  | "roster"
+  | "role"
+  | "games"
+  | "inningsPitched"
+  | "battingAverage"
+  | "homeRuns"
+  | "earnedRunAverage";
+
+export type PlayerDirectoryFilters = {
+  search: string;
+  teamId: string;
+  rosterLevel: "all" | "major" | "minor";
+  role: "all" | PlayerRole;
+  position: "all" | Position;
+  sortKey: PlayerDirectorySortKey;
+  sortDirection: "asc" | "desc";
 };
 
 export type UserAction =
-  | { type: "set_screen"; screen: ScreenKey }
-  | { type: "select_player"; playerId: string | null }
-  | { type: "advance_day" }
-  | { type: "continue_match" }
-  | { type: "queue_strategy"; strategy: MatchState["pendingStrategy"] }
-  | { type: "manual_save_complete"; savedAt: string }
-  | { type: "load_state"; state: GameState };
+  | { type: "set_user_lineup"; lineup: string[] }
+  | { type: "set_user_bench_order"; bench: string[] }
+  | { type: "set_user_rotation"; rotation: string[] }
+  | { type: "set_user_bullpen_roles"; bullpen: string[] }
+  | { type: "promote_player"; playerId: string }
+  | { type: "demote_player"; playerId: string }
+  | { type: "start_next_user_match" }
+  | { type: "resolve_match_step" }
+  | { type: "queue_match_strategy"; strategy: MatchStrategy }
+  | {
+      type: "commit_match_substitution";
+      playerId: string;
+      replacePlayerId: string;
+    }
+  | { type: "finish_user_match" }
+  | { type: "simulate_until_user_decision" }
+  | { type: "acknowledge_feed_items"; count?: number }
+  | { type: "enter_draft_phase" };
 
 export type DashboardViewModel = {
   currentDayLabel: string;
@@ -238,19 +286,38 @@ export type DashboardViewModel = {
   teamRecord: string;
   nextOpponent: string;
   feedItems: string[];
-  saveStatus: string;
+  matchStatus: string;
 };
 
 export type PlayerCardViewModel = {
   id: string;
   name: string;
   badge: string;
+  teamLine: string;
   profileLine: string;
+  conditionLine: string;
   recentUsage: string;
   seasonLine: string;
   interview: string;
   reportSummary: string;
   reportMeta: string;
+};
+
+export type PlayerDirectoryRowViewModel = {
+  id: string;
+  name: string;
+  teamName: string;
+  rosterLevel: string;
+  role: string;
+  position: string;
+  age: number;
+  games: number;
+  inningsPitched: number;
+  battingAverage: number;
+  battingAverageLabel: string;
+  homeRuns: number;
+  earnedRunAverage: number;
+  earnedRunAverageLabel: string;
 };
 
 export type MatchViewModel = {

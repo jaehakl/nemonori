@@ -1,4 +1,14 @@
-import type { DashboardViewModel, GameState, MatchViewModel, Player, PlayerCardViewModel, Position, Team } from "../types";
+import type {
+  DashboardViewModel,
+  GameState,
+  MatchViewModel,
+  Player,
+  PlayerCardViewModel,
+  PlayerDirectoryFilters,
+  PlayerDirectoryRowViewModel,
+  Position,
+  Team,
+} from "../types";
 
 const FIELD_LAYOUT: Array<{ key: Position | "P"; label: string; x: number; y: number }> = [
   { key: "C", label: "C", x: 50, y: 82 },
@@ -12,8 +22,8 @@ const FIELD_LAYOUT: Array<{ key: Position | "P"; label: string; x: number; y: nu
   { key: "P", label: "P", x: 50, y: 60 },
 ];
 
-function findSelectedTeam(state: GameState): Team {
-  return state.league.teams.find((team) => team.id === state.selectedTeamId) ?? state.league.teams[0];
+function findUserTeam(state: GameState): Team {
+  return state.league.teams.find((team) => team.id === state.userTeamId) ?? state.league.teams[0];
 }
 
 function findPlayer(state: GameState, playerId: string | null): Player | null {
@@ -29,9 +39,9 @@ function formatRecord(team: Team) {
 
 function formatUsage(player: Player) {
   if (player.profile.role === "pitcher") {
-    return `최근 7일 ${player.usage.inningsLast7}이닝 / ${player.usage.pitchesLast7}구`;
+    return `Last 7 days: ${player.usage.inningsLast7} IP / ${player.usage.pitchesLast7} pitches`;
   }
-  return `최근 7일 ${player.usage.gamesPlayedLast7}경기 / ${player.usage.plateAppearancesLast7}타석`;
+  return `Last 7 days: ${player.usage.gamesPlayedLast7} games / ${player.usage.plateAppearancesLast7} PA`;
 }
 
 function formatSeasonLine(player: Player) {
@@ -41,101 +51,210 @@ function formatSeasonLine(player: Player) {
   return `${player.seasonStats.games}G ${player.seasonStats.hits}H ${player.seasonStats.homeRuns}HR ${player.seasonStats.walks}BB`;
 }
 
+function formatCondition(player: Player) {
+  return `Condition ${player.condition.soreness} / stamina band ${Math.round(player.condition.stamina / 10) * 10}`;
+}
+
+function calculateBattingAverage(player: Player) {
+  const atBats = Math.max(player.seasonStats.plateAppearances - player.seasonStats.walks, 0);
+  if (atBats === 0) {
+    return 0;
+  }
+  return player.seasonStats.hits / atBats;
+}
+
+function calculateEra(player: Player) {
+  if (player.seasonStats.inningsPitched <= 0) {
+    return 0;
+  }
+  return (player.seasonStats.earnedRuns * 9) / player.seasonStats.inningsPitched;
+}
+
+function formatAverage(value: number) {
+  return value === 0 ? ".000" : value.toFixed(3).replace(/^0/, "");
+}
+
 function getInterview(player: Player) {
   const { drive, diligence, composure, baseballIq } = player.hidden.mental;
   if (drive >= 65 && diligence >= 65) {
-    return "선수 면담: 아직 더 뛸 수 있다고 강하게 말한다. 실제 피로는 과소평가할 가능성이 있다.";
+    return "Player interview: energy is high, but staff still wants the workload monitored.";
   }
   if (drive <= 45 && diligence <= 45) {
-    return "선수 면담: 몸이 무겁다고 반복해서 말한다. 실제 상태보다 보수적으로 말할 수 있다.";
+    return "Player interview: body feels heavy and confidence sounds lower than usual.";
   }
   if (composure >= 60 && baseballIq >= 60) {
-    return "선수 면담: 오늘 상태를 비교적 차분하고 객관적으로 설명한다.";
+    return "Player interview: status report is calm, detailed, and tactically aware.";
   }
-  return "선수 면담: 상태 보고가 다소 애매하다. 기록과 코치 의견을 함께 봐야 한다.";
+  return "Player interview: report is mixed. Coaching notes matter more than the quote alone.";
 }
 
 function getPlayerBadge(player: Player) {
-  return `${player.profile.primaryPosition} · ${player.rosterLevel === "major" ? "1군" : "2군"}`;
+  return `${player.profile.primaryPosition} / ${player.rosterLevel === "major" ? "Major" : "Minor"}`;
+}
+
+function findTeamByPlayer(state: GameState, playerId: string) {
+  return state.league.teams.find((team) => team.playerIds.includes(playerId)) ?? null;
 }
 
 export function selectDashboard(state: GameState): DashboardViewModel {
-  const team = findSelectedTeam(state);
-  const nextGame = state.league.schedule.find(
-    (game) => !game.played && (game.awayTeamId === team.id || game.homeTeamId === team.id),
-  );
+  const team = findUserTeam(state);
+  const nextGame = state.season.nextUserGameId
+    ? state.league.schedule.find((game) => game.id === state.season.nextUserGameId)
+    : null;
   const opponentId = nextGame ? (nextGame.awayTeamId === team.id ? nextGame.homeTeamId : nextGame.awayTeamId) : null;
   const opponent = state.league.teams.find((entry) => entry.id === opponentId);
 
   return {
-    currentDayLabel: `2026 시즌 Day ${state.league.currentDay}`,
+    currentDayLabel: `${state.season.seasonYear} Season Day ${state.season.currentDay}`,
     teamName: team.name,
     teamRecord: formatRecord(team),
-    nextOpponent: opponent ? `${opponent.name}전 예정` : "예정 경기 없음",
+    nextOpponent: opponent ? `${opponent.name} on day ${nextGame?.day}` : "No scheduled user game remaining",
     feedItems: state.feedLog,
-    saveStatus: state.saveMeta.lastSavedAt
-      ? `마지막 저장 ${new Date(state.saveMeta.lastSavedAt).toLocaleString("ko-KR")}`
-      : state.saveMeta.dirty
-        ? "저장되지 않은 변경 있음"
-        : "아직 저장 기록 없음",
+    matchStatus: state.season.pendingUserMatch ? "Your next game is ready to start." : "The season can auto-sim to the next user decision point.",
   };
 }
 
 export function selectRosterCards(state: GameState): PlayerCardViewModel[] {
-  const team = findSelectedTeam(state);
+  const team = findUserTeam(state);
   return team.majorIds.slice(0, 10).map((playerId) => {
     const player = state.league.players[playerId];
+    const playerTeam = findTeamByPlayer(state, playerId);
     const latestReport = player.reports[0];
     return {
       id: player.profile.id,
       name: player.profile.fullName,
       badge: getPlayerBadge(player),
-      profileLine: `${player.profile.age}세 / ${player.profile.bats}-${player.profile.throws}`,
+      teamLine: playerTeam?.name ?? "Unknown club",
+      profileLine: `${player.profile.age} / ${player.profile.bats}-${player.profile.throws}`,
+      conditionLine: formatCondition(player),
       recentUsage: formatUsage(player),
       seasonLine: formatSeasonLine(player),
       interview: getInterview(player),
-      reportSummary: latestReport?.summary ?? "리포트 없음",
+      reportSummary: latestReport?.summary ?? "No report available",
       reportMeta: latestReport
-        ? `리포트 신뢰도 ${latestReport.confidence} / 방향 ${latestReport.direction}`
-        : "리포트 메타 없음",
+        ? `Report confidence ${latestReport.confidence} / direction ${latestReport.direction}`
+        : "No recent report metadata",
     };
   });
 }
 
-export function selectSelectedPlayerCard(state: GameState): PlayerCardViewModel | null {
-  const player = findPlayer(state, state.selectedPlayerId);
+export function selectSelectedPlayerCard(state: GameState, playerId: string | null): PlayerCardViewModel | null {
+  const player = findPlayer(state, playerId);
   if (!player) {
     return null;
   }
+  const playerTeam = findTeamByPlayer(state, player.profile.id);
   const latestReport = player.reports[0];
   return {
     id: player.profile.id,
     name: player.profile.fullName,
     badge: getPlayerBadge(player),
-    profileLine: `${player.profile.age}세 / ${player.profile.primaryPosition} / ${player.profile.bats}-${player.profile.throws}`,
+    teamLine: playerTeam?.name ?? "Unknown club",
+    profileLine: `${player.profile.age} / ${player.profile.primaryPosition} / ${player.profile.bats}-${player.profile.throws}`,
+    conditionLine: formatCondition(player),
     recentUsage: formatUsage(player),
     seasonLine: formatSeasonLine(player),
     interview: getInterview(player),
-    reportSummary: latestReport?.summary ?? "리포트 없음",
-    reportMeta: latestReport ? `Day ${latestReport.updatedDay} / ${latestReport.confidence}` : "리포트 메타 없음",
+    reportSummary: latestReport?.summary ?? "No report available",
+    reportMeta: latestReport ? `Day ${latestReport.updatedDay} / ${latestReport.confidence}` : "No recent report metadata",
   };
 }
 
-export function selectMatchView(state: GameState): MatchViewModel {
-  const awayTeam = state.league.teams.find((team) => team.id === state.activeMatch.awayTeamId);
-  const homeTeam = state.league.teams.find((team) => team.id === state.activeMatch.homeTeamId);
+export function selectMatchView(state: GameState): MatchViewModel | null {
+  if (!state.liveMatch) {
+    return null;
+  }
+
+  const awayTeam = state.league.teams.find((team) => team.id === state.liveMatch?.awayTeamId);
+  const homeTeam = state.league.teams.find((team) => team.id === state.liveMatch?.homeTeamId);
+
   return {
     header: `${awayTeam?.name ?? "Away"} @ ${homeTeam?.name ?? "Home"}`,
-    inningLine: `${state.activeMatch.scoreboard.inning}회 ${state.activeMatch.scoreboard.half} / ${state.activeMatch.scoreboard.away}:${state.activeMatch.scoreboard.home}`,
-    countLine: `B ${state.activeMatch.scoreboard.balls} / S ${state.activeMatch.scoreboard.strikes} / O ${state.activeMatch.scoreboard.outs}`,
-    basesLine: `1루 ${state.activeMatch.bases.first ? "점유" : "비어 있음"} · 2루 ${state.activeMatch.bases.second ? "점유" : "비어 있음"} · 3루 ${state.activeMatch.bases.third ? "점유" : "비어 있음"}`,
-    eventLog: state.activeMatch.eventLog,
+    inningLine: `${state.liveMatch.scoreboard.inning} ${state.liveMatch.scoreboard.half} / ${state.liveMatch.scoreboard.away}:${state.liveMatch.scoreboard.home}`,
+    countLine: `B ${state.liveMatch.scoreboard.balls} / S ${state.liveMatch.scoreboard.strikes} / O ${state.liveMatch.scoreboard.outs}`,
+    basesLine: `1B ${state.liveMatch.bases.first ? "occupied" : "empty"} / 2B ${state.liveMatch.bases.second ? "occupied" : "empty"} / 3B ${state.liveMatch.bases.third ? "occupied" : "empty"}`,
+    eventLog: state.liveMatch.eventLog,
     fieldMarkers: FIELD_LAYOUT.map((spot) => ({
       key: spot.key,
       label: spot.label,
       x: spot.x,
       y: spot.y,
-      active: spot.key === "P" ? Boolean(state.activeMatch.pitcherId) : Boolean(state.activeMatch.fieldingPositions[spot.key as Position]),
+      active: spot.key === "P" ? Boolean(state.liveMatch?.pitcherId) : Boolean(state.liveMatch?.fieldingPositions[spot.key as Position]),
     })),
   };
+}
+
+export function selectPlayerDirectory(state: GameState, filters: PlayerDirectoryFilters): PlayerDirectoryRowViewModel[] {
+  const search = filters.search.trim().toLowerCase();
+
+  const rows = Object.values(state.league.players)
+    .map((player) => {
+      const team = findTeamByPlayer(state, player.profile.id);
+      return {
+        id: player.profile.id,
+        name: player.profile.fullName,
+        teamName: team?.name ?? "Unknown club",
+        teamId: team?.id ?? "",
+        rosterLevel: player.rosterLevel === "major" ? "Major" : "Minor",
+        role: player.profile.role,
+        position: player.profile.primaryPosition,
+        age: player.profile.age,
+        games: player.seasonStats.games,
+        inningsPitched: player.seasonStats.inningsPitched,
+        battingAverage: calculateBattingAverage(player),
+        battingAverageLabel: formatAverage(calculateBattingAverage(player)),
+        homeRuns: player.seasonStats.homeRuns,
+        earnedRunAverage: calculateEra(player),
+        earnedRunAverageLabel: formatAverage(calculateEra(player)),
+      };
+    })
+    .filter((row) => {
+      if (search && !`${row.name} ${row.teamName} ${row.position}`.toLowerCase().includes(search)) {
+        return false;
+      }
+      if (filters.teamId !== "all" && row.teamId !== filters.teamId) {
+        return false;
+      }
+      if (filters.rosterLevel !== "all" && row.rosterLevel.toLowerCase() !== filters.rosterLevel) {
+        return false;
+      }
+      if (filters.role !== "all" && row.role !== filters.role) {
+        return false;
+      }
+      if (filters.position !== "all" && row.position !== filters.position) {
+        return false;
+      }
+      return true;
+    });
+
+  const direction = filters.sortDirection === "asc" ? 1 : -1;
+  rows.sort((left, right) => {
+    switch (filters.sortKey) {
+      case "team":
+        return direction * left.teamName.localeCompare(right.teamName);
+      case "age":
+        return direction * (left.age - right.age);
+      case "position":
+        return direction * left.position.localeCompare(right.position);
+      case "roster":
+        return direction * left.rosterLevel.localeCompare(right.rosterLevel);
+      case "role":
+        return direction * left.role.localeCompare(right.role);
+      case "games":
+        return direction * (left.games - right.games);
+      case "inningsPitched":
+        return direction * (left.inningsPitched - right.inningsPitched);
+      case "battingAverage":
+        return direction * (left.battingAverage - right.battingAverage);
+      case "homeRuns":
+        return direction * (left.homeRuns - right.homeRuns);
+      case "earnedRunAverage":
+        return direction * (left.earnedRunAverage - right.earnedRunAverage);
+      case "name":
+      default:
+        return direction * left.name.localeCompare(right.name);
+    }
+  });
+
+  return rows.map(({ teamId: _teamId, ...row }) => row);
 }

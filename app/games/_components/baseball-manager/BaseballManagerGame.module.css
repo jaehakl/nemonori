@@ -47,9 +47,19 @@
   gap: 8px;
 }
 
+.filterBar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin: 12px 0 16px;
+}
+
 .btn,
 .tab,
-.playerCard {
+.playerCard,
+.directoryRow,
+.input,
+.select {
   border: 1px solid #99f6e4;
   border-radius: 14px;
   background: #ffffff;
@@ -62,6 +72,13 @@
   padding: 0 12px;
   font-weight: 700;
   cursor: pointer;
+}
+
+.input,
+.select {
+  min-height: 40px;
+  padding: 0 12px;
+  font: inherit;
 }
 
 .tabActive {
@@ -109,6 +126,52 @@
 .playerList {
   display: grid;
   gap: 10px;
+}
+
+.directoryList {
+  display: grid;
+  gap: 6px;
+  max-height: 720px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.directoryTable {
+  display: grid;
+  gap: 8px;
+}
+
+.directoryRow {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.3fr) minmax(120px, 1.1fr) 80px 90px 70px 80px 80px 70px 80px;
+  gap: 10px;
+  align-items: center;
+  text-align: left;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.directoryHeaderRow {
+  padding: 0;
+  background: #dffaf0;
+  border: 1px solid #99f6e4;
+  border-radius: 14px;
+}
+
+.headerButton {
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: #134e4a;
+  font: inherit;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+
+.headerButtonActive {
+  color: #0f766e;
 }
 
 .playerCard {
@@ -179,8 +242,44 @@
   background: rgb(255 255 255 / 0.65);
 }
 
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(15 23 42 / 0.38);
+}
+
+.modalCard {
+  width: min(720px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid #99f6e4;
+  border-radius: 22px;
+  background: #f8fffc;
+  padding: 18px;
+  box-shadow: 0 24px 80px rgb(15 23 42 / 0.22);
+}
+
+.modalHeader {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
 @media (max-width: 920px) {
   .grid {
     grid-template-columns: 1fr;
+  }
+
+  .directoryRow {
+    grid-template-columns: 1fr;
+  }
+
+  .directoryHeaderRow {
+    display: none;
   }
 }

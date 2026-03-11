@@ -7,16 +7,17 @@ import {
   TEAM_COUNT,
   TEAM_NAMES,
 } from "../constants";
-import { COACH_GIVEN_NAMES, FAMILY_NAMES, GIVEN_NAMES } from "../data/name-pool";
+import { FAMILY_NAME_SYLLABLES, FINAL_NAME_SYLLABLES, MIDDLE_NAME_SYLLABLES } from "../data/name-pool";
 import type {
   Coach,
   CoachFocus,
   CoachReport,
   GameState,
   LeagueState,
-  MatchState,
+  LiveMatchState,
   Player,
   Position,
+  RosterOpsState,
   ScheduledGame,
   Team,
 } from "../types";
@@ -24,8 +25,70 @@ import type {
 type Rng = () => number;
 
 const COACH_FOCUS: CoachFocus[] = ["pitching", "hitting", "defense", "mental"];
-const HITTER_POSITIONS: Position[] = ["C", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH", "1B", "2B", "3B", "SS", "LF", "CF", "RF"];
-const PITCHER_POSITIONS: Position[] = ["SP", "SP", "SP", "SP", "SP", "RP", "RP", "RP", "RP"];
+const MAJOR_POSITIONS: Position[] = [
+  "SP",
+  "SP",
+  "SP",
+  "SP",
+  "SP",
+  "RP",
+  "RP",
+  "RP",
+  "RP",
+  "RP",
+  "RP",
+  "RP",
+  "RP",
+  "C",
+  "C",
+  "1B",
+  "2B",
+  "3B",
+  "SS",
+  "LF",
+  "CF",
+  "RF",
+  "DH",
+  "1B",
+  "2B",
+  "3B",
+  "SS",
+  "LF",
+  "RF",
+];
+const MINOR_POSITIONS: Position[] = [
+  "SP",
+  "SP",
+  "SP",
+  "SP",
+  "SP",
+  "SP",
+  "RP",
+  "RP",
+  "RP",
+  "RP",
+  "RP",
+  "RP",
+  "RP",
+  "RP",
+  "C",
+  "C",
+  "C",
+  "1B",
+  "1B",
+  "2B",
+  "2B",
+  "3B",
+  "3B",
+  "SS",
+  "SS",
+  "LF",
+  "LF",
+  "CF",
+  "CF",
+  "RF",
+  "DH",
+];
 const PITCH_TYPES = ["FB", "SL", "CB", "CH", "SF"];
 
 function createRng(seed: number): Rng {
@@ -45,7 +108,15 @@ function randomInt(rng: Rng, min: number, max: number) {
 }
 
 function createName(rng: Rng, coach = false) {
-  return `${pick(rng, FAMILY_NAMES)} ${pick(rng, coach ? COACH_GIVEN_NAMES : GIVEN_NAMES)}`;
+  const lastName = pick(rng, FAMILY_NAME_SYLLABLES);
+  const middleSyllable = pick(rng, MIDDLE_NAME_SYLLABLES);
+  const finalSyllable = pick(rng, FINAL_NAME_SYLLABLES);
+
+  if (coach && rng() > 0.65) {
+    return `${lastName}${finalSyllable}${middleSyllable}`;
+  }
+
+  return `${lastName}${middleSyllable}${finalSyllable}`;
 }
 
 function createPitchMix(rng: Rng) {
@@ -162,7 +233,7 @@ function createPlayer(rng: Rng, teamId: string, index: number, position: Positio
 }
 
 function createTeamRoster(rng: Rng, teamId: string) {
-  const allPositions: Position[] = [...PITCHER_POSITIONS, ...HITTER_POSITIONS, "RP", "C", "LF", "2B"];
+  const allPositions: Position[] = [...MAJOR_POSITIONS, ...MINOR_POSITIONS];
   const players = allPositions.map((position, index) => createPlayer(rng, teamId, index + 1, position, index < MAJOR_ROSTER_LIMIT));
   const majorIds = players.slice(0, MAJOR_ROSTER_LIMIT).map((player) => player.profile.id);
   const minorIds = players.slice(MAJOR_ROSTER_LIMIT, MAJOR_ROSTER_LIMIT + MINOR_ROSTER_TARGET).map((player) => player.profile.id);
@@ -200,11 +271,39 @@ function createSchedule(teamIds: string[]) {
   return schedule;
 }
 
-function createActiveMatch(league: LeagueState, selectedTeamId: string): MatchState {
-  const selectedTeam = league.teams.find((team) => team.id === selectedTeamId) ?? league.teams[0];
-  const nextGame =
-    league.schedule.find((game) => !game.played && (game.awayTeamId === selectedTeam.id || game.homeTeamId === selectedTeam.id)) ??
-    league.schedule[0];
+function createRosterOps(team: Team): RosterOpsState {
+  return {
+    lineup: [...team.depthChart.lineup],
+    bench: [...team.depthChart.bench],
+    rotation: [...team.depthChart.rotation],
+    bullpen: [...team.depthChart.bullpen],
+  };
+}
+
+function findNextUserGameId(schedule: ScheduledGame[], userTeamId: string, currentDay: number) {
+  return (
+    schedule.find(
+      (game) =>
+        !game.played &&
+        game.day >= currentDay &&
+        (game.awayTeamId === userTeamId || game.homeTeamId === userTeamId),
+    )?.id ?? null
+  );
+}
+
+export function createLiveMatchSession(gameState: GameState): LiveMatchState | null {
+  const { league, rosterOps, userTeamId, season } = gameState;
+  if (!season.nextUserGameId) {
+    return null;
+  }
+
+  const nextGame = league.schedule.find((game) => game.id === season.nextUserGameId);
+  if (!nextGame) {
+    return null;
+  }
+
+  const userIsAway = nextGame.awayTeamId === userTeamId;
+  const battingOrder = rosterOps.lineup;
 
   return {
     gameId: nextGame.id,
@@ -225,17 +324,19 @@ function createActiveMatch(league: LeagueState, selectedTeamId: string): MatchSt
       second: null,
       third: null,
     },
-    batterId: selectedTeam.depthChart.lineup[0] ?? null,
-    pitcherId: selectedTeam.depthChart.rotation[0] ?? null,
+    batterId: battingOrder[0] ?? null,
+    pitcherId: rosterOps.rotation[0] ?? null,
     fieldingPositions: {
-      C: selectedTeam.depthChart.lineup[1],
-      "1B": selectedTeam.depthChart.lineup[2],
-      "2B": selectedTeam.depthChart.lineup[3],
-      "3B": selectedTeam.depthChart.lineup[4],
-      SS: selectedTeam.depthChart.lineup[5],
-      LF: selectedTeam.depthChart.lineup[6],
-      CF: selectedTeam.depthChart.lineup[7],
-      RF: selectedTeam.depthChart.lineup[8],
+      C: battingOrder[0] ?? null,
+      "1B": battingOrder[1] ?? null,
+      "2B": battingOrder[2] ?? null,
+      "3B": battingOrder[3] ?? null,
+      SS: battingOrder[4] ?? null,
+      LF: battingOrder[5] ?? null,
+      CF: battingOrder[6] ?? null,
+      RF: battingOrder[7] ?? null,
+      DH: battingOrder[8] ?? null,
+      ...(userIsAway ? {} : {}),
     },
     eventLog: ["Opening pitch planned. Manager can watch or intervene with simple tactics."],
     canSubstitute: true,
@@ -266,8 +367,8 @@ export function createNewGameState(seed = 20260311): GameState {
           coachId,
           1,
           reportIndex === 0
-            ? "최근 상태는 무난하다. 다만 실제 컨디션은 출장 관리에 따라 빠르게 흔들릴 수 있다."
-            : "성적만 보면 단정하기 어렵다. 기술 성장 여지를 텍스트 리포트로 보완해야 한다.",
+            ? "Recent form looks stable, but workload management still matters."
+            : "Box-score production only tells part of the story. Coaches want more live looks.",
         ),
       );
       players[player.profile.id] = player;
@@ -303,8 +404,6 @@ export function createNewGameState(seed = 20260311): GameState {
 
   const schedule = createSchedule(teams.map((team) => team.id));
   const league: LeagueState = {
-    seasonYear: 2026,
-    currentDay: 12,
     teams,
     players,
     coaches,
@@ -312,24 +411,28 @@ export function createNewGameState(seed = 20260311): GameState {
     draftPoolIds: [],
     standingsOrder: teams.map((team) => team.id),
   };
-  const selectedTeamId = teams[0]?.id ?? "team-1";
+  const userTeamId = teams[0]?.id ?? "team-1";
+  const userTeam = teams.find((team) => team.id === userTeamId) ?? teams[0];
+  const currentDay = 1;
+  const nextUserGameId = findNextUserGameId(schedule, userTeamId, currentDay);
 
   return {
     seed,
-    currentScreen: "dashboard",
-    selectedTeamId,
-    selectedPlayerId: teams[0]?.majorIds[0] ?? null,
-    highlightedGameId: schedule[0]?.id ?? null,
     league,
-    activeMatch: createActiveMatch(league, selectedTeamId),
+    userTeamId,
+    season: {
+      seasonYear: 2026,
+      currentDay,
+      phase: "regular-season",
+      nextUserGameId,
+      pendingUserMatch: Boolean(nextUserGameId && schedule.find((game) => game.id === nextUserGameId)?.day === currentDay),
+    },
+    rosterOps: createRosterOps(userTeam),
+    liveMatch: null,
     feedLog: [
       "Spring campaign has settled into the regular season rhythm.",
       "Coaches report that several reserve players are trending upward in the minors.",
       "Medical staff warns that catcher workload should be monitored closely.",
     ],
-    saveMeta: {
-      lastSavedAt: null,
-      dirty: false,
-    },
   };
 }

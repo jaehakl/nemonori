@@ -9,6 +9,7 @@ import { PhaserMeteorDodgeGame } from "../_components/PhaserMeteorDodgeGame";
 import { BabylonBorderCollieRoundupGame } from "../_components/BabylonBorderCollieRoundupGame";
 import { BakeryTycoonGame } from "../_components/BakeryTycoonGame";
 import { PhaserJoseonWarfrontGame } from "../_components/PhaserJoseonWarfrontGame";
+import { BaseballManagerGame } from "../_components/baseball-manager/BaseballManagerGame";
 import { RobotsAndWizardGame } from "../_components/robots-and-wizard/RobotsAndWizardGame";
 import styles from "./page.module.css";
 
@@ -20,6 +21,7 @@ const gameViewByComponent: Record<GameComponentKey, ComponentType> = {
   "bakery-tycoon": BakeryTycoonGame,
   "phaser-joseon-warfront": PhaserJoseonWarfrontGame,
   "robots-and-wizard": RobotsAndWizardGame,
+  "baseball-manager": BaseballManagerGame,
 };
 
 type Params = {

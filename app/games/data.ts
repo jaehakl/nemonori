@@ -5,7 +5,8 @@
   | "phaser-border-collie-roundup"
   | "bakery-tycoon"
   | "phaser-joseon-warfront"
-  | "robots-and-wizard";
+  | "robots-and-wizard"
+  | "baseball-manager";
 
 export type GameDefinition = {
   slug: string;
@@ -19,6 +20,17 @@ export type GameDefinition = {
 };
 
 export const gameCatalog: GameDefinition[] = [
+  {
+    slug: "baseball-manager",
+    title: "프로야구 매니저",
+    summary:
+      "숨겨진 선수 능력치와 코치 리포트를 해석하며 1군/2군 운용, 시즌 일정, 경기 개입을 관리하는 프로야구 매니지먼트 시뮬레이션입니다.",
+    tags: ["management", "simulation", "baseball", "roster", "season"],
+    difficulty: "Hard",
+    estPlayMinutes: 15,
+    accent: "#0f766e",
+    component: "baseball-manager",
+  },
   {
     slug: "robots-and-wizard",
     title: "로봇과 마법사",

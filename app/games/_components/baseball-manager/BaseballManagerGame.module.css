@@ -1,0 +1,186 @@
+.panel {
+  display: grid;
+  gap: 16px;
+  border: 1px solid #134e4a;
+  border-radius: 24px;
+  padding: 18px;
+  color: #0f172a;
+  background:
+    radial-gradient(circle at top left, rgb(153 246 228 / 0.45), transparent 30%),
+    radial-gradient(circle at top right, rgb(254 240 138 / 0.35), transparent 24%),
+    linear-gradient(180deg, #f8fffc 0%, #eefbf6 100%);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.titleBlock {
+  display: grid;
+  gap: 4px;
+}
+
+.titleBlock h2,
+.sectionTitle {
+  margin: 0;
+  font-size: 20px;
+}
+
+.titleBlock p,
+.metaLine,
+.feedItem,
+.reportMeta,
+.playerCard p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.actions,
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.btn,
+.tab,
+.playerCard {
+  border: 1px solid #99f6e4;
+  border-radius: 14px;
+  background: #ffffff;
+  color: inherit;
+}
+
+.btn,
+.tab {
+  min-height: 38px;
+  padding: 0 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tabActive {
+  background: #115e59;
+  color: #ffffff;
+  border-color: #115e59;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.2fr);
+  gap: 14px;
+}
+
+.stack {
+  display: grid;
+  gap: 14px;
+}
+
+.card,
+.fieldCard,
+.logCard,
+.scoreboard {
+  border: 1px solid #a7f3d0;
+  border-radius: 18px;
+  background: rgb(255 255 255 / 0.88);
+  padding: 14px;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.feedList {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.playerList {
+  display: grid;
+  gap: 10px;
+}
+
+.playerCard {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.playerCardSelected {
+  border-color: #0f766e;
+  box-shadow: 0 0 0 2px rgb(15 118 110 / 0.12);
+}
+
+.playerHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.playerHeader strong {
+  font-size: 16px;
+}
+
+.matchLayout {
+  display: grid;
+  gap: 14px;
+}
+
+.fieldSvg {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}
+
+.infieldDiamond {
+  fill: #f59e0b;
+  opacity: 0.3;
+  stroke: #b45309;
+  stroke-width: 1.4;
+}
+
+.outfieldArc {
+  fill: rgb(20 184 166 / 0.12);
+  stroke: #0f766e;
+  stroke-width: 1.2;
+}
+
+.fieldMarkerActive {
+  fill: #115e59;
+}
+
+.fieldMarkerIdle {
+  fill: #cbd5e1;
+}
+
+.fieldMarkerText {
+  fill: #ffffff;
+  font-size: 4.5px;
+  font-weight: 700;
+}
+
+.placeholder {
+  border: 1px dashed #99f6e4;
+  border-radius: 18px;
+  padding: 18px;
+  background: rgb(255 255 255 / 0.65);
+}
+
+@media (max-width: 920px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

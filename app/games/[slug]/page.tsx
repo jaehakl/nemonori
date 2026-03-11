@@ -3,27 +3,23 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import type { ComponentType } from "react";
 import { gameCatalog, getGameBySlug, type GameComponentKey } from "../data";
-import { TapRaceGame } from "../_components/TapRaceGame";
-import { MemoryLightsGame } from "../_components/MemoryLightsGame";
 import { TetrisGame } from "../_components/TetrisGame";
 import { RoguelikeRpgGame } from "../_components/RoguelikeRpgGame";
 import { PhaserMeteorDodgeGame } from "../_components/PhaserMeteorDodgeGame";
 import { BabylonBorderCollieRoundupGame } from "../_components/BabylonBorderCollieRoundupGame";
 import { BakeryTycoonGame } from "../_components/BakeryTycoonGame";
 import { PhaserJoseonWarfrontGame } from "../_components/PhaserJoseonWarfrontGame";
-import { BabylonVillageWalkGame } from "../_components/BabylonVillageWalkGame";
+import { RobotsAndWizardGame } from "../_components/robots-and-wizard/RobotsAndWizardGame";
 import styles from "./page.module.css";
 
 const gameViewByComponent: Record<GameComponentKey, ComponentType> = {
-  "tap-race": TapRaceGame,
-  "memory-lights": MemoryLightsGame,
   tetris: TetrisGame,
   "roguelike-rpg": RoguelikeRpgGame,
   "phaser-meteor-dodge": PhaserMeteorDodgeGame,
   "phaser-border-collie-roundup": BabylonBorderCollieRoundupGame,
   "bakery-tycoon": BakeryTycoonGame,
   "phaser-joseon-warfront": PhaserJoseonWarfrontGame,
-  "babylon-village-walk": BabylonVillageWalkGame,
+  "robots-and-wizard": RobotsAndWizardGame,
 };
 
 type Params = {

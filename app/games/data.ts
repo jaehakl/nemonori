@@ -1,13 +1,11 @@
 ﻿export type GameComponentKey =
-  | "tap-race"
-  | "memory-lights"
   | "tetris"
   | "roguelike-rpg"
   | "phaser-meteor-dodge"
   | "phaser-border-collie-roundup"
   | "bakery-tycoon"
   | "phaser-joseon-warfront"
-  | "babylon-village-walk";
+  | "robots-and-wizard";
 
 export type GameDefinition = {
   slug: string;
@@ -22,28 +20,18 @@ export type GameDefinition = {
 
 export const gameCatalog: GameDefinition[] = [
   {
-    slug: "tap-race",
-    title: "탭 레이스 10",
-    summary: "10초 동안 화면을 최대한 빠르게 탭해서 최고 점수를 갱신하세요.",
-    tags: ["reflex", "score-attack", "one-button"],
+    slug: "robots-and-wizard",
+    title: "로봇과 마법사",
+    summary: "마을을 탐험하며 주요 지점을 돌고 마법으로 로봇 공세를 돌파하는 3D 액션 탐험 게임입니다.",
+    tags: ["3d", "action", "exploration", "wizard", "robots"],
     difficulty: "Easy",
-    estPlayMinutes: 1,
-    accent: "#ef4444",
-    component: "tap-race",
-  },
-  {
-    slug: "memory-lights",
-    title: "메모리 라이트",
-    summary: "점점 길어지는 불빛 순서를 기억하고 정확히 따라 누르는 기억력 게임입니다.",
-    tags: ["memory", "pattern", "simon-like"],
-    difficulty: "Normal",
-    estPlayMinutes: 3,
-    accent: "#0ea5e9",
-    component: "memory-lights",
+    estPlayMinutes: 4,
+    accent: "#0f766e",
+    component: "robots-and-wizard",
   },
   {
     slug: "tetris",
-    title: "픽셀 테트리스",
+    title: "테트리스",
     summary: "블록을 회전하고 배치해 가로줄을 지우는 클래식 퍼즐 게임입니다.",
     tags: ["classic", "puzzle", "line-clear"],
     difficulty: "Normal",
@@ -103,16 +91,7 @@ export const gameCatalog: GameDefinition[] = [
     accent: "#b91c1c",
     component: "phaser-joseon-warfront",
   },
-  {
-    slug: "babylon-village-walk",
-    title: "Babylon Village Walk",
-    summary: "3차원 마을 지형을 걸어다니며 주요 명소를 찾아 완료 시간을 단축하는 Babylon.js 탐험 게임입니다.",
-    tags: ["babylonjs", "3d", "exploration", "village", "time-attack"],
-    difficulty: "Easy",
-    estPlayMinutes: 4,
-    accent: "#0f766e",
-    component: "babylon-village-walk",
-  },
+
 ];
 
 export const allTags = Array.from(new Set(gameCatalog.flatMap((game) => game.tags))).sort();

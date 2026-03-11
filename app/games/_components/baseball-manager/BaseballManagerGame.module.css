@@ -143,7 +143,17 @@
 
 .directoryRow {
   display: grid;
-  grid-template-columns: minmax(120px, 1.3fr) minmax(120px, 1.1fr) 80px 90px 70px 80px 80px 70px 80px;
+  grid-template-columns: minmax(120px, 1.4fr) minmax(120px, 1.1fr) repeat(9, minmax(64px, 0.8fr));
+  gap: 10px;
+  align-items: center;
+  text-align: left;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.matchRow {
+  display: grid;
+  grid-template-columns: 90px 120px minmax(120px, 1fr) minmax(120px, 1fr) 100px 80px 100px;
   gap: 10px;
   align-items: center;
   text-align: left;
@@ -252,7 +262,7 @@
 }
 
 .modalCard {
-  width: min(720px, 100%);
+  width: min(1320px, 100%);
   max-height: calc(100vh - 48px);
   overflow: auto;
   border: 1px solid #99f6e4;
@@ -270,12 +280,93 @@
   margin-bottom: 12px;
 }
 
+.pitchLogList {
+  display: grid;
+  gap: 8px;
+  max-height: 60vh;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.pitchLogRow {
+  display: grid;
+  grid-template-columns: 110px minmax(130px, 0.9fr) minmax(130px, 0.9fr) 80px 100px minmax(240px, 1.4fr) 80px minmax(320px, 2fr);
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid #d1fae5;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.playerDetailHeader {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(560px, 1.3fr);
+  gap: 14px;
+}
+
+.playerDetailProfile {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid #d1fae5;
+  border-radius: 16px;
+  background: #ffffff;
+}
+
+.playerSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px;
+}
+
+.playerSummaryItem {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid #d1fae5;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.playerGameSection {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.playerGameLogList {
+  display: grid;
+  gap: 8px;
+  max-height: 46vh;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.playerGameLogRow {
+  display: grid;
+  grid-template-columns: 90px 120px minmax(180px, 1fr) 110px minmax(420px, 2.2fr);
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid #d1fae5;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
 @media (max-width: 920px) {
   .grid {
     grid-template-columns: 1fr;
   }
 
-  .directoryRow {
+  .directoryRow,
+  .matchRow,
+  .pitchLogRow,
+  .playerGameLogRow {
+    grid-template-columns: 1fr;
+  }
+
+  .playerDetailHeader {
     grid-template-columns: 1fr;
   }
 

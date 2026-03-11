@@ -76,13 +76,32 @@ export type PlayerRecentUsage = {
 
 export type PlayerSeasonStats = {
   games: number;
+  gamesStarted: number;
   plateAppearances: number;
+  atBats: number;
   hits: number;
+  doubles: number;
+  triples: number;
   homeRuns: number;
+  runs: number;
+  runsBattedIn: number;
   walks: number;
+  hitByPitch: number;
+  sacrificeHits: number;
+  sacrificeFlies: number;
   strikeOuts: number;
+  stolenBases: number;
+  caughtStealing: number;
   inningsPitched: number;
+  outsRecorded: number;
+  battersFaced: number;
+  hitsAllowed: number;
+  runsAllowed: number;
   earnedRuns: number;
+  walksAllowed: number;
+  hitByPitchAllowed: number;
+  strikeOutsThrown: number;
+  homeRunsAllowed: number;
   pitchCount: number;
 };
 
@@ -166,6 +185,146 @@ export type ScheduledGame = {
   } | null;
 };
 
+export type MatchEventType =
+  | "pitch"
+  | "walk"
+  | "strikeout"
+  | "single"
+  | "double"
+  | "triple"
+  | "home-run"
+  | "hit-by-pitch"
+  | "error"
+  | "field-out"
+  | "double-play"
+  | "stolen-base"
+  | "caught-stealing"
+  | "substitution";
+
+export type TeamGameLineScore = {
+  teamId: string;
+  runsByInning: number[];
+  runs: number;
+  hits: number;
+  errors: number;
+  leftOnBase: number;
+};
+
+export type BatterGameStats = {
+  playerId: string;
+  teamId: string;
+  opponentTeamId: string;
+  battingOrderSlot: number | null;
+  defensivePosition: Position | "DH" | null;
+  started: boolean;
+  plateAppearances: number;
+  atBats: number;
+  hits: number;
+  doubles: number;
+  triples: number;
+  homeRuns: number;
+  runs: number;
+  runsBattedIn: number;
+  walks: number;
+  hitByPitch: number;
+  strikeOuts: number;
+  sacrificeHits: number;
+  sacrificeFlies: number;
+  stolenBases: number;
+  caughtStealing: number;
+};
+
+export type PitcherGameStats = {
+  playerId: string;
+  teamId: string;
+  opponentTeamId: string;
+  started: boolean;
+  battersFaced: number;
+  outsRecorded: number;
+  hitsAllowed: number;
+  runsAllowed: number;
+  earnedRuns: number;
+  walks: number;
+  hitByPitch: number;
+  strikeOuts: number;
+  homeRunsAllowed: number;
+  pitchesThrown: number;
+  strikesThrown: number;
+};
+
+export type FielderGameStats = {
+  playerId: string;
+  teamId: string;
+  opponentTeamId: string;
+  inningsInField: number;
+  positions: Array<Position | "DH">;
+  putouts: number;
+  assists: number;
+  errors: number;
+  doublePlays: number;
+};
+
+export type PlayerGameRecord = {
+  gameId: string;
+  seasonYear: number;
+  day: number;
+  playerId: string;
+  teamId: string;
+  opponentTeamId: string;
+  batting?: BatterGameStats;
+  pitching?: PitcherGameStats;
+  fielding?: FielderGameStats;
+};
+
+export type MatchEventRecord = {
+  sequence: number;
+  inning: number;
+  half: "top" | "bottom";
+  outsBefore: number;
+  batterId: string | null;
+  pitcherId: string | null;
+  offenseTeamId: string;
+  defenseTeamId: string;
+  eventType: MatchEventType;
+  pitchesInPlateAppearance: number;
+  runsScored: number;
+  runsBattedIn: number;
+  runnersAdvanced: {
+    first: string | null;
+    second: string | null;
+    third: string | null;
+    scored: string[];
+  };
+  commentary: string;
+};
+
+export type CompletedGameRecord = {
+  gameId: string;
+  seasonYear: number;
+  day: number;
+  awayTeamId: string;
+  homeTeamId: string;
+  finalScore: {
+    away: number;
+    home: number;
+  };
+  lineScore: {
+    away: TeamGameLineScore;
+    home: TeamGameLineScore;
+  };
+  winningPitcherId: string | null;
+  losingPitcherId: string | null;
+  savePitcherId: string | null;
+  playerRecords: PlayerGameRecord[];
+  eventLog: MatchEventRecord[];
+};
+
+export type StatsDatabase = {
+  gamesById: Record<string, CompletedGameRecord>;
+  gameIdsByDay: Record<number, string[]>;
+  gameIdsByPlayerId: Record<string, string[]>;
+};
+
 export type ScoreboardState = {
   inning: number;
   half: "top" | "bottom";
@@ -217,6 +376,7 @@ export type LeagueState = {
   players: Record<string, Player>;
   coaches: Record<string, Coach>;
   schedule: ScheduledGame[];
+  stats: StatsDatabase;
   draftPoolIds: string[];
   standingsOrder: string[];
 };
@@ -245,7 +405,16 @@ export type PlayerDirectorySortKey =
   | "roster"
   | "role"
   | "games"
+  | "plateAppearances"
+  | "hits"
+  | "walks"
+  | "strikeOuts"
   | "inningsPitched"
+  | "earnedRuns"
+  | "hitsAllowed"
+  | "walksAllowed"
+  | "strikeOutsThrown"
+  | "pitchCount"
   | "battingAverage"
   | "homeRuns"
   | "earnedRunAverage";
@@ -257,6 +426,23 @@ export type PlayerDirectoryFilters = {
   role: "all" | PlayerRole;
   position: "all" | Position;
   sortKey: PlayerDirectorySortKey;
+  sortDirection: "asc" | "desc";
+};
+
+export type MatchDirectorySortKey =
+  | "day"
+  | "date"
+  | "homeTeam"
+  | "awayTeam"
+  | "score"
+  | "pitchCount"
+  | "status";
+
+export type MatchDirectoryFilters = {
+  search: string;
+  teamId: string;
+  played: "all" | "played" | "scheduled";
+  sortKey: MatchDirectorySortKey;
   sortDirection: "asc" | "desc";
 };
 
@@ -312,7 +498,16 @@ export type PlayerDirectoryRowViewModel = {
   position: string;
   age: number;
   games: number;
+  plateAppearances: number;
+  hits: number;
+  walks: number;
+  strikeOuts: number;
   inningsPitched: number;
+  earnedRuns: number;
+  hitsAllowed: number;
+  walksAllowed: number;
+  strikeOutsThrown: number;
+  pitchCount: number;
   battingAverage: number;
   battingAverageLabel: string;
   homeRuns: number;
@@ -333,4 +528,62 @@ export type MatchViewModel = {
     y: number;
     active: boolean;
   }>;
+};
+
+export type MatchDirectoryRowViewModel = {
+  id: string;
+  day: number;
+  dateLabel: string;
+  homeTeamId: string;
+  homeTeamName: string;
+  awayTeamId: string;
+  awayTeamName: string;
+  scoreLine: string;
+  pitchCount: number;
+  played: boolean;
+  statusLabel: string;
+};
+
+export type MatchPitchLogRowViewModel = {
+  pitchNumber: number;
+  inningLabel: string;
+  pitcherName: string;
+  batterName: string;
+  pitchType: string;
+  velocityLabel: string;
+  resultLabel: string;
+  runsScored: number;
+  note: string;
+};
+
+export type MatchDetailViewModel = {
+  id: string;
+  title: string;
+  metaLine: string;
+  scoreLine: string;
+  pitchCount: number;
+  pitches: MatchPitchLogRowViewModel[];
+};
+
+export type PlayerDetailSummaryItemViewModel = {
+  label: string;
+  value: string;
+};
+
+export type PlayerGameLogRowViewModel = {
+  matchId: string;
+  day: number;
+  dateLabel: string;
+  opponentName: string;
+  venueLabel: string;
+  scoreLine: string;
+  statLine: string;
+};
+
+export type PlayerDetailViewModel = {
+  playerId: string;
+  role: "hitter" | "pitcher";
+  teamName: string;
+  summaryItems: PlayerDetailSummaryItemViewModel[];
+  games: PlayerGameLogRowViewModel[];
 };

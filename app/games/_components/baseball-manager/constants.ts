@@ -4,21 +4,21 @@ export const BASEBALL_MANAGER_TITLE = "프로야구 매니저" as const;
 export const TEAM_COUNT = 10;
 export const GAMES_PER_TEAM = 144;
 export const CALLUP_COOLDOWN_DAYS = 10;
-export const MAJOR_ROSTER_LIMIT = 26;
-export const MINOR_ROSTER_TARGET = 4;
+export const MAJOR_ROSTER_LIMIT = 29;
+export const MINOR_ROSTER_TARGET = 31;
 export const MAX_PLAYER_STAMINA = 100;
 
 export const TEAM_NAMES = [
-  "Seoul Comets",
-  "Busan Whales",
-  "Incheon Storm",
-  "Daegu Hawks",
-  "Daejeon Sparks",
-  "Gwangju Tide",
-  "Suwon Foxes",
-  "Ulsan Forge",
-  "Changwon Knights",
-  "Jeju Waves",
+  "한화 이글스",
+  "롯데 자이언츠",
+  "넥센 히어로즈",
+  "KT 위즈",
+  "삼성 라이온즈",
+  "LG 트윈스",
+  "SSG 랜더스",
+  "두산 베어스",
+  "NC 다이노스",
+  "기아 타이거즈",
 ] as const;
 
 export const TEAM_COLORS = [

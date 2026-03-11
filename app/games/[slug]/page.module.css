@@ -23,8 +23,8 @@
 }
 
 .header {
-  max-width: 900px;
-  margin: 18px auto;
+  width: 100%;
+  margin: 18px 0;
 }
 
 .header h1 {
@@ -38,6 +38,5 @@
 }
 
 .gameWrap {
-  max-width: 900px;
-  margin: 0 auto;
+  width: 100%;
 }

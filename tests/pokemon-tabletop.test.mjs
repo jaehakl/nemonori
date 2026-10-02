@@ -14,7 +14,7 @@ const {
   saveDisplayPreferences,
 } = loadGameSource(`${path}display-preferences.ts`);
 const seats = ["bottom", "left", "top", "right"];
-const { default: GameBoard, BoardTileList, BattleHud } = loadGameSource(`${path}GameBoard.tsx`);
+const { default: GameBoard, BattleHud } = loadGameSource(`${path}GameBoard.tsx`);
 const { default: TabletopControls } = loadGameSource(`${path}TabletopControls.tsx`);
 const { getFullscreenState, toggleFullscreen } = loadGameSource(
   `${path}fullscreen.ts`,
@@ -51,7 +51,7 @@ test("every seat keeps the square board fixed and controls clear of its outer ti
   }
 });
 
-test("the accessible tile list includes all 40 tiles, resting occupants and road guardians", () => {
+test("the board preserves accessible tile controls without a separate tile list", () => {
   const tokens = [
     {
       id: 0,
@@ -70,17 +70,18 @@ test("the accessible tile list includes all 40 tiles, resting occupants and road
       restTurnsRemaining: 3,
     },
   ];
-  const html = renderToStaticMarkup(React.createElement(BoardTileList, {
+  const html = renderToStaticMarkup(React.createElement(GameBoard, {
+    dice: null, rolling: false, activePlayerId: 0,
     tokens,
     guardians: [{ tile: 2, ownerId: 1, speciesId: 25 }],
     selectedTile: 39,
     onTileSelect() {},
   }));
-  assert.equal((html.match(/<button\b/g) ?? []).length, 40);
-  assert.match(html, /aria-label="1번 포켓몬센터 · 지우"/);
-  assert.match(html, /aria-label="3번 도로 · 지우의 수비"/);
+  assert.equal((html.match(/data-tile="/g) ?? []).length, 40);
+  assert.match(html, /aria-label="1번 포켓몬센터 · 지우 · 휴식 3턴"/);
+  assert.match(html, /aria-label="3번 도로 · 지우의 피카츄 수비"/);
   assert.match(html, /aria-label="40번 도로 · 민준" aria-pressed="true"/);
-  assert.match(html, /칸 목록 · 키보드로 살펴보기/);
+  assert.doesNotMatch(html, /칸 목록/);
 });
 
 test("compact battle modals face each seat without overlapping the fighters' viewport", () => {

@@ -144,7 +144,7 @@ function validate(value: unknown): value is GameState {
       !["bottom", "left", "top", "right"].includes(player.seatSide) ||
       !Array.isArray(player.party) ||
       player.party.length < 1 ||
-      player.party.length > 6 ||
+      player.party.length > (value.exchangeActive === true && index === value.activePlayer ? 7 : 6) ||
       !Array.isArray(player.box) ||
       player.box.length > 10000 ||
       !player.party.every((pokemon) =>
@@ -193,6 +193,11 @@ function validate(value: unknown): value is GameState {
   if ((state.phase === "finished") !== (state.winner !== null))
     return false;
   const active = state.players[state.activePlayer];
+  if (state.exchangeActive !== undefined && typeof state.exchangeActive !== "boolean") return false;
+  if (state.exchangeActive && !["center", "road"].includes(state.phase)) return false;
+  // A temporary seventh party member must be returned before leaving exchange.
+  if (active.party.length === 7 && state.phase === "road" && state.roads[active.position]) return false;
+
   if (active.restTurnsRemaining > 0 && state.phase !== "turn-end")
     return false;
 

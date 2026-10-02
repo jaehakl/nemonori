@@ -127,66 +127,6 @@ export function EventCaption({
   );
 }
 
-function describeTile(
-  index: number,
-  tokens: BoardToken[],
-  guardians: BoardGuardian[],
-) {
-  const occupants = tokens
-    .filter((token) => token.position === index)
-    .map((token) => token.name);
-  const guardian = guardians.find((entry) => entry.tile === index);
-  const owner = guardian
-    ? tokens.find((token) => token.id === guardian.ownerId)
-    : undefined;
-  return `${index + 1}번 ${TILE_NAMES[index]}${occupants.length ? ` · ${occupants.join(", ")}` : ""}${owner ? ` · ${owner.name}의 수비` : ""}`;
-}
-
-/** Reusable in the rotating controls, for keyboard navigation. */
-export function BoardTileList({
-  tokens,
-  guardians,
-  selectedTile,
-  onTileSelect,
-}: {
-  tokens: BoardToken[];
-  guardians: BoardGuardian[];
-  selectedTile?: number | null;
-  onTileSelect: (tile: number) => void;
-}) {
-  return (
-    <details className={styles.tileDetails}>
-      <summary>칸 목록 · 키보드로 살펴보기</summary>
-      <div className={styles.tileList}>
-        {TILE_NAMES.map((name, index) => (
-          <button
-            key={index}
-            type="button"
-            aria-label={describeTile(index, tokens, guardians)}
-            aria-pressed={selectedTile === index}
-            className={
-              selectedTile === index ? styles.selectedButton : undefined
-            }
-            onClick={() => onTileSelect(index)}
-          >
-            <span>{String(index + 1).padStart(2, "0")}</span>
-            {name}
-            {tokens
-              .filter((token) => token.position === index)
-              .map((token) => (
-                <i
-                  key={token.id}
-                  style={{ backgroundColor: token.color }}
-                  title={token.name}
-                />
-              ))}
-          </button>
-        ))}
-      </div>
-    </details>
-  );
-}
-
 export default function GameBoard({
   tokens,
   guardians,
@@ -281,17 +221,7 @@ export default function GameBoard({
             </span>
             <span className={styles.direction}>시계 방향으로 이동 ↻</span>
           </div>
-          {selectedTile !== null && (
-            <p className={styles.selection} aria-live="polite">
-              {describeTile(selectedTile, tokens, guardians)}
-            </p>
-          )}
-          <BoardTileList
-            tokens={tokens}
-            guardians={guardians}
-            selectedTile={selectedTile}
-            onTileSelect={selectTile}
-          />
+
         </>
       )}
     </section>

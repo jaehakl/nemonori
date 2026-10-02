@@ -280,7 +280,7 @@ test("double roll controls wait for tile actions and explain the extra opportuni
     assert.match(render(), /한 번 더 굴리기/);
   }
   state.phase = "turn-end";
-  assert.match(render(), /더블! 한 번 더 주사위를/);
+  assert.match(render(), /한 번 더 굴리기/);
   state.players[0].restTurnsRemaining = 3;
   assert.doesNotMatch(render(), /한 번 더 굴리기/);
   state.players[0].restTurnsRemaining = 0;

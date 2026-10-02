@@ -80,6 +80,7 @@ export interface GameState {
   evolution: PendingEvolution | null;
   /** Missing only in earlier version-2 saves, before lap growth was introduced. */
   lapGrowth?: PendingLapGrowth | null;
+  exchangeActive?: boolean;
   winner: number | null;
   log: string[];
 }
@@ -94,7 +95,7 @@ export type GameAction =
   | { type: "CAPTURE"; capture: boolean }
   | { type: "DEPLOY"; pokemonId: string }
   | { type: "RETRIEVE" }
-  | { type: "SWAP_GUARDIAN"; pokemonId: string }
+  | { type: "START_EXCHANGE" }
+  | { type: "END_EXCHANGE" }
   | { type: "CENTER_TRANSFER"; pokemonId: string; to: "party" | "box" }
-  | { type: "CENTER_SWAP"; partyPokemonId: string; boxPokemonId: string }
   | { type: "END_TURN" };

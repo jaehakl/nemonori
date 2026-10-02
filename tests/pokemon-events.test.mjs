@@ -399,7 +399,7 @@ test("center box transfers and swaps fully heal without redundant cues or automa
   const initial = game();
   initial.players[0].party.push(pokemon(initial, 128, 3));
   initial.players[0].box.push(pokemon(initial, 7, 3));
-  const centered = enter(initial, 10);
+  const centered = assertTransition(enter(initial, 10), { type: "START_EXCHANGE" }).state;
   centered.players[0].party[0].hp = 0;
   const transferred = assertTransition(centered, { type: "CENTER_TRANSFER", pokemonId: centered.players[0].party[0].id, to: "box" });
   assert.deepEqual(kinds(transferred), []);
@@ -407,11 +407,8 @@ test("center box transfers and swaps fully heal without redundant cues or automa
   assert.equal(stored.hp, getStats(stored).hp);
   const outgoing = transferred.state.players[0].party[0];
   outgoing.hp = 1;
-  const swapped = assertTransition(transferred.state, {
-    type: "CENTER_SWAP",
-    partyPokemonId: outgoing.id,
-    boxPokemonId: transferred.state.players[0].box[0].id,
-  });
+  const received = assertTransition(transferred.state, { type: "CENTER_TRANSFER", pokemonId: transferred.state.players[0].box[0].id, to: "party" });
+  const swapped = assertTransition(received.state, { type: "CENTER_TRANSFER", pokemonId: outgoing.id, to: "box" });
   assert.deepEqual(kinds(swapped), []);
   const swappedToBox = swapped.state.players[0].box.find((entry) => entry.id === outgoing.id);
   assert.equal(swappedToBox.hp, getStats(swappedToBox).hp);
@@ -487,7 +484,7 @@ test("successful capture carries the fainted wild Pokemon while declining emits 
 test("deployment, replacement, retrieval and next turn expose the resulting board", () => {
   const initial = game();
   initial.players[0].party.push(pokemon(initial, 7, 1));
-  const road = enter(initial, 2);
+  const road = assertTransition(enter(initial, 2), { type: "START_EXCHANGE" }).state;
   const deployed = assertTransition(road, {
     type: "DEPLOY",
     pokemonId: road.players[0].party[0].id,
@@ -498,9 +495,9 @@ test("deployment, replacement, retrieval and next turn expose the resulting boar
   ]);
   const replacement = structuredClone(deployed.state);
   replacement.phase = "road";
-  const swapped = assertTransition(replacement, {
-    type: "SWAP_GUARDIAN",
-    pokemonId: replacement.players[0].party[0].id,
+  const removed = assertTransition(replacement, { type: "RETRIEVE" });
+  const swapped = assertTransition(removed.state, {
+    type: "DEPLOY", pokemonId: replacement.players[0].party[0].id,
   });
   assert.deepEqual(kinds(swapped), ["deploy"]);
   assert.equal(swapped.events[0].snapshot.guardians[0].speciesId, 7);
@@ -510,7 +507,7 @@ test("deployment, replacement, retrieval and next turn expose the resulting boar
   assert.deepEqual(kinds(retrieved), ["retrieve"]);
   assert.deepEqual(retrieved.events[0].snapshot.guardians, []);
   retrieved.state.dice = [5, 6];
-  const ended = assertTransition(retrieved.state, { type: "END_TURN" });
+  const ended = assertTransition(assertTransition(retrieved.state, { type: "END_EXCHANGE" }).state, { type: "END_TURN" });
   assert.deepEqual(kinds(ended), ["turn"]);
   assert.equal(ended.events[0].playerId, 1);
   assert.equal(ended.events[0].snapshot.activePlayerId, 1);
@@ -685,7 +682,7 @@ test("the final road emits deployment followed by monopoly victory with detached
     if (kind === "road" && tile !== 2)
       initial.roads[tile] = { ownerId: 0, pokemon: pokemon(initial) };
   }
-  const ready = enter(initial, 2);
+  const ready = assertTransition(enter(initial, 2), { type: "START_EXCHANGE" }).state;
   const result = assertTransition(ready, { type: "DEPLOY", pokemonId: ready.players[0].party[0].id });
   assert.deepEqual(kinds(result), ["deploy", "victory"]);
   assert.equal(result.events[1].snapshot.guardians.length, 27);

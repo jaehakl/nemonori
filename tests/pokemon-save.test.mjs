@@ -533,7 +533,7 @@ test("monopoly saves resume the terminal state and reject incomplete or unrecord
       initial.roads[tile] = { ownerId: 0, pokemon: pokemon(initial, 1) };
   }
   const ready = snapshot(enter(initial, 2));
-  const state = snapshot(transition(ready, { type: "DEPLOY", pokemonId: ready.players[0].party[0].id }));
+  const state = snapshot(transition(transition(ready, { type: "START_EXCHANGE" }), { type: "DEPLOY", pokemonId: ready.players[0].party[0].id }));
   assert.equal(state.winner, 0);
   assert.equal(state.phase, "finished");
   assert.equal(transition(state, { type: "ROLL" }), state);

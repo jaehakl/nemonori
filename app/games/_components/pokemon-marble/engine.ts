@@ -640,6 +640,7 @@ function finishIfAllRoadsOwned(state: GameState, events?: EventSink) {
   if (!ownsEveryRoad) return;
   state.winner = player.id;
   state.phase = "finished";
+  state.exchangeActive = false;
   state.battle = null;
   state.evolution = null;
   state.movement = null;
@@ -793,35 +794,32 @@ function applyTransition(
       state.phase = "turn-end";
       break;
     }
-    case "DEPLOY":
-    case "SWAP_GUARDIAN": {
-      if (state.phase !== "road") return previous;
-      if (
-        action.type === "DEPLOY"
-          ? !!guardian
-          : !guardian || guardian.ownerId !== player.id
-      )
+    case "START_EXCHANGE": {
+      if (state.exchangeActive || player.restTurnsRemaining > 0) return previous;
+      const roadAvailable = BOARD_TILES[player.position] === "road" &&
+        (!guardian || guardian.ownerId === player.id);
+      if (state.phase !== "center" && !(roadAvailable && ["road", "turn-end"].includes(state.phase)))
         return previous;
+      if (roadAvailable) state.phase = "road";
+      state.exchangeActive = true;
+      break;
+    }
+    case "END_EXCHANGE": {
+      if (!state.exchangeActive || !["center", "road"].includes(state.phase) || player.party.length > 6) return previous;
+      state.exchangeActive = false;
+      break;
+    }
+    case "DEPLOY": {
+      if (state.phase !== "road" || !state.exchangeActive || guardian) return previous;
       const pokemon = player.party.find(
         (candidate) => candidate.id === action.pokemonId && candidate.hp > 0,
       );
       if (!pokemon) return previous;
-      const remaining = player.party.filter(
-        (candidate) => candidate.id !== pokemon.id,
-      );
-      if (
-        !remaining.some((candidate) => candidate.hp > 0) &&
-        !(guardian?.pokemon.hp && action.type === "SWAP_GUARDIAN")
-      )
-        return previous;
+      const remaining = player.party.filter((candidate) => candidate.id !== pokemon.id);
+      if (!remaining.some((candidate) => candidate.hp > 0)) return previous;
       player.party = remaining;
-      if (guardian) player.party.push(guardian.pokemon);
       state.roads[player.position] = { ownerId: player.id, pokemon };
-      state.phase = "turn-end";
-      addLog(
-        state,
-        `${byId[pokemon.speciesId].name}을(를) 도로에 배치했습니다.`,
-      );
+      addLog(state, `${byId[pokemon.speciesId].name}을(를) 도로에 배치했습니다.`);
       events?.(state, {
         kind: "deploy",
         pokemon: pokemonView(pokemon),
@@ -831,16 +829,10 @@ function applyTransition(
       break;
     }
     case "RETRIEVE": {
-      if (
-        state.phase !== "road" ||
-        !guardian ||
-        guardian.ownerId !== player.id ||
-        player.party.length >= 6
-      )
-        return previous;
+      if (state.phase !== "road" || !state.exchangeActive || !guardian ||
+        guardian.ownerId !== player.id || player.party.length >= 7) return previous;
       player.party.push(guardian.pokemon);
       state.roads[player.position] = null;
-      state.phase = "turn-end";
       events?.(state, {
         kind: "retrieve",
         pokemon: pokemonView(guardian.pokemon),
@@ -850,7 +842,7 @@ function applyTransition(
     }
     case "CENTER_TRANSFER": {
       if (
-        state.phase !== "center" ||
+        state.phase !== "center" || !state.exchangeActive ||
         (action.to !== "party" && action.to !== "box")
       )
         return previous;
@@ -859,7 +851,7 @@ function applyTransition(
       const index = source.findIndex(
         (pokemon) => pokemon.id === action.pokemonId,
       );
-      if (index < 0 || (action.to === "party" && destination.length >= 6))
+      if (index < 0 || (action.to === "party" && destination.length >= 7))
         return previous;
       if (
         action.to === "box" &&
@@ -873,24 +865,8 @@ function applyTransition(
       destination.push(pokemon);
       break;
     }
-    case "CENTER_SWAP": {
-      if (state.phase !== "center") return previous;
-      const partyIndex = player.party.findIndex(
-        (pokemon) => pokemon.id === action.partyPokemonId,
-      );
-      const boxIndex = player.box.findIndex(
-        (pokemon) => pokemon.id === action.boxPokemonId,
-      );
-      if (partyIndex < 0 || boxIndex < 0) return previous;
-      [player.party[partyIndex], player.box[boxIndex]] = [
-        player.box[boxIndex],
-        player.party[partyIndex],
-      ];
-      player.box[boxIndex].hp = getStats(player.box[boxIndex]).hp;
-      break;
-    }
     case "END_TURN": {
-      if (!["center", "road", "turn-end"].includes(state.phase))
+      if (state.exchangeActive || player.party.length > 6 || !["center", "road", "turn-end"].includes(state.phase))
         return previous;
       nextTurn(state, events);
       break;

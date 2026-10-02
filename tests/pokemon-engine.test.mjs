@@ -307,7 +307,7 @@ test("centers heal party and box only; exchanges preserve capacity and healthy p
   initial.players[0].party[0].hp = 1;
   initial.players[0].box.push(pokemon(initial, 7, 1, 0));
   initial.roads[2] = { ownerId: 0, pokemon: pokemon(initial, 4, 1, 1) };
-  let state = enter(initial, 10);
+  let state = transition(enter(initial, 10), { type: "START_EXCHANGE" });
   const player = state.players[0];
   assert.equal(state.phase, "center");
   assert.equal(player.party[0].hp, getStats(player.party[0]).hp);
@@ -322,17 +322,7 @@ test("centers heal party and box only; exchanges preserve capacity and healthy p
     state,
   );
   const oldBox = player.box[0].id;
-  state = transition(state, {
-    type: "CENTER_SWAP",
-    partyPokemonId: player.party[0].id,
-    boxPokemonId: oldBox,
-  });
-  assert.equal(state.players[0].party[0].id, oldBox);
-  state = transition(state, {
-    type: "CENTER_TRANSFER",
-    pokemonId: state.players[0].box[0].id,
-    to: "party",
-  });
+  state = transition(state, { type: "CENTER_TRANSFER", pokemonId: oldBox, to: "party" });
   assert.equal(state.players[0].party.length, 2);
   state = transition(state, {
     type: "CENTER_TRANSFER",
@@ -343,8 +333,8 @@ test("centers heal party and box only; exchanges preserve capacity and healthy p
   assert.ok(validateSave(state));
 });
 
-test("road deployment cannot remove the last healthy party member; swaps and recovery retain HP", () => {
-  let state = enter(game(), 2);
+test("road deployment cannot remove the last healthy party member; retrieval and redeployment retain HP", () => {
+  let state = transition(enter(game(), 2), { type: "START_EXCHANGE" });
   const starterId = state.players[0].party[0].id;
   assert.equal(
     transition(state, { type: "DEPLOY", pokemonId: starterId }),
@@ -361,15 +351,14 @@ test("road deployment cannot remove the last healthy party member; swaps and rec
   assert.equal(state.players[0].party.length, 1);
   state.phase = "road";
   const nextId = state.players[0].party[0].id;
-  state = transition(state, { type: "SWAP_GUARDIAN", pokemonId: nextId });
+  state = transition(state, { type: "RETRIEVE" });
+  state = transition(state, { type: "DEPLOY", pokemonId: nextId });
   assert.equal(state.players[0].party[0].id, starterId);
   assert.equal(state.roads[2].pokemon.hp, 2);
   state.phase = "road";
   while (state.players[0].party.length < 6)
     state.players[0].party.push(pokemon(state));
-  assert.equal(transition(state, { type: "RETRIEVE" }), state);
   assert.equal(state.players[0].box.length, 0);
-  state.players[0].party.pop();
   state = transition(state, { type: "RETRIEVE" });
   assert.equal(state.players[0].party.find((entry) => entry.id === nextId).hp, 2);
   assert.equal(state.players[0].box.length, 0);
@@ -581,10 +570,10 @@ test("only one player occupying every road wins immediately on the last deployme
     }
     if (otherRoad === "empty") initial.roads[4] = null;
     if (otherRoad === "opponent") initial.roads[4].ownerId = 1;
-    const ready = enter(initial, 2);
+    const ready = transition(enter(initial, 2), { type: "START_EXCHANGE" });
     assert.ok(validateSave(ready));
     const state = transition(ready, { type: "DEPLOY", pokemonId: ready.players[0].party[0].id });
-    assert.equal(state.phase, otherRoad === "owned" ? "finished" : "turn-end");
+    assert.equal(state.phase, otherRoad === "owned" ? "finished" : "road");
     assert.equal(state.winner, otherRoad === "owned" ? 0 : null);
     assert.ok(validateSave(state));
     assert.equal(state.players[0].starterSpeciesId, 1, "Deploying the starter never changes the token identity");

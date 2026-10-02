@@ -2,16 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { saveGameSave } from "@/app/lib/save-protocol";
-import { BOARD_TILES, PLAYER_COLORS } from "./board";
-import GameBoard, { BattleHud, BoardTileList, EventCaption } from "./GameBoard";
+import { PLAYER_COLORS } from "./board";
+import GameBoard, { BattleHud, EventCaption } from "./GameBoard";
 import {
   createGame,
   snapshotForPresentation,
   transitionWithEvents,
 } from "./engine";
-import { speciesById } from "./pokemon-data";
 import { loadPokemonSave } from "./load-save";
 import Setup from "./Setup";
+import GuardianPopup from "./GuardianPopup";
 import ActionPanel, { MovementPanel, PartySummary } from "./ActionPanel";
 import RulesDialog, { Modal } from "./RulesDialog";
 import type { GameAction, GameState, SeatSide } from "./types";
@@ -29,7 +29,6 @@ import { loadDisplayPreferences, saveDisplayPreferences, type DisplayMode } from
 
 const SLUG = "pokemon-marble";
 const TITLE = "포켓몬 마블";
-const tileNames = { center: "포켓몬센터", grass: "풀숲", road: "도로" };
 
 // GameHost loads this component only after its browser mount.
 export default function PokemonMarble() {
@@ -56,7 +55,8 @@ export default function PokemonMarble() {
     names: string[];
     seatSides: SeatSide[];
   } | null>(null);
-  const [selectedTile, setSelectedTile] = useState<number | null>(null);
+  const [selection, setSelection] = useState<{ tile: number; revision: number } | null>(null);
+  const selectedTile = selection?.revision === game?.revision ? selection?.tile ?? null : null;
   const canonicalView = useMemo(
     () => (game ? snapshotForPresentation(game) : null),
     [game],
@@ -138,7 +138,7 @@ export default function PokemonMarble() {
       commit(createGame(starters, names, seed, seatSides));
       setPendingStart(null);
       setGameError(null);
-      setSelectedTile(null);
+      setSelection(null);
     } catch {
       setGameError(
         "게임을 시작하지 못했습니다. 각 트레이너의 포켓몬 선택을 확인해 주세요.",
@@ -157,7 +157,7 @@ export default function PokemonMarble() {
     gameRef.current = null;
     setGame(null);
     setRestartOpen(false);
-    setSelectedTile(null);
+    setSelection(null);
   }
 
   return (
@@ -276,7 +276,10 @@ export default function PokemonMarble() {
                     presentation={presentation}
                     paused={experience.paused}
                     reducedMotion={experience.reducedMotion}
-                    onTileSelect={setSelectedTile}
+                    onTileSelect={(tile) => {
+                      if (!experience.busy && !experience.paused && !movementVisible && game.roads[tile])
+                        setSelection({ tile, revision: game.revision });
+                    }}
                   />
                 }
               >
@@ -313,27 +316,16 @@ export default function PokemonMarble() {
                         onRestart={() => setRestartOpen(true)}
                       />
                     )}
-                    {selectedTile !== null && !battleVisible && !experience.busy && (
-                      <div className={styles.tileDetail}>
-                        <strong>{selectedTile + 1}번 · {tileNames[BOARD_TILES[selectedTile]]}</strong>
-                        {game.roads[selectedTile]
-                          ? ` — ${game.players[game.roads[selectedTile]!.ownerId].name}의 ${speciesById[game.roads[selectedTile]!.pokemon.speciesId].name} · HP ${game.roads[selectedTile]!.pokemon.hp}`
-                          : ""}
-                        {game.players.filter((player) => player.position === selectedTile).map((player) => ` · ${player.name}`)}
-                      </div>
-                    )}
-                    {!battleVisible && !movementVisible && !experience.busy && (
-                      <BoardTileList
-                        tokens={view!.players.map((player) => ({ ...player, color: PLAYER_COLORS[player.id] }))}
-                        guardians={view!.guardians}
-                        selectedTile={selectedTile}
-                        onTileSelect={setSelectedTile}
-                      />
-                    )}
+
                   </div>
-                  {!battleVisible && <PartySummary state={game} />}
+                  {!battleVisible && <PartySummary state={game} blocked={experience.busy || experience.paused} dispatch={(action) => dispatch(action, game.revision)} />}
                 </div>
               </TabletopControls>
+              {selectedTile !== null && game.roads[selectedTile] && !battleVisible && !movementVisible && !experience.busy && !experience.paused && (
+                <GuardianPopup tile={selectedTile} pokemon={game.roads[selectedTile]!.pokemon}
+                  ownerName={game.players[game.roads[selectedTile]!.ownerId].name}
+                  rootRef={gameRoot} onClose={() => setSelection(null)} />
+              )}
             </>
           )}
           <footer className={styles.footer}>

@@ -97,6 +97,8 @@
   margin-top: 10px;
 }
 .tableControls {
+  container-type: size;
+  container-name: exchange-controls;
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -650,8 +652,7 @@
   font-size: 12px;
   color: var(--ink);
 }
-.filters select,
-.centerSwap select {
+.filters select {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px 12px;
@@ -864,14 +865,6 @@
 .battleMatchup small {
   color: #8b9b7d;
   font-size: 11px;
-}
-.tileDetail {
-  padding: 12px 16px;
-  font-size: 12px;
-  color: #5c786c;
-  background: #edf3e8;
-  border-radius: 9px;
-  margin-top: 10px;
 }
 .players {
   display: grid;
@@ -1171,15 +1164,6 @@
   color: #587963;
   margin: 0 0 8px;
 }
-.centerSwap {
-  display: grid;
-  gap: 7px;
-  margin: 12px 0;
-}
-.centerSwap select {
-  max-width: 100%;
-  min-width: 0;
-}
 .logPanel {
   border: 1px solid var(--line);
   border-radius: 13px;
@@ -1465,4 +1449,76 @@
     animation: none !important;
     transition: none !important;
   }
+}
+
+button.tradingCard {
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+button.tradingCard:hover,
+button.tradingCard:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: -1px;
+}
+.guardianPopup {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: 240px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 16px);
+  overflow: auto;
+  padding: 12px;
+  border: 2px solid #527a59;
+  border-radius: 16px;
+  background: #fffdf3;
+  color: #254d3f;
+  box-shadow: 0 8px 32px #183c3540;
+}
+.guardianPopup::backdrop { background: #16332926; }
+.guardianPopup .sectionHeading { gap: 8px; margin-bottom: 8px; }
+.guardianPopup .tradingCard { width: 100%; }
+
+.guardianPopup .sectionHeading > strong { min-width: 0; overflow-wrap: anywhere; }
+
+.tableControls .controlActions .turnEnd {
+  position: static;
+  box-shadow: none;
+}
+
+@container exchange-controls (max-height: 480px) {
+  .tradingCard {
+    flex-basis: 138px;
+    padding: 6px;
+  }
+  .cardArtwork {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 84px;
+    overflow: hidden;
+  }
+  .cardArtwork > span {
+    transform: scale(0.58);
+  }
+  .controlActions .tradingCard {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 4px;
+    flex-basis: 220px;
+  }
+  .controlActions .cardArtwork {
+    grid-column: 1;
+    grid-row: 1 / 4;
+    width: 64px;
+    height: 84px;
+    margin: 0;
+  }
+  .controlActions .cardArtwork > span { transform: scale(0.44); }
+  .controlActions .cardHeading,
+  .controlActions .typeRow,
+  .controlActions .health { grid-column: 2; }
+  .controlActions .cardHeading { flex-wrap: wrap; }
 }

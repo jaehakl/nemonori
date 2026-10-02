@@ -1,10 +1,10 @@
-import { useState } from "react";
-import { getStats, hasExtraRoll, transition } from "./engine";
+import { hasExtraRoll, transition } from "./engine";
 import { BOARD_TILES, PLAYER_COLORS } from "./board";
-import { speciesById, typeColors } from "./pokemon-data";
-import { HealthBar, PokemonSprite, TypeBadge } from "./PokemonSprite";
-import BattlePanel, { PokemonChoice } from "./BattlePanel";
+import { speciesById } from "./pokemon-data";
+import { PokemonSprite, TypeBadge } from "./PokemonSprite";
+import BattlePanel from "./BattlePanel";
 import type { GameAction, GameState } from "./types";
+import PokemonCard from "./PokemonCard";
 import styles from "./PokemonMarble.module.css";
 
 const dieFaces = ["", "⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];
@@ -21,9 +21,11 @@ export default function ActionPanel({
   compactBattle?: boolean;
 }) {
   const player = state.players[state.activePlayer];
-  const [partyChoice, setPartyChoice] = useState(player.party[0]?.id ?? "");
-  const [boxChoice, setBoxChoice] = useState(player.box[0]?.id ?? "");
   const allowed = (action: GameAction) => transition(state, action) !== state;
+  const canStartExchange = allowed({ type: "START_EXCHANGE" });
+  const exchangeAvailable = state.phase === "center" || state.phase === "road" || canStartExchange;
+  const guardian = state.roads[player.position];
+  const storedPokemon = state.phase === "center" ? player.box : guardian ? [guardian.pokemon] : [];
   const endButton = (
     <button
       className={`${styles.primaryButton} ${styles.fullWidth} ${styles.turnEnd}`}
@@ -152,13 +154,6 @@ export default function ActionPanel({
 
   return (
     <section className={styles.actionPanel}>
-      <div className={styles.turnHeading}>
-        <div>
-          <span className={styles.eyebrow}>YOUR ADVENTURE</span>
-          <h3>{player.name}</h3>
-        </div>
-        <span className={styles.turnBadge}>TURN {state.turn}</span>
-      </div>
       {(state.phase === "roll" ||
         state.phase === "moving" ||
         state.phase === "turn-end") && (
@@ -177,17 +172,9 @@ export default function ActionPanel({
               </span>
             ))}
           </div>
-          <p className={styles.actionCopy} aria-live="polite">
-            {state.phase === "roll"
-              ? "두 개의 주사위를 굴려 모험을 이어가세요."
-              : state.phase === "moving"
-                ? `${state.dice![0] + state.dice![1]}칸 이동 · 앞으로 ${state.movement?.remaining ?? 0}칸`
-                : player.restTurnsRemaining > 0
-                  ? `센터로 돌아왔습니다. 다음 본인 차례 ${player.restTurnsRemaining}번을 쉬면 파티와 박스가 모두 회복됩니다.`
-                  : hasExtraRoll(state)
-                    ? "더블! 한 번 더 주사위를 굴릴 수 있습니다."
-                    : "이번 턴의 모험을 마쳤습니다. 다음 트레이너에게 차례를 넘겨주세요."}
-          </p>
+          {state.phase === "turn-end" && player.restTurnsRemaining > 0 && (
+            <p role="status">남은 휴식 {player.restTurnsRemaining}턴</p>
+          )}
           {state.phase === "roll" ? (
             <button
               className={`${styles.primaryButton} ${styles.fullWidth}`}
@@ -196,7 +183,7 @@ export default function ActionPanel({
               주사위 굴리기 <span>⚄</span>
             </button>
           ) : state.phase === "turn-end" ? (
-            endButton
+            !canStartExchange && endButton
           ) : (
             <button
               className={`${styles.secondaryButton} ${styles.fullWidth}`}
@@ -208,181 +195,27 @@ export default function ActionPanel({
         </>
       )}
 
-      {state.phase === "road" && (
+      {exchangeAvailable && (
         <>
-          <span className={styles.eyebrow}>ROAD #{player.position + 1}</span>
-          <h3>
-            {state.roads[player.position]
-              ? "우리의 도로"
-              : "이 도로를 지켜주세요"}
-          </h3>
-          <p className={styles.actionCopy}>
-            파티의 포켓몬을 보내 수비할 수 있습니다. 살아 있는 파트너를 최소 한
-            마리 남겨두세요.
-          </p>
-          {state.roads[player.position] && (
-            <div className={styles.centerSection}>
-              <h4>현재 수비</h4>
-              <PokemonChoice
-                pokemon={state.roads[player.position]!.pokemon}
-                disabled={!allowed({ type: "RETRIEVE" })}
-                onClick={() => dispatch({ type: "RETRIEVE" })}
-                label={player.party.length >= 6 ? "파티 가득 참" : "파티로 회수"}
-              />
-            </div>
-          )}
+          <button className={styles.secondaryButton}
+            disabled={state.exchangeActive && player.party.length > 6}
+            onClick={() => dispatch({ type: state.exchangeActive ? "END_EXCHANGE" : "START_EXCHANGE" })}>
+            {state.exchangeActive ? "교환 끝내기" : "교환 시작하기"}
+          </button>
+          {player.party.length > 6 && <p role="status">한 마리를 옮겨 6마리로 정리하세요</p>}
           <div className={styles.centerSection}>
-            <h4>{state.roads[player.position] ? "수비 교체" : "수비 배치"}</h4>
-            <div className={styles.selectionList}>
-              {player.party.map((pokemon) => {
-                const action: GameAction = {
-                  type: state.roads[player.position]
-                    ? "SWAP_GUARDIAN"
-                    : "DEPLOY",
-                  pokemonId: pokemon.id,
-                };
-                return (
-                  <PokemonChoice
-                    key={pokemon.id}
-                    pokemon={pokemon}
-                    disabled={!allowed(action)}
-                    onClick={() => dispatch(action)}
-                    label={state.roads[player.position] ? "교체" : "배치"}
-                  />
-                );
+            <h4>{state.phase === "center" ? `박스 · ${player.box.length}` : "현재 수비"}</h4>
+            <div className={styles.partyCards}>
+              {storedPokemon.map((pokemon) => {
+                const action: GameAction = state.phase === "center"
+                  ? { type: "CENTER_TRANSFER", pokemonId: pokemon.id, to: "party" }
+                  : { type: "RETRIEVE" };
+                return <PokemonCard key={pokemon.id} pokemon={pokemon} destination="파티로 이동"
+                  onClick={allowed(action) ? () => dispatch(action) : undefined} />;
               })}
             </div>
           </div>
-          <p className={styles.actionCopy}>배치하지 않고 턴을 마쳐도 됩니다.</p>
-          {endButton}
-        </>
-      )}
-
-      {state.phase === "center" && (
-        <>
-          <span className={styles.eyebrow}>POKÉMON CENTER</span>
-          <h3>다시 힘차게, 출발!</h3>
-          <p className={styles.actionCopy}>
-            파티와 박스의 체력을 모두 회복했습니다. 파티는 최대 6마리이며, 살아
-            있는 포켓몬이 최소 한 마리 있어야 합니다.
-          </p>
-          <div className={styles.centerSection}>
-            <h4>파티 · {player.party.length}/6</h4>
-            <div className={styles.selectionList}>
-              {player.party.map((pokemon) => (
-                <PokemonChoice
-                  key={pokemon.id}
-                  pokemon={pokemon}
-                  label="박스로"
-                  disabled={
-                    !allowed({
-                      type: "CENTER_TRANSFER",
-                      pokemonId: pokemon.id,
-                      to: "box",
-                    })
-                  }
-                  onClick={() =>
-                    dispatch({
-                      type: "CENTER_TRANSFER",
-                      pokemonId: pokemon.id,
-                      to: "box",
-                    })
-                  }
-                />
-              ))}
-            </div>
-          </div>
-          <div className={styles.centerSection}>
-            <h4>박스 · {player.box.length}마리</h4>
-            {player.box.length === 0 ? (
-              <p className={styles.subtle}>아직 박스에 포켓몬이 없습니다.</p>
-            ) : (
-              <div className={styles.selectionList}>
-                {player.box.map((pokemon) => (
-                  <PokemonChoice
-                    key={pokemon.id}
-                    pokemon={pokemon}
-                    label="파티로"
-                    disabled={
-                      !allowed({
-                        type: "CENTER_TRANSFER",
-                        pokemonId: pokemon.id,
-                        to: "party",
-                      })
-                    }
-                    onClick={() =>
-                      dispatch({
-                        type: "CENTER_TRANSFER",
-                        pokemonId: pokemon.id,
-                        to: "party",
-                      })
-                    }
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-          {player.box.length > 0 && (
-            <div className={styles.centerSwap}>
-              <span className={styles.subtle}>한 번에 맞교환</span>
-              <select
-                aria-label="교환할 파티 포켓몬"
-                value={
-                  player.party.some((pokemon) => pokemon.id === partyChoice)
-                    ? partyChoice
-                    : ""
-                }
-                onChange={(event) => setPartyChoice(event.target.value)}
-              >
-                <option value="" disabled>
-                  파티 포켓몬 선택
-                </option>
-                {player.party.map((pokemon) => (
-                  <option value={pokemon.id} key={pokemon.id}>
-                    {speciesById[pokemon.speciesId].name} · Lv. {pokemon.level}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="교환할 박스 포켓몬"
-                value={
-                  player.box.some((pokemon) => pokemon.id === boxChoice)
-                    ? boxChoice
-                    : ""
-                }
-                onChange={(event) => setBoxChoice(event.target.value)}
-              >
-                <option value="" disabled>
-                  박스 포켓몬 선택
-                </option>
-                {player.box.map((pokemon) => (
-                  <option value={pokemon.id} key={pokemon.id}>
-                    {speciesById[pokemon.speciesId].name} · Lv. {pokemon.level}
-                  </option>
-                ))}
-              </select>
-              <button
-                className={styles.secondaryButton}
-                disabled={
-                  !allowed({
-                    type: "CENTER_SWAP",
-                    partyPokemonId: partyChoice,
-                    boxPokemonId: boxChoice,
-                  })
-                }
-                onClick={() =>
-                  dispatch({
-                    type: "CENTER_SWAP",
-                    partyPokemonId: partyChoice,
-                    boxPokemonId: boxChoice,
-                  })
-                }
-              >
-                두 포켓몬 교환
-              </button>
-            </div>
-          )}
-          <div style={{ marginTop: 18 }}>{endButton}</div>
+          {!state.exchangeActive && endButton}
         </>
       )}
     </section>
@@ -424,7 +257,7 @@ export function MovementPanel({
   );
 }
 
-export function PartySummary({ state }: { state: GameState }) {
+export function PartySummary({ state, dispatch, blocked = false }: { state: GameState; dispatch?: (action: GameAction) => void; blocked?: boolean }) {
   const player = state.players[state.activePlayer];
   const ownedRoads = state.roads.filter((guardian) => guardian?.ownerId === player.id).length;
   const roadCount = BOARD_TILES.filter((tile) => tile === "road").length;
@@ -436,32 +269,19 @@ export function PartySummary({ state }: { state: GameState }) {
     >
       <div className={styles.playerCardHeader}>
         <span className={styles.playerDot}>{player.id + 1}</span>
-        <strong>{player.name}의 파티</strong>
+        <strong>{player.name}의 파티 · {player.party.length}/6</strong>
         <small>도로 {ownedRoads}/{roadCount}</small>
         {player.restTurnsRemaining > 0 && <small>휴식 {player.restTurnsRemaining}턴</small>}
       </div>
       <div className={styles.partyCards} tabIndex={0} aria-label="파티 카드 목록">
         {player.party.map((pokemon) => {
-          const species = speciesById[pokemon.speciesId];
-          return (
-            <article
-              key={pokemon.id}
-              className={`${styles.tradingCard} ${pokemon.hp === 0 ? styles.fainted : ""}`}
-              style={{ "--type-color": typeColors[species.types[0]] } as React.CSSProperties}
-              aria-label={`${species.name}, 레벨 ${pokemon.level}${pokemon.hp === 0 ? ", 행동불능" : ""}`}
-            >
-              <div className={styles.cardHeading}>
-                <strong>{species.name}</strong><span>Lv. {pokemon.level}</span>
-              </div>
-              <div className={styles.cardArtwork}>
-                <PokemonSprite speciesId={pokemon.speciesId} size={144} fit />
-              </div>
-              <div className={styles.typeRow}>
-                {species.types.map((type) => <TypeBadge key={type} type={type} />)}
-              </div>
-              <HealthBar hp={pokemon.hp} max={getStats(pokemon).hp} />
-            </article>
-          );
+          const action: GameAction = state.phase === "center"
+            ? { type: "CENTER_TRANSFER", pokemonId: pokemon.id, to: "box" }
+            : { type: "DEPLOY", pokemonId: pokemon.id };
+          const canMove = !blocked && state.exchangeActive && dispatch && transition(state, action) !== state;
+          return <PokemonCard key={pokemon.id} pokemon={pokemon}
+            destination={state.phase === "center" ? "박스로 이동" : "수비로 배치"}
+            onClick={canMove ? () => dispatch(action) : undefined} />;
         })}
       </div>
     </section>

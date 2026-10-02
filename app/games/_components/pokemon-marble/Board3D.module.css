@@ -9,7 +9,7 @@
 
 .surface {
   position: relative;
-  height: clamp(360px, 54vw, 590px);
+  height: clamp(400px, calc(100dvh - 335px), 720px);
   overflow: hidden;
   background: radial-gradient(
     ellipse at 50% 42%,
@@ -17,6 +17,120 @@
     #eaf0df 48%,
     #dbe8d9 100%
   );
+}
+
+.battleSurface {
+  background: radial-gradient(
+    ellipse at 50% 45%,
+    #ffffed,
+    #d5eedb 62%,
+    #a8d4c2
+  );
+}
+.sceneFade {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  animation: revealScene 0.2s ease-out both;
+}
+.battleHud {
+  position: absolute;
+  inset: auto 22px 20px;
+  display: flex;
+  justify-content: space-between;
+  gap: 30px;
+  pointer-events: none;
+}
+.fighterHud {
+  position: relative;
+  width: min(42%, 240px);
+  padding: 14px 17px;
+  border: 1px solid #ffffffd9;
+  border-radius: 18px;
+  background: #fffff3ed;
+  box-shadow:
+    0 6px 0 #93bda330,
+    0 10px 25px #33614b12;
+}
+.fighterHud > small {
+  color: #60816d;
+  font-size: 11px;
+}
+.fighterHud > strong {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 7px 0 10px;
+  font-size: 18px;
+  color: #254d3f;
+}
+.fighterHud > strong > span {
+  font-size: 11px;
+  white-space: nowrap;
+  color: #839070;
+}
+.eventCaption {
+  position: absolute;
+  top: 62px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: max-content;
+  max-width: calc(100% - 40px);
+  min-height: 42px;
+  padding: 10px 20px;
+  border: 1px solid #ffffffd6;
+  border-radius: 25px;
+  background: #ffffefef;
+  color: #295d46;
+  box-shadow: 0 6px 20px #48755412;
+  font-size: 13px;
+  text-align: center;
+  pointer-events: none;
+}
+.eventCaption small {
+  color: #bd6835;
+  font-size: 12px;
+}
+.damage {
+  position: absolute;
+  left: 50%;
+  top: -60px;
+  color: #ea6349;
+  font-size: 40px;
+  font-weight: 900;
+  text-shadow:
+    0 2px #fff,
+    2px 0 #fff,
+    -2px 0 #fff,
+    0 -2px #fff;
+  animation: damagePop 0.5s ease-out both;
+}
+@keyframes revealScene {
+  from {
+    background: #f4f9e9;
+  }
+  to {
+    background: transparent;
+  }
+}
+@keyframes damagePop {
+  from {
+    transform: translate(-50%, 12px) scale(0.7);
+    opacity: 0;
+  }
+  35% {
+    transform: translate(-50%, -8px) scale(1.15);
+    opacity: 1;
+  }
+  to {
+    transform: translate(-50%, -12px) scale(1);
+  }
 }
 
 .canvas {
@@ -218,7 +332,7 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  min-height: 34px;
+  min-height: 48px;
   border: 1px solid #d7e1cf;
   border-radius: 7px;
   padding: 5px 7px;
@@ -289,4 +403,13 @@
   .loader {
     animation: none;
   }
+  .sceneFade,
+  .damage {
+    animation: none;
+  }
+}
+
+:global([data-reduced-motion="true"]) .sceneFade,
+:global([data-reduced-motion="true"]) .damage {
+  animation: none;
 }

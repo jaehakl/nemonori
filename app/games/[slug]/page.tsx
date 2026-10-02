@@ -46,7 +46,9 @@ export default async function GamePage({
   }
 
   return (
-    <main className={styles.shell}>
+    <main
+      className={`${styles.shell} ${slug === "pokemon-marble" ? styles.marbleShell : ""}`}
+    >
       <div className={styles.navLinks}>
         <Link href="/" className={styles.backLink}>
           {"<- "}메인으로

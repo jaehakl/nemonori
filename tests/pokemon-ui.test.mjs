@@ -110,3 +110,65 @@ test("the in-game guide explains capture HP, defeat and battle priority", () => 
   assert.match(html, /레벨업과 진화는 HP를 회복하지 않습니다/);
   assert.match(html, /aria-label="닫기"/);
 });
+
+test("battle stage HP changes on impact and retains the finishing attack snapshot", () => {
+  const { BattleHud } = loadGameSource(
+    "app/games/_components/pokemon-marble/Board3D.tsx",
+    { "app/games/_components/pokemon-marble/board-renderer.ts": {} },
+  );
+  const { createGame, snapshotForPresentation, getStats } = loadGameSource(
+    "app/games/_components/pokemon-marble/engine.ts",
+  );
+  const { getAvailableMoves } = loadGameSource(
+    "app/games/_components/pokemon-marble/pokemon-data.ts",
+  );
+  const game = createGame([1, 4], ["민지", "준"], 15);
+  const target = { id: "wild", speciesId: 7, level: 1, hp: 0 };
+  game.battle = {
+    kind: "wild",
+    defenderOwner: null,
+    defenderPokemonId: target.id,
+    attackerPokemonId: game.players[0].party[0].id,
+    wild: target,
+    turn: "attacker",
+    winner: "attacker",
+    lastAttack: null,
+  };
+  const snapshot = snapshotForPresentation(game);
+  const move = getAvailableMoves(1, 1)[0];
+  const event = {
+    kind: "attack",
+    revision: 4,
+    sequence: 0,
+    playerId: 0,
+    tile: 1,
+    message: "마지막 공격",
+    snapshot,
+    attack: {
+      side: "attacker",
+      moveId: move.id,
+      moveType: move.type,
+      category: move.category,
+      damage: 9,
+      effectiveness: 1,
+      beforeHp: 9,
+      afterHp: 0,
+    },
+  };
+  const render = (progress) =>
+    renderToStaticMarkup(
+      React.createElement(BattleHud, {
+        battle: snapshot.battle,
+        presentation: { event, progress },
+      }),
+    );
+  assert.equal(snapshot.battle.defender.hp, 0);
+  assert.equal(snapshot.battle.defender.maxHp, getStats(target).hp);
+  assert.match(render(0.3), /aria-valuenow="9"/);
+  assert.doesNotMatch(render(0.3), /행동불능|−9/);
+  assert.match(render(0.45), /aria-valuenow="0"/);
+  assert.match(render(0.45), /행동불능/);
+  assert.match(render(0.45), /−9/);
+  game.battle = null;
+  assert.match(render(0.8), /꼬부기/);
+});

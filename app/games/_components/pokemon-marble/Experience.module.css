@@ -1,0 +1,148 @@
+.settings {
+  position: relative;
+  z-index: 8;
+  color: #3c6253;
+  font-size: 12px;
+}
+.settings summary {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  cursor: pointer;
+  font-weight: 750;
+  border-radius: 12px;
+  background: #edf5e8;
+}
+.settings summary::marker {
+  content: "";
+}
+.settings summary::-webkit-details-marker {
+  display: none;
+}
+.settingsPopover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  width: 260px;
+  padding: 20px;
+  background: #fffef6;
+  border: 1px solid #ccdcc6;
+  border-radius: 20px;
+  box-shadow: 0 18px 50px #264a3933;
+  display: grid;
+  gap: 12px;
+}
+.settingsPopover button {
+  min-height: 48px;
+  border-radius: 12px;
+  border: 1px solid #c8dbbd;
+  background: #eaf4df;
+  color: #31563e;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.settingsPopover label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.settingsPopover input[type="range"] {
+  flex-basis: 100%;
+  width: 100%;
+  min-height: 38px;
+  accent-color: #0e9573;
+}
+.settingsPopover .motionSetting {
+  justify-content: flex-start;
+  min-height: 48px;
+}
+.motionSetting input {
+  width: 22px;
+  height: 22px;
+  accent-color: #0e9573;
+}
+.settings :focus-visible {
+  outline: 3px solid #df9925;
+  outline-offset: 3px;
+}
+.orientation {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 18px;
+  padding: 36px;
+  color: #235543;
+  background: #f3f9edfa;
+  text-align: center;
+  backdrop-filter: blur(12px);
+}
+.orientationIcon {
+  font-size: 64px;
+}
+.orientation strong {
+  font-size: 26px;
+}
+.orientation p {
+  max-width: 340px;
+  line-height: 1.8;
+  margin: 0;
+}
+.playingNotice {
+  border: 1px solid #bfd9b8;
+  border-radius: 22px;
+  padding: 26px;
+  background: linear-gradient(135deg, #fffef0, #e6f4dc);
+  display: grid;
+  gap: 18px;
+  color: #305a42;
+  min-height: 200px;
+  align-content: center;
+}
+.playingNotice small {
+  color: #6b846f;
+  font-size: 10px;
+  letter-spacing: 2px;
+}
+.playingNotice strong {
+  font-size: 20px;
+  line-height: 1.6;
+}
+.playingNotice button {
+  min-height: 48px;
+  border: 1px solid #b9cdb1;
+  border-radius: 12px;
+  background: #ffffffa8;
+  color: #426247;
+  font: inherit;
+  cursor: pointer;
+}
+.playingNotice progress {
+  width: 100%;
+  height: 5px;
+  accent-color: #139879;
+}
+.collapsible {
+  border: 1px solid #dce6d2;
+  border-radius: 18px;
+  background: #ffffff80;
+  overflow: hidden;
+}
+.collapsible > summary {
+  min-height: 48px;
+  padding: 14px 18px;
+  color: #567047;
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.collapsible > summary:focus-visible {
+  outline: 3px solid #df9925;
+  outline-offset: -3px;
+}

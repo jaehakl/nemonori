@@ -47,9 +47,11 @@ export function PokemonChoice({
 export default function BattlePanel({
   state,
   dispatch,
+  compact = false,
 }: {
   state: GameState;
   dispatch: (action: GameAction) => void;
+  compact?: boolean;
 }) {
   const battle = state.battle!;
   const actorId = getActingPlayer(state);
@@ -81,47 +83,65 @@ export default function BattlePanel({
         </span>
         <span>1 VS 1</span>
       </div>
-      <div className={styles.combatants}>
-        {(["defender", "attacker"] as const).map((side, index) => {
-          const pokemon = side === "defender" ? defender : attacker;
-          const hit =
-            battle.lastAttack !== null && battle.lastAttack.side !== side;
-          return (
-            <div style={{ display: "contents" }} key={side}>
-              {index === 1 && <span className={styles.vs}>VS</span>}
-              <div
-                key={`${side}-${state.revision}`}
-                className={`${styles.combatant} ${state.phase === "attack" && battle.turn === side ? styles.activeCombatant : ""} ${hit ? styles.hit : ""}`}
-              >
-                <small>
-                  {side === "defender" ? "선공" : "후공"} ·{" "}
-                  {side === "defender"
-                    ? defendingName
-                    : state.players[state.activePlayer].name}
-                </small>
-                {pokemon ? (
-                  <>
-                    <PokemonSprite speciesId={pokemon.speciesId} size={80} />
-                    <strong>{speciesById[pokemon.speciesId].name}</strong>
-                    <small>Lv. {pokemon.level}</small>
-                    <div className={styles.typeRow}>
-                      {speciesById[pokemon.speciesId].types.map((type) => (
-                        <TypeBadge type={type} key={type} />
-                      ))}
-                    </div>
-                    <HealthBar hp={pokemon.hp} max={getStats(pokemon).hp} />
-                  </>
-                ) : (
-                  <>
-                    <div className={styles.emptyState}>?</div>
-                    <strong>출전 대기</strong>
-                  </>
-                )}
-              </div>
+      {compact ? (
+        <div className={styles.battleMatchup}>
+          <strong>
+            {attacker ? speciesById[attacker.speciesId].name : "나의 파트너"}{" "}
+            <span>VS</span>{" "}
+            {defender ? speciesById[defender.speciesId].name : "상대 파트너"}
+          </strong>
+          {targetPokemon && (
+            <div className={styles.typeRow}>
+              <small>상대 타입</small>
+              {speciesById[targetPokemon.speciesId].types.map((type) => (
+                <TypeBadge key={type} type={type} />
+              ))}
             </div>
-          );
-        })}
-      </div>
+          )}
+        </div>
+      ) : (
+        <div className={styles.combatants}>
+          {(["defender", "attacker"] as const).map((side, index) => {
+            const pokemon = side === "defender" ? defender : attacker;
+            const hit =
+              battle.lastAttack !== null && battle.lastAttack.side !== side;
+            return (
+              <div style={{ display: "contents" }} key={side}>
+                {index === 1 && <span className={styles.vs}>VS</span>}
+                <div
+                  key={`${side}-${state.revision}`}
+                  className={`${styles.combatant} ${state.phase === "attack" && battle.turn === side ? styles.activeCombatant : ""} ${hit ? styles.hit : ""}`}
+                >
+                  <small>
+                    {side === "defender" ? "선공" : "후공"} ·{" "}
+                    {side === "defender"
+                      ? defendingName
+                      : state.players[state.activePlayer].name}
+                  </small>
+                  {pokemon ? (
+                    <>
+                      <PokemonSprite speciesId={pokemon.speciesId} size={80} />
+                      <strong>{speciesById[pokemon.speciesId].name}</strong>
+                      <small>Lv. {pokemon.level}</small>
+                      <div className={styles.typeRow}>
+                        {speciesById[pokemon.speciesId].types.map((type) => (
+                          <TypeBadge type={type} key={type} />
+                        ))}
+                      </div>
+                      <HealthBar hp={pokemon.hp} max={getStats(pokemon).hp} />
+                    </>
+                  ) : (
+                    <>
+                      <div className={styles.emptyState}>?</div>
+                      <strong>출전 대기</strong>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
       <p className={styles.actionCopy} aria-live="polite">
         <strong>{actorName}</strong>
         {choosing

@@ -13,10 +13,12 @@ export default function ActionPanel({
   state,
   dispatch,
   onRestart,
+  compactBattle = false,
 }: {
   state: GameState;
   dispatch: (action: GameAction) => void;
   onRestart: () => void;
+  compactBattle?: boolean;
 }) {
   const player = state.players[state.activePlayer];
   const [partyChoice, setPartyChoice] = useState(player.party[0]?.id ?? "");
@@ -32,7 +34,9 @@ export default function ActionPanel({
   );
 
   if (["choose-defender", "choose-attacker", "attack"].includes(state.phase))
-    return <BattlePanel state={state} dispatch={dispatch} />;
+    return (
+      <BattlePanel state={state} dispatch={dispatch} compact={compactBattle} />
+    );
 
   if (state.phase === "finished")
     return (
@@ -158,7 +162,7 @@ export default function ActionPanel({
         state.phase === "turn-end") && (
         <>
           <div
-            className={`${styles.dicePair} ${state.phase === "moving" ? styles.rolling : ""}`}
+            className={styles.dicePair}
             aria-label={
               state.dice
                 ? `주사위 ${state.dice[0]}, ${state.dice[1]}`

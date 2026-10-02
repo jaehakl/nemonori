@@ -10,6 +10,9 @@ import {
   type BoardToken,
 } from "./board-renderer";
 import styles from "./Board3D.module.css";
+import type { BattleView, PresentationEvent } from "./presentation-events";
+import { HealthBar, TypeBadge } from "./PokemonSprite";
+import { movesById, speciesById } from "./pokemon-data";
 
 export type { BoardGuardian, BoardToken } from "./board-renderer";
 
@@ -19,8 +22,57 @@ type Props = {
   activePlayerId: number;
   dice: [number, number] | null;
   rolling: boolean;
+  battle?: BattleView | null;
+  presentation?: { event: PresentationEvent; progress: number } | null;
+  paused?: boolean;
+  reducedMotion?: boolean;
+  onFailure?: () => void;
+  onReady?: () => void;
   onTileSelect?: (tile: number) => void;
 };
+
+export function BattleHud({
+  battle,
+  presentation,
+}: {
+  battle: BattleView;
+  presentation: Props["presentation"];
+}) {
+  return (
+    <div className={styles.battleHud}>
+      {(["attacker", "defender"] as const).map((side) => {
+        const pokemon = battle[side];
+        const attack = presentation?.event.attack;
+        const receiving = attack && attack.side !== side;
+        const hp =
+          pokemon && receiving && presentation!.progress < 0.45
+            ? attack.beforeHp
+            : pokemon?.hp;
+        return (
+          <div className={styles.fighterHud} key={side}>
+            <small>
+              {side === "attacker" ? battle.attackerName : battle.defenderName}{" "}
+              · {side === "attacker" ? "후공" : "선공"}
+            </small>
+            <strong>
+              {pokemon ? speciesById[pokemon.speciesId].name : "파트너 선택 중"}
+              {pokemon && <span>Lv. {pokemon.level}</span>}
+            </strong>
+            {pokemon && <HealthBar hp={hp!} max={pokemon.maxHp} />}
+            {receiving && presentation!.progress >= 0.45 && (
+              <span
+                className={styles.damage}
+                key={`${presentation!.event.revision}-${presentation!.event.sequence}`}
+              >
+                −{attack.damage}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function Board3D({
   tokens,
@@ -28,6 +80,12 @@ export default function Board3D({
   activePlayerId,
   dice,
   rolling,
+  battle = null,
+  presentation = null,
+  paused = false,
+  reducedMotion = false,
+  onFailure,
+  onReady,
   onTileSelect,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -38,8 +96,14 @@ export default function Board3D({
     activePlayerId,
     dice,
     rolling,
+    battle,
+    presentation,
+    paused,
+    reducedMotion,
   });
   const onSelectRef = useRef(onTileSelect);
+  const onFailureRef = useRef(onFailure);
+  const onReadyRef = useRef(onReady);
   const [status, setStatus] = useState<"loading" | "ready" | "failed">(
     "loading",
   );
@@ -55,10 +119,35 @@ export default function Board3D({
   }, []);
 
   useEffect(() => {
-    snapshotRef.current = { tokens, guardians, activePlayerId, dice, rolling };
+    snapshotRef.current = {
+      tokens,
+      guardians,
+      activePlayerId,
+      dice,
+      rolling,
+      battle,
+      presentation,
+      paused,
+      reducedMotion,
+    };
     onSelectRef.current = onTileSelect;
+    onFailureRef.current = onFailure;
+    onReadyRef.current = onReady;
     rendererRef.current?.sync(snapshotRef.current);
-  }, [tokens, guardians, activePlayerId, dice, rolling, onTileSelect]);
+  }, [
+    tokens,
+    guardians,
+    activePlayerId,
+    dice,
+    rolling,
+    battle,
+    presentation,
+    paused,
+    reducedMotion,
+    onTileSelect,
+    onFailure,
+    onReady,
+  ]);
 
   useEffect(() => {
     let mounted = true;
@@ -68,15 +157,20 @@ export default function Board3D({
       let instance: BoardRenderer | null = null;
       try {
         instance = createBoardRenderer(hostRef.current, selectTile, () => {
-          if (mounted) setStatus("failed");
+          if (mounted) {
+            setStatus("failed");
+            onFailureRef.current?.();
+          }
         });
         rendererRef.current = instance;
         instance.sync(snapshotRef.current);
         instance.selectTile(selectedRef.current);
         setStatus("ready");
+        onReadyRef.current?.();
       } catch {
         instance?.dispose();
         setStatus("failed");
+        onFailureRef.current?.();
       }
     });
     return () => {
@@ -101,19 +195,60 @@ export default function Board3D({
 
   return (
     <section className={styles.board} aria-label="포켓몬 마블 게임판">
-      <div className={styles.surface}>
+      <div
+        className={`${styles.surface} ${battle ? styles.battleSurface : ""}`}
+      >
         <div className={styles.badges} aria-hidden="true">
           <span className={styles.worldBadge}>
-            <span /> LITTLE ADVENTURE
+            <span /> {battle ? "PARTNER BATTLE" : "LITTLE ADVENTURE"}
           </span>
-          <span className={styles.tileBadge}>32칸의 모험</span>
+          <span className={styles.tileBadge}>
+            {battle ? "1 VS 1" : "32칸의 모험"}
+          </span>
         </div>
         <div
           ref={hostRef}
           className={styles.canvas}
           role="img"
-          aria-label={`쿼터뷰 3D 게임판. ${active?.name ?? "플레이어"}의 차례. 플레이어 위치는 아래 칸 목록에서 확인할 수 있습니다.`}
+          aria-label={
+            battle
+              ? "포켓몬 3D 배틀 무대. 체력과 기술은 화면의 배틀 정보에서 확인할 수 있습니다."
+              : `쿼터뷰 3D 게임판. ${active?.name ?? "플레이어"}의 차례. 플레이어 위치는 아래 칸 목록에서 확인할 수 있습니다.`
+          }
         />
+        <div
+          key={battle ? "battle" : "board"}
+          className={styles.sceneFade}
+          aria-hidden="true"
+        />
+        {status === "ready" && battle && (
+          <BattleHud battle={battle} presentation={presentation} />
+        )}
+        {status === "ready" &&
+          presentation &&
+          presentation.event.kind !== "move" && (
+            <div className={styles.eventCaption} role="status">
+              {presentation.event.attack ? (
+                <>
+                  <TypeBadge type={presentation.event.attack.moveType} />
+                  <strong>
+                    {movesById[presentation.event.attack.moveId].name}
+                  </strong>
+                  {presentation.progress >= 0.45 && (
+                    <small>
+                      {presentation.event.attack.effectiveness > 1
+                        ? "효과가 굉장합니다!"
+                        : presentation.event.attack.effectiveness < 1
+                          ? "효과가 약합니다"
+                          : "명중!"}
+                    </small>
+                  )}
+                </>
+              ) : (
+                <strong>{presentation.event.message}</strong>
+              )}
+            </div>
+          )}
         {status === "loading" && (
           <div className={styles.overlay}>
             <span className={styles.loader} />
@@ -141,7 +276,7 @@ export default function Board3D({
             </button>
           </div>
         )}
-        {status === "ready" && (
+        {status === "ready" && !battle && !presentation && (
           <div className={styles.diceResult} aria-live="polite">
             {rolling ? (
               "주사위를 굴리는 중…"

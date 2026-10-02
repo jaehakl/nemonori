@@ -1,10 +1,9 @@
 "use client";
 
 import { BOARD_TILES, getTilePosition } from "./board";
-import { useId } from "react";
-import type { BoardGuardian, BoardToken } from "./board-renderer";
-import { speciesById, spriteUrl } from "./pokemon-data";
-import { useSpriteArtwork } from "./sprite-artwork";
+import type { BoardGuardian, BoardToken } from "./board-view";
+import { speciesById } from "./pokemon-data";
+import SvgPokemon from "./SvgPokemon";
 import type { PresentationEvent } from "./presentation-events";
 import styles from "./Board2D.module.css";
 
@@ -53,56 +52,6 @@ function tokenLayout(
   };
 }
 
-function Portrait({
-  speciesId,
-  x,
-  y,
-  size,
-  color = "#627365",
-}: {
-  speciesId: number;
-  x: number;
-  y: number;
-  size: number;
-  color?: string;
-}) {
-  const { bounds, status } = useSpriteArtwork(speciesId);
-  const clipId = useId();
-  const imageSize = size * (bounds?.scale ?? 1);
-  const name = speciesById[speciesId]?.name ?? "포켓몬";
-  return (
-    <g>
-      <defs>
-        <clipPath id={clipId}>
-          <rect x={x - size / 2} y={y - size / 2} width={size} height={size} />
-        </clipPath>
-      </defs>
-      {status === "failed" ? (
-        <g>
-          <rect x={x - size / 2} y={y - size / 2} width={size} height={size} rx="4" fill="#fff" stroke={color} strokeWidth="2" />
-          <text
-            x={x} y={y}
-            fontSize={Math.max(6, size * 0.17)}
-            textAnchor="middle" dominantBaseline="middle"
-            textLength={size * 0.88} lengthAdjust="spacingAndGlyphs"
-            fill={color}
-          >{name}</text>
-        </g>
-      ) : (
-        <image
-          href={spriteUrl(speciesId)}
-          x={x - imageSize * (bounds?.centerX ?? 0.5)}
-          y={y - imageSize * (bounds?.centerY ?? 0.5)}
-          width={imageSize}
-          height={imageSize}
-          clipPath={`url(#${clipId})`}
-          className={styles.portrait}
-          aria-label={name}
-        />
-      )}
-    </g>
-  );
-}
 
 function Die({
   value,
@@ -250,7 +199,7 @@ export default function Board2D({
           const size = occupantCount === 0 ? 76 : crowded ? 30 : 44;
           return (
             <g key={guardian.tile} data-guardian={guardian.tile} data-species={guardian.speciesId} data-guardian-size={size}>
-              <Portrait
+              <SvgPokemon
                 speciesId={guardian.speciesId}
                 x={center.x}
                 y={center.y - 50 + (occupantCount === 0 ? 50 : crowded ? 17 : 26)}
@@ -298,7 +247,7 @@ export default function Board2D({
                 strokeWidth={size <= 32 ? (token.id === activePlayerId ? 4 : 2) : (token.id === activePlayerId ? 5 : 3)}
                 strokeDasharray={resting ? "5 3" : undefined}
               />
-              <Portrait speciesId={token.starterSpeciesId} x={0} y={-size * 0.08} size={size * 0.8} color={token.color} />
+              <SvgPokemon speciesId={token.starterSpeciesId} x={0} y={-size * 0.08} size={size * 0.8} color={token.color} />
               <rect x={tagX} y={tagY} width={tagWidth} height={tagHeight} rx={tagHeight / 3} fill={token.color} />
               <text
                 x={tagX + tagWidth / 2}

@@ -39,13 +39,6 @@
     #a8d4c2
   );
 }
-.sceneFade {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  animation: revealScene 0.2s ease-out both;
-}
 .battleHud {
   position: absolute;
   inset: auto 22px 20px;
@@ -176,14 +169,6 @@
     0 -2px #fff;
   animation: damagePop 0.5s ease-out both;
 }
-@keyframes revealScene {
-  from {
-    background: #f4f9e9;
-  }
-  to {
-    background: transparent;
-  }
-}
 @keyframes damagePop {
   from {
     transform: translate(-50%, 12px) scale(0.7);
@@ -196,18 +181,6 @@
   to {
     transform: translate(-50%, -12px) scale(1);
   }
-}
-
-.canvas {
-  position: absolute;
-  inset: 0;
-  cursor: pointer;
-}
-
-.canvas canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
 }
 
 .badges {
@@ -249,58 +222,6 @@
   letter-spacing: 0;
 }
 
-.overlay {
-  position: absolute;
-  z-index: 2;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 28px;
-  background: #edf2e6f2;
-  text-align: center;
-}
-
-.overlay p {
-  margin: 0;
-  color: #5b7366;
-  font-size: 13px;
-  line-height: 1.8;
-}
-
-.loader {
-  width: 30px;
-  height: 30px;
-  border: 3px solid #c9dbbf;
-  border-top-color: #43765c;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-.errorIcon {
-  color: #bc7757;
-  font-size: 42px;
-}
-
-.retry {
-  min-height: 48px;
-  border: 0;
-  border-radius: 12px;
-  padding: 11px 18px;
-  background: #38694f;
-  color: #fffced;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.retry:hover {
-  background: #295840;
-}
-.retry:focus-visible,
 .tileDetails summary:focus-visible,
 .tileList button:focus-visible {
   outline: 3px solid #d99538;
@@ -431,12 +352,6 @@
   background: #e3efcf;
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 @media (max-width: 600px) {
   .board {
     border-radius: 18px;
@@ -471,16 +386,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .loader {
-    animation: none;
-  }
-  .sceneFade,
   .damage {
     animation: none;
   }
 }
 
-:global([data-reduced-motion="true"]) .sceneFade,
 :global([data-reduced-motion="true"]) .damage {
   animation: none;
 }

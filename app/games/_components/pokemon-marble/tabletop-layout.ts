@@ -19,7 +19,7 @@ const BATTLE_MODAL_DEPTH = 260;
 const BATTLE_MODAL_WIDTH = 620;
 const MODAL_MARGIN = 16;
 
-/** CSS rotates only the controls; the board and battle camera stay upright. */
+/** CSS rotates only the controls; the board and battle stage stay upright. */
 export function getTabletopLayout(
   width: number,
   height: number,

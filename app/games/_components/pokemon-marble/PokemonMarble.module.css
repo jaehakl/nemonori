@@ -185,25 +185,6 @@
   margin: 12px 0 16px;
   accent-color: var(--green);
 }
-.graphicsError {
-  position: absolute;
-  z-index: 6;
-  right: 12px;
-  bottom: 16px;
-  width: var(--side-rail-width);
-  display: grid;
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid #d9b98d;
-  border-radius: 12px;
-  background: #fff9e9;
-  font-size: 11px;
-  line-height: 1.5;
-}
-.graphicsError button {
-  padding: 6px;
-  font-size: 11px;
-}
 .controlActions {
   flex: 1;
   min-width: 0;

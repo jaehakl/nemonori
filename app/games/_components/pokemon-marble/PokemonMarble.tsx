@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { saveGameSave } from "@/app/lib/save-protocol";
 import { BOARD_TILES, PLAYER_COLORS } from "./board";
-import Board3D, { BattleHud, BoardTileList, EventCaption } from "./Board3D";
+import GameBoard, { BattleHud, BoardTileList, EventCaption } from "./GameBoard";
 import {
   createGame,
   snapshotForPresentation,
@@ -57,8 +57,6 @@ export default function PokemonMarble() {
     seatSides: SeatSide[];
   } | null>(null);
   const [selectedTile, setSelectedTile] = useState<number | null>(null);
-  const [graphicsFailed, setGraphicsFailed] = useState(false);
-  const [graphicsRetry, setGraphicsRetry] = useState(0);
   const canonicalView = useMemo(
     () => (game ? snapshotForPresentation(game) : null),
     [game],
@@ -137,7 +135,6 @@ export default function PokemonMarble() {
       const seed = crypto.getRandomValues(new Uint32Array(1))[0];
       experience.reset();
       experience.unlockAudio();
-      setGraphicsFailed(false);
       commit(createGame(starters, names, seed, seatSides));
       setPendingStart(null);
       setGameError(null);
@@ -211,14 +208,6 @@ export default function PokemonMarble() {
               )}
             </div>
           </header>
-          {graphicsFailed && battleVisible && (
-            <aside className={styles.graphicsError} role="alert">
-              <span>배틀 무대를 표시하지 못했습니다. 선택 버튼으로 계속할 수 있습니다.</span>
-              <button className={styles.secondaryButton} onClick={() => setGraphicsRetry((value) => value + 1)}>
-                무대 다시 불러오기
-              </button>
-            </aside>
-          )}
           {saveError && (
             <div className={styles.notice} role="alert">
               <span>
@@ -251,7 +240,6 @@ export default function PokemonMarble() {
                   ? () => {
                       experience.reset();
                       experience.unlockAudio();
-                      setGraphicsFailed(false);
                       gameRef.current = savedGame;
                       setGame(savedGame);
                     }
@@ -268,10 +256,9 @@ export default function PokemonMarble() {
                 seatSide={controlLayout.seatSide}
                 mode={controlLayout.mode}
                 board={
-                  <Board3D
+                  <GameBoard
                     tabletop
                     hideHud
-                    retryKey={graphicsRetry}
                     selectedTile={selectedTile}
                     tokens={view!.players.map((player) => ({
                       id: player.id,
@@ -289,11 +276,6 @@ export default function PokemonMarble() {
                     presentation={presentation}
                     paused={experience.paused}
                     reducedMotion={experience.reducedMotion}
-                    onFailure={() => {
-                      setGraphicsFailed(true);
-                      experience.skip();
-                    }}
-                    onReady={() => setGraphicsFailed(false)}
                     onTileSelect={setSelectedTile}
                   />
                 }

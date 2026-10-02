@@ -1,21 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  createBoardRenderer,
-  TILE_NAMES,
-  type BoardGuardian,
-  type BoardRenderer,
-  type BoardSnapshot,
-  type BoardToken,
-} from "./board-renderer";
-import styles from "./Board3D.module.css";
+import { useState } from "react";
+import { TILE_NAMES, type BoardGuardian, type BoardToken } from "./board-view";
+import styles from "./GameBoard.module.css";
+import Battle2D from "./Battle2D";
 import type { BattleView, PresentationEvent } from "./presentation-events";
 import { HealthBar, TypeBadge } from "./PokemonSprite";
 import { movesById, speciesById } from "./pokemon-data";
 import Board2D from "./Board2D";
 
-export type { BoardGuardian, BoardToken } from "./board-renderer";
+export type { BoardGuardian, BoardToken } from "./board-view";
 
 type Props = {
   tokens: BoardToken[];
@@ -30,9 +24,6 @@ type Props = {
   tabletop?: boolean;
   hideHud?: boolean;
   selectedTile?: number | null;
-  retryKey?: number;
-  onFailure?: () => void;
-  onReady?: () => void;
   onTileSelect?: (tile: number) => void;
 };
 
@@ -140,7 +131,7 @@ function describeTile(
   return `${index + 1}번 ${TILE_NAMES[index]}${occupants.length ? ` · ${occupants.join(", ")}` : ""}${owner ? ` · ${owner.name}의 수비` : ""}`;
 }
 
-/** Reusable in the rotating controls, including when WebGL is unavailable. */
+/** Reusable in the rotating controls, for keyboard navigation. */
 export function BoardTileList({
   tokens,
   guardians,
@@ -185,7 +176,7 @@ export function BoardTileList({
   );
 }
 
-export default function Board3D({
+export default function GameBoard({
   tokens,
   guardians,
   activePlayerId,
@@ -198,140 +189,15 @@ export default function Board3D({
   tabletop = false,
   hideHud = false,
   selectedTile: controlledSelectedTile,
-  retryKey = 0,
-  onFailure,
-  onReady,
   onTileSelect,
 }: Props) {
-  const hostRef = useRef<HTMLDivElement>(null);
-  const rendererRef = useRef<BoardRenderer | null>(null);
-  const initializeRef = useRef<(() => void) | null>(null);
-  const renderedSnapshotRef = useRef<BoardSnapshot | null>(null);
-  const battleVisible = Boolean(battle);
-  const snapshotRef = useRef<BoardSnapshot>({
-    tokens,
-    guardians,
-    activePlayerId,
-    dice,
-    rolling,
-    battle,
-    presentation,
-    paused: paused || !battle,
-    reducedMotion,
-  });
-  const onSelectRef = useRef(onTileSelect);
-  const onFailureRef = useRef(onFailure);
-  const onReadyRef = useRef(onReady);
-  const [status, setStatus] = useState<"loading" | "ready" | "failed">(
-    "loading",
-  );
-  const [attempt, setAttempt] = useState(0);
   const [internalSelectedTile, setSelectedTile] = useState<number | null>(null);
-  const selectedTile =
-    controlledSelectedTile === undefined
-      ? internalSelectedTile
-      : controlledSelectedTile;
-  const selectedRef = useRef<number | null>(null);
-
-  const selectTile = useCallback((tile: number) => {
+  const selectedTile = controlledSelectedTile === undefined
+    ? internalSelectedTile : controlledSelectedTile;
+  function selectTile(tile: number) {
     setSelectedTile(tile);
-    selectedRef.current = tile;
-    rendererRef.current?.selectTile(tile);
-    onSelectRef.current?.(tile);
-  }, []);
-
-  useEffect(() => {
-    if (controlledSelectedTile === undefined) return;
-    selectedRef.current = controlledSelectedTile;
-    rendererRef.current?.selectTile(controlledSelectedTile);
-  }, [controlledSelectedTile]);
-
-  useEffect(() => {
-    snapshotRef.current = {
-      tokens,
-      guardians,
-      activePlayerId,
-      dice,
-      rolling,
-      battle,
-      presentation,
-      paused: paused || !battle,
-      reducedMotion,
-    };
-    onSelectRef.current = onTileSelect;
-    onFailureRef.current = onFailure;
-    onReadyRef.current = onReady;
-    if (battle) {
-      renderedSnapshotRef.current = snapshotRef.current;
-      rendererRef.current?.sync(snapshotRef.current);
-    } else if (renderedSnapshotRef.current && !renderedSnapshotRef.current.paused) {
-      // Freeze the last battle once; SVG movement never redraws a hidden 3D board.
-      const frozen = { ...renderedSnapshotRef.current, paused: true };
-      renderedSnapshotRef.current = frozen;
-      rendererRef.current?.sync(frozen);
-    }
-  }, [
-    tokens,
-    guardians,
-    activePlayerId,
-    dice,
-    rolling,
-    battle,
-    presentation,
-    paused,
-    reducedMotion,
-    onTileSelect,
-    onFailure,
-    onReady,
-  ]);
-
-  useEffect(() => {
-    let mounted = true;
-    let pendingFrame: number | null = null;
-    let attempted = false;
-    // Allocate WebGL on the first battle, then retain it across turns and seats.
-    initializeRef.current = () => {
-      if (!mounted || attempted || pendingFrame !== null) return;
-      pendingFrame = requestAnimationFrame(() => {
-        pendingFrame = null;
-        if (!mounted || !hostRef.current || !snapshotRef.current.battle) return;
-        attempted = true;
-        setStatus("loading");
-        let instance: BoardRenderer | null = null;
-        try {
-          instance = createBoardRenderer(hostRef.current, selectTile, () => {
-            if (mounted) {
-              setStatus("failed");
-              onFailureRef.current?.();
-            }
-          });
-          rendererRef.current = instance;
-          renderedSnapshotRef.current = snapshotRef.current;
-          instance.sync(snapshotRef.current);
-          instance.selectTile(selectedRef.current);
-          setStatus("ready");
-          onReadyRef.current?.();
-        } catch {
-          instance?.dispose();
-          rendererRef.current = null;
-          setStatus("failed");
-          onFailureRef.current?.();
-        }
-      });
-    };
-    return () => {
-      mounted = false;
-      if (pendingFrame !== null) cancelAnimationFrame(pendingFrame);
-      initializeRef.current = null;
-      rendererRef.current?.dispose();
-      rendererRef.current = null;
-      renderedSnapshotRef.current = null;
-    };
-  }, [attempt, retryKey, selectTile]);
-
-  useEffect(() => {
-    if (battleVisible) initializeRef.current?.();
-  }, [battleVisible, attempt, retryKey]);
+    onTileSelect?.(tile);
+  }
 
   return (
     <section
@@ -365,47 +231,11 @@ export default function Board3D({
             selectedTile={selectedTile}
           />
         )}
-        <div
-          ref={hostRef}
-          className={styles.canvas}
-          hidden={!battle}
-          role="img"
-          aria-label="포켓몬 3D 배틀 무대. 체력과 기술은 화면의 배틀 정보에서 확인할 수 있습니다."
-        />
-        {battle && <div className={styles.sceneFade} aria-hidden="true" />}
-        {!hideHud && status === "ready" && battle && (
-          <BattleHud battle={battle} presentation={presentation} />
+        {battle && (
+          <Battle2D battle={battle} presentation={presentation} reducedMotion={reducedMotion} />
         )}
-        {!hideHud && (!battle || status === "ready") && (
-          <EventCaption presentation={presentation} />
-        )}
-        {battle && status === "loading" && (
-          <div className={styles.overlay}>
-            <span className={styles.loader} />
-            <p>배틀 무대를 준비하는 중…</p>
-          </div>
-        )}
-        {battle && status === "failed" && (
-          <div className={styles.overlay} role="alert">
-            <span className={styles.errorIcon}>◇</span>
-            <strong>배틀 무대를 표시할 수 없어요</strong>
-            <p>
-              브라우저의 그래픽 가속 설정을 확인한 뒤 다시 시도해 주세요.
-              <br />
-              배틀 정보와 행동 버튼으로 계속 플레이할 수 있습니다.
-            </p>
-            <button
-              type="button"
-              className={styles.retry}
-              onClick={() => {
-                setStatus("loading");
-                setAttempt((value) => value + 1);
-              }}
-            >
-              배틀 무대 다시 불러오기
-            </button>
-          </div>
-        )}
+        {!hideHud && battle && <BattleHud battle={battle} presentation={presentation} />}
+        {!hideHud && <EventCaption presentation={presentation} />}
         {!hideHud && !battle && !presentation && (
           <div className={styles.diceResult} aria-live="polite">
             {rolling ? (

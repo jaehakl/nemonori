@@ -14,7 +14,7 @@ const {
   saveDisplayPreferences,
 } = loadGameSource(`${path}display-preferences.ts`);
 const seats = ["bottom", "left", "top", "right"];
-const { default: Board3D, BoardTileList, BattleHud } = loadGameSource(`${path}Board3D.tsx`);
+const { default: GameBoard, BoardTileList, BattleHud } = loadGameSource(`${path}GameBoard.tsx`);
 const { default: TabletopControls } = loadGameSource(`${path}TabletopControls.tsx`);
 const { getFullscreenState, toggleFullscreen } = loadGameSource(
   `${path}fullscreen.ts`,
@@ -149,8 +149,8 @@ test("compact battle HP groups identify each trainer and reflect damage only at 
   assert.equal((after.match(/role="meter"/g) ?? []).length, 2);
 });
 
-test("the normal board renders SVG immediately with a hidden battle host and no WebGL loading overlay", () => {
-  const html = renderToStaticMarkup(React.createElement(Board3D, {
+test("the normal board renders SVG immediately without a canvas or graphics initialization", () => {
+  const html = renderToStaticMarkup(React.createElement(GameBoard, {
     tokens: [],
     guardians: [],
     activePlayerId: 0,
@@ -161,7 +161,7 @@ test("the normal board renders SVG immediately with a hidden battle host and no 
     selectedTile: 39,
   }));
   assert.match(html, /<svg\b/);
-  assert.match(html, /class="canvas" hidden=""/);
+  assert.doesNotMatch(html, /<canvas\b|class="canvas"/);
   assert.doesNotMatch(html, /배틀 무대를 준비하는 중|배틀 무대를 표시할 수 없어요/);
 });
 

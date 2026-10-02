@@ -29,13 +29,8 @@
   pointer-events: none;
 }
 
-.pieces,
-.portrait {
+.pieces {
   pointer-events: none;
-}
-
-.portrait {
-  image-rendering: pixelated;
 }
 
 .playerLabel {

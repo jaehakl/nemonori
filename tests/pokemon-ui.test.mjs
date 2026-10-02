@@ -207,8 +207,7 @@ test("the in-game guide explains capture HP, defeat and battle priority", () => 
 
 test("battle stage HP changes on impact and retains the finishing attack snapshot", () => {
   const { BattleHud } = loadGameSource(
-    "app/games/_components/pokemon-marble/Board3D.tsx",
-    { "app/games/_components/pokemon-marble/board-renderer.ts": {} },
+    "app/games/_components/pokemon-marble/GameBoard.tsx",
   );
   const { createGame, snapshotForPresentation, getStats } = loadGameSource(
     "app/games/_components/pokemon-marble/engine.ts",

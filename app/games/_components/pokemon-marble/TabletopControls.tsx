@@ -15,7 +15,7 @@ type Props = {
   compact?: boolean;
 };
 
-/** Stable stage sibling: changing a seat never remounts the WebGL canvas. */
+/** Stable stage sibling: changing a seat keeps the board and battle artwork independent. */
 export default function TabletopControls({
   battle,
   seatSide,

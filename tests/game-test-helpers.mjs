@@ -17,6 +17,8 @@ export function loadGameSource(relativePath, overrides = {}) {
     if (replacements.has(path)) return replacements.get(path);
     if (cache.has(path)) return cache.get(path).exports;
 
+    if (path.endsWith(".json")) return JSON.parse(readFileSync(path, "utf8"));
+
     const compiledModule = { exports: {} };
     cache.set(path, compiledModule);
     const source = readFileSync(path, "utf8");

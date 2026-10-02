@@ -6,12 +6,22 @@ import { fixtureGame, loadGameSource } from "./game-test-helpers.mjs";
 
 const catalog = loadGameSource("app/games/data.ts");
 
-test("the empty registry exposes no games, tags, or old routes", () => {
-  assert.deepEqual(catalog.gameCatalog, []);
-  assert.deepEqual(catalog.allTags, []);
+test("the registry exposes Pokémon Marble without reviving removed games", () => {
+  assert.deepEqual(catalog.gameCatalog.map((game) => game.slug), ["pokemon-marble"]);
+  const game = catalog.getGameBySlug("pokemon-marble");
+  assert.equal(game.title, "포켓몬 마블");
+  assert.equal(typeof game.load, "function");
+  assert.ok(catalog.allTags.includes("포켓몬"));
   for (const slug of ["baseball-manager", "robots-and-wizard", "tetris", "roguelike-rpg", "phaser-meteor-dodge", "phaser-border-collie-roundup", "bakery-tycoon", "phaser-joseon-warfront", "missing-game"]) {
     assert.equal(catalog.getGameBySlug(slug), undefined);
   }
+});
+
+test("an empty registry remains a supported catalog state", () => {
+  const empty = catalog.defineGameCatalog([]);
+  assert.deepEqual(empty, []);
+  assert.deepEqual(catalog.filterGameCatalog(empty, "", "all"), []);
+  assert.ok(Object.isFrozen(empty));
 });
 
 test("catalog construction does not load game modules", () => {
@@ -51,11 +61,22 @@ test("search and tags combine, and resetting both returns the full catalog", () 
 });
 
 test("the empty home page hides search and shows a clear status", () => {
-  const { default: HomePage } = loadGameSource("app/page.tsx");
+  const { default: HomePage } = loadGameSource("app/page.tsx", {
+    "app/games/data.ts": { ...catalog, gameCatalog: [], allTags: [] },
+  });
   const html = renderToStaticMarkup(React.createElement(HomePage));
   assert.match(html, /등록된 게임이 없습니다/);
   assert.match(html, /href="\/saves"/);
   assert.doesNotMatch(html, /<input|게임 검색 및 필터|검색 결과가 없습니다/);
+});
+
+test("the home page renders the registered game and its playable route", () => {
+  const { default: HomePage } = loadGameSource("app/page.tsx");
+  const html = renderToStaticMarkup(React.createElement(HomePage));
+  assert.match(html, /포켓몬 마블/);
+  assert.match(html, /href="\/games\/pokemon-marble"/);
+  assert.match(html, /게임 검색 및 필터/);
+  assert.doesNotMatch(html, /등록된 게임이 없습니다/);
 });
 
 test("no search results provide an accessible reset action", () => {
@@ -70,10 +91,23 @@ test("no search results provide an accessible reset action", () => {
   assert.equal(resets, 1);
 });
 
-test("the empty game route has no static params and rejects unregistered URLs", async () => {
+test("the game route statically registers Pokémon Marble and rejects removed URLs", async () => {
   const route = loadGameSource("app/games/[slug]/page.tsx");
-  assert.deepEqual(route.generateStaticParams(), []);
+  assert.deepEqual(route.generateStaticParams(), [{ slug: "pokemon-marble" }]);
+  const registered = await route.generateMetadata({ params: Promise.resolve({ slug: "pokemon-marble" }) });
+  assert.equal(registered.title, "포켓몬 마블 | Nemonori Arcade");
+  const view = await route.default({ params: Promise.resolve({ slug: "pokemon-marble" }) });
+  const html = renderToStaticMarkup(view);
+  assert.match(html, /포켓몬 마블/);
+  assert.match(html, /게임을 불러오는 중/);
   await assert.rejects(() => route.default({ params: Promise.resolve({ slug: "tetris" }) }), /NEXT_HTTP_ERROR_FALLBACK;404/);
   const metadata = await route.generateMetadata({ params: Promise.resolve({ slug: "tetris" }) });
   assert.match(metadata.title, /게임을 찾을 수 없습니다/);
+});
+
+test("an empty registry generates no static game routes", () => {
+  const route = loadGameSource("app/games/[slug]/page.tsx", {
+    "app/games/data.ts": { ...catalog, gameCatalog: [], allTags: [], getGameBySlug: () => undefined },
+  });
+  assert.deepEqual(route.generateStaticParams(), []);
 });

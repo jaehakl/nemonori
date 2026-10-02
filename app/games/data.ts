@@ -34,8 +34,18 @@ export function defineGameCatalog(entries: readonly GameRegistration[]): readonl
   return Object.freeze(entries.map((game) => Object.freeze({ ...game, tags: Object.freeze([...game.tags]) })));
 }
 
-// Register each future game here with metadata and a literal dynamic import.
-export const gameCatalog = defineGameCatalog([]);
+export const gameCatalog = defineGameCatalog([
+  {
+    slug: "pokemon-marble",
+    title: "포켓몬 마블",
+    summary: "주사위를 굴려 모험하고, 포켓몬을 모아 도로를 지키세요. 마지막까지 살아남는 트레이너가 승리합니다.",
+    tags: ["보드게임", "포켓몬", "2–4인", "전략"],
+    difficulty: "Normal",
+    estPlayMinutes: 40,
+    accent: "#0f8b76",
+    load: () => import("./_components/pokemon-marble/PokemonMarble"),
+  },
+]);
 
 export const allTags = Array.from(new Set(gameCatalog.flatMap((game) => game.tags))).sort();
 

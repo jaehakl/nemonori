@@ -1,28 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import type { ComponentType } from "react";
-import { gameCatalog, getGameBySlug, type GameComponentKey } from "../data";
-import { TetrisGame } from "../_components/TetrisGame";
-import { RoguelikeRpgGame } from "../_components/RoguelikeRpgGame";
-import { PhaserMeteorDodgeGame } from "../_components/PhaserMeteorDodgeGame";
-import { BabylonBorderCollieRoundupGame } from "../_components/BabylonBorderCollieRoundupGame";
-import { BakeryTycoonGame } from "../_components/BakeryTycoonGame";
-import { PhaserJoseonWarfrontGame } from "../_components/PhaserJoseonWarfrontGame";
-import { BaseballManagerGame } from "../_components/baseball-manager/BaseballManagerGame";
-import { RobotsAndWizardGame } from "../_components/robots-and-wizard/RobotsAndWizardGame";
+import { gameCatalog, getGameBySlug } from "../data";
+import { GameHost } from "../_components/GameHost";
 import styles from "./page.module.css";
-
-const gameViewByComponent: Record<GameComponentKey, ComponentType> = {
-  tetris: TetrisGame,
-  "roguelike-rpg": RoguelikeRpgGame,
-  "phaser-meteor-dodge": PhaserMeteorDodgeGame,
-  "phaser-border-collie-roundup": BabylonBorderCollieRoundupGame,
-  "bakery-tycoon": BakeryTycoonGame,
-  "phaser-joseon-warfront": PhaserJoseonWarfrontGame,
-  "robots-and-wizard": RobotsAndWizardGame,
-  "baseball-manager": BaseballManagerGame,
-};
 
 type Params = {
   slug: string;
@@ -42,7 +23,7 @@ export async function generateMetadata({
 
   if (!game) {
     return {
-      title: "Game Not Found",
+      title: "게임을 찾을 수 없습니다 | Nemonori Arcade",
     };
   }
 
@@ -64,8 +45,6 @@ export default async function GamePage({
     notFound();
   }
 
-  const GameView = gameViewByComponent[game.component];
-
   return (
     <main className={styles.shell}>
       <div className={styles.navLinks}>
@@ -81,7 +60,7 @@ export default async function GamePage({
         <p>{game.summary}</p>
       </header>
       <section className={styles.gameWrap}>
-        <GameView />
+        <GameHost key={game.slug} slug={game.slug} />
       </section>
     </main>
   );

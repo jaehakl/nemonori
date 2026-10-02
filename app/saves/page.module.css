@@ -1,4 +1,4 @@
-﻿.shell {
+.shell {
   min-height: 100vh;
   padding: 28px 18px 56px;
   background:
@@ -145,4 +145,51 @@
 
 .deleteButton {
   margin-top: 10px;
+}
+
+.secondaryButton:disabled,
+.dangerButton:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.notice {
+  max-width: 980px;
+  margin: 0 auto 16px;
+  padding: 12px;
+  border: 1px solid #86efac;
+  border-radius: 10px;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.errorNotice {
+  border-color: #fca5a5;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.corruptCard {
+  border-color: #fca5a5;
+}
+
+.corruptReason {
+  color: #991b1b;
+}
+
+.unavailable {
+  color: #475569;
+  font-size: 13px;
+}
+
+.cardHead,
+.cardHead p {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 540px) {
+  .cardHead {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }

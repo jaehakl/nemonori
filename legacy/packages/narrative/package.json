@@ -1,6 +1,0 @@
-{
-  "name": "@nori/narrative",
-  "version": "0.0.1",
-  "type": "module",
-  "main": "src/index.js"
-}

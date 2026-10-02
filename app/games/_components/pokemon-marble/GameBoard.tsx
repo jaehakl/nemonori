@@ -36,8 +36,18 @@ export function BattleHud({
   presentation: Props["presentation"];
   inline?: boolean;
 }) {
+  const attacking = presentation?.event.kind === "attack" ? presentation.event.attack?.side : null;
+  const activeSide = presentation ? attacking : battle.phase === "attack" ? battle.turn : null;
+  const activePokemon = activeSide ? battle[activeSide] : null;
+  const activeName = activeSide === "attacker" ? battle.attackerName : battle.defenderName;
+  const turnLabel = attacking ? "공격 중" : "공격 차례";
   return (
     <div className={`${styles.battleHud} ${inline ? styles.inlineHud : ""}`}>
+      {activePokemon && (
+        <p className={styles.attackTurn} role="status">
+          {activeName} · {speciesById[activePokemon.speciesId].name} {turnLabel}
+        </p>
+      )}
       {(["attacker", "defender"] as const).map((side) => {
         const pokemon = battle[side];
         const attack = presentation?.event.attack;
@@ -53,11 +63,12 @@ export function BattleHud({
           : "출전 대기";
         return (
           <div
-            className={styles.fighterHud}
+            className={`${styles.fighterHud} ${activeSide === side ? styles.activeFighter : ""}`}
             key={side}
             role="group"
             aria-label={`${trainerName} · ${healthDescription}`}
           >
+            {activeSide === side && <span className={styles.attackBadge}>{turnLabel}</span>}
             <small>
               {trainerName} · {side === "attacker" ? "후공" : "선공"}
             </small>
@@ -245,7 +256,7 @@ export default function GameBoard({
                 <span>
                   {dice[0]} + {dice[1]}
                 </span>
-                <strong>{dice[0] + dice[1]}칸</strong>
+                <strong>{dice[0] + dice[1]}칸{dice[0] === dice[1] ? " · 더블!" : ""}</strong>
               </>
             ) : (
               "주사위를 굴려 모험을 시작하세요"

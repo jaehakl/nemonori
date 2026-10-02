@@ -49,6 +49,8 @@
 }
 .fighterHud {
   position: relative;
+  min-width: 0;
+  overflow-wrap: anywhere;
   width: min(42%, 240px);
   padding: 14px 17px;
   border: 1px solid #ffffffd9;
@@ -64,6 +66,7 @@
 }
 .fighterHud > strong {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
@@ -393,4 +396,40 @@
 
 :global([data-reduced-motion="true"]) .damage {
   animation: none;
+}
+
+.attackTurn {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin: 0 0 6px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: #254d3f;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.inlineHud .attackTurn {
+  position: static;
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.fighterHud.activeFighter {
+  border-color: #28784d;
+  outline: 2px solid #28784d;
+  outline-offset: -1px;
+  background: #efffe8;
+}
+.attackBadge {
+  display: block;
+  width: fit-content;
+  border-radius: 4px;
+  padding: 1px 5px;
+  background: #28784d;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
 }

@@ -1,4 +1,4 @@
-import type { Battle, BattleSide, Player, Pokemon } from "./types";
+import type { Battle, BattleSide, GamePhase, Player, Pokemon } from "./types";
 
 /** A detached view: presentation must never mutate the saved game. */
 export interface PokemonView extends Pokemon {
@@ -7,6 +7,7 @@ export interface PokemonView extends Pokemon {
 
 export interface BattleView {
   kind: Battle["kind"];
+  phase: GamePhase;
   attacker: PokemonView | null;
   defender: PokemonView | null;
   attackerName: string;

@@ -176,6 +176,7 @@ export function snapshotForPresentation(
     battle: battle
       ? {
           kind: battle.kind,
+          phase: state.phase,
           attacker: attacker ? pokemonView(attacker) : null,
           defender: defender ? pokemonView(defender) : null,
           attackerName: state.players[state.activePlayer].name,
@@ -304,6 +305,8 @@ function continueMovement(state: GameState, events?: EventSink) {
     return;
   }
   const movement = state.movement!;
+  // Older saves may contain encounters collected while passing a tile.
+  if (movement.remaining > 0) movement.encounters = [];
   while (movement.encounters.length > 0) {
     const opponent = state.players[movement.encounters.shift()!];
     if (
@@ -584,11 +587,27 @@ function attack(state: GameState, moveId: number, events?: EventSink): boolean {
   return true;
 }
 
+export function hasExtraRoll(state: GameState): boolean {
+  return (
+    state.phase !== "finished" &&
+    state.players[state.activePlayer].restTurnsRemaining === 0 &&
+    state.dice !== null &&
+    state.dice[0] === state.dice[1]
+  );
+}
+
 function nextTurn(state: GameState, events?: EventSink) {
+  const extraRoll = hasExtraRoll(state);
   state.dice = null;
   state.movement = null;
   state.battle = null;
   state.phase = "roll";
+  if (extraRoll) {
+    const message = `${state.players[state.activePlayer].name}, 더블! 한 번 더 굴리세요.`;
+    addLog(state, message);
+    events?.(state, { kind: "turn", message });
+    return;
+  }
   while (true) {
     state.activePlayer = (state.activePlayer + 1) % state.players.length;
     state.turn += 1;
@@ -650,7 +669,7 @@ function applyTransition(
       addLog(state, `${player.name}: 주사위 ${state.dice.join(" + ")}`);
       events?.(state, {
         kind: "roll",
-        message: `${state.dice.join(" + ")} = ${state.movement.remaining}칸!`,
+        message: `${state.dice.join(" + ")} = ${state.movement.remaining}칸!${hasExtraRoll(state) ? " 더블! 도착 칸의 행동을 마치면 한 번 더!" : ""}`,
       });
       break;
     }
@@ -664,9 +683,11 @@ function applyTransition(
       const fromTile = player.position;
       player.position = (player.position + 1) % BOARD_SIZE;
       state.movement.remaining -= 1;
+      const arrived = state.movement.remaining === 0;
       state.movement.encounters = state.players
         .filter(
           (other) =>
+            arrived &&
             other.id !== player.id &&
             other.restTurnsRemaining === 0 &&
             other.position === player.position,

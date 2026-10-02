@@ -163,7 +163,7 @@ test("one finishing attack can queue the next trainer without replacing its hist
   initial.players[0].party[0] = pokemon(initial);
   initial.players[1].position = 2;
   initial.players[2].position = 2;
-  const previous = readyForFinishingHit(enter(initial, 2, 2));
+  const previous = readyForFinishingHit(enter(initial, 2));
   const first = assertTransition(previous, { type: "ATTACK", moveId: 0 });
   assert.deepEqual(kinds(first), [
     "attack",
@@ -183,14 +183,14 @@ test("one finishing attack can queue the next trainer without replacing its hist
   );
   assert.equal(first.events.at(-1).snapshot.battle.attacker, null);
   assert.equal(first.state.battle.defenderOwner, 2);
-  assert.equal(first.state.movement.remaining, 1);
+  assert.equal(first.state.movement.remaining, 0);
 
   const second = assertTransition(readyForFinishingHit(first.state), {
     type: "ATTACK",
     moveId: 0,
   });
-  assert.equal(second.state.phase, "moving");
-  assert.equal(second.state.movement.remaining, 1);
+  assert.equal(second.state.phase, "road");
+  assert.equal(second.state.movement.remaining, 0);
   assert.equal(
     second.events[0].snapshot.battle.defender.id,
     initial.players[2].party[0].id,
@@ -509,6 +509,7 @@ test("deployment, replacement, retrieval and next turn expose the resulting boar
   const retrieved = assertTransition(retrieving, { type: "RETRIEVE" });
   assert.deepEqual(kinds(retrieved), ["retrieve"]);
   assert.deepEqual(retrieved.events[0].snapshot.guardians, []);
+  retrieved.state.dice = [5, 6];
   const ended = assertTransition(retrieved.state, { type: "END_TURN" });
   assert.deepEqual(kinds(ended), ["turn"]);
   assert.equal(ended.events[0].playerId, 1);
@@ -666,6 +667,7 @@ test("rest countdown announces each skipped turn and heals only when the third c
     initial.players[1].position = 10;
     initial.players[1].restTurnsRemaining = remaining;
     const ready = enter(initial, 2);
+    ready.dice = [5, 6];
     const result = assertTransition(ready, { type: "END_TURN" });
     assert.deepEqual(kinds(result), remaining === 1 ? ["rest", "heal", "turn"] : ["rest", "turn"]);
     assert.equal(result.events[0].playerId, 1);

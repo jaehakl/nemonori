@@ -91,9 +91,9 @@ test("paused encounters keep remaining movement, selected Pokemon, attack turn a
   const initial = createGame([1, 4, 7, 172], [], 13);
   initial.players[1].position = 2;
   initial.players[2].position = 2;
-  let state = enter(initial, 2, 4);
+  let state = enter(initial, 2);
   assert.equal(state.phase, "choose-defender");
-  assert.deepEqual(state.movement, { remaining: 3, encounters: [2] });
+  assert.deepEqual(state.movement, { remaining: 0, encounters: [2] });
   for (let index = 0; index < 3; index++) {
     const restored = snapshot(state);
     const action = nextAction(state);
@@ -278,13 +278,13 @@ test("multiple lap evolution saves resume each choice once without replaying gro
 test("lap evolution saves preserve trainer encounters waiting at the start corner", () => {
   const initial = createGame([133, 4, 7], [], 9182);
   initial.players[0].party[0] = pokemon(initial, 133, 19);
-  const pending = enter(initial, 0, 4);
+  const pending = enter(initial, 0);
   assert.equal(pending.phase, "evolution");
   assert.deepEqual(pending.movement.encounters, [1, 2]);
   const resumed = transition(snapshot(pending), { type: "CHOOSE_EVOLUTION", speciesId: 134 });
   assert.equal(resumed.phase, "choose-defender");
   assert.equal(resumed.battle.defenderOwner, 1);
-  assert.deepEqual(resumed.movement, { remaining: 3, encounters: [2] });
+  assert.deepEqual(resumed.movement, { remaining: 0, encounters: [2] });
   assert.equal(resumed.rng, pending.rng);
   assert.equal(resumed.turn, pending.turn);
   snapshot(resumed);
@@ -452,7 +452,7 @@ test("save validation rejects malformed scalar, roster, ownership and phase data
 test("save validation rejects forged battle references, progression and rewards", () => {
   const initial = createGame([1, 4, 7], [], 9182);
   initial.players[1].position = 2;
-  let state = enter(initial, 2, 2);
+  let state = enter(initial, 2);
   state = transition(state, nextAction(state));
   state = transition(state, nextAction(state));
   assert.ok(validateSave(state));

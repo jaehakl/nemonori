@@ -122,7 +122,7 @@ test("creation restricts player counts and starters, permits duplicates and norm
     assert.throws(() => createGame(starters, [], 1));
 });
 
-test("dice and wild encounter RNG replay exactly, double does not grant another turn", () => {
+test("dice and wild encounter RNG replay exactly, double grants another roll", () => {
   const first = game();
   const rolled = transition(first, { type: "ROLL" });
   assert.deepEqual(
@@ -137,31 +137,38 @@ test("dice and wild encounter RNG replay exactly, double does not grant another 
   const ended = game();
   ended.phase = "turn-end";
   ended.dice = [3, 3];
-  assert.equal(transition(ended, { type: "END_TURN" }).activePlayer, 1);
+  assert.equal(transition(ended, { type: "END_TURN" }).activePlayer, 0);
 });
 
-test("departure encounters are skipped; each entered tile and destination are checked", () => {
-  let state = transition(game(), { type: "ROLL" });
-  state = transition(state, { type: "STEP" });
-  assert.notEqual(state.phase, "choose-defender");
+test("passing trainers does not interrupt movement; only the destination starts battles", () => {
   const visiting = game(4);
   visiting.players[1].position = 2;
   visiting.players[2].position = 2;
-  visiting.players[3].position = 3;
-  state = enter(visiting, 2, 3);
-  assert.equal(state.phase, "choose-defender");
-  assert.equal(state.battle.defenderOwner, 1);
-  assert.deepEqual(state.movement, { remaining: 2, encounters: [2] });
-  state.players[0].party.push(pokemon(state, 1, 30));
-  state = winAsActive(state);
-  assert.equal(state.battle.defenderOwner, 2);
-  assert.equal(state.players[1].restTurnsRemaining, 3);
-  state.players[0].party[0].hp = getStats(state.players[0].party[0]).hp;
-  state = winAsActive(state);
+  visiting.players[3].position = 4;
+  let state = enter(visiting, 2, 3);
   assert.equal(state.phase, "moving");
-  assert.equal(state.movement.remaining, 2);
+  assert.equal(state.battle, null);
+  assert.deepEqual(state.movement, { remaining: 2, encounters: [] });
+  state = transition(state, { type: "STEP" });
+  assert.equal(state.phase, "moving");
   state = transition(state, { type: "STEP" });
   assert.equal(state.battle.defenderOwner, 3);
+  assert.equal(state.movement.remaining, 0);
+});
+
+test("multiple destination trainers battle in order before the tile effect", () => {
+  const visiting = game(3);
+  visiting.players[1].position = 2;
+  visiting.players[2].position = 2;
+  visiting.players[0].party.push(pokemon(visiting, 1, 30));
+  let state = enter(visiting, 2);
+  assert.equal(state.battle.defenderOwner, 1);
+  assert.deepEqual(state.movement, { remaining: 0, encounters: [2] });
+  state = winAsActive(state);
+  assert.equal(state.battle.defenderOwner, 2);
+  state.players[0].party[0].hp = getStats(state.players[0].party[0]).hp;
+  state = winAsActive(state);
+  assert.equal(state.phase, "road");
 });
 
 test("trainer selection and attacks are defender first, active player chooses after seeing defender", () => {
@@ -487,7 +494,7 @@ test("the nearest center uses ring distance and resolves equal distances clockwi
 function finishCurrentTurn(state) {
   const ending = structuredClone(state);
   ending.phase = "turn-end";
-  ending.dice = [1, 1];
+  ending.dice = [1, 2];
   ending.movement = { remaining: 0, encounters: [] };
   assert.ok(validateSave(ending));
   const next = transition(ending, { type: "END_TURN" });
@@ -682,4 +689,62 @@ test("box controls cannot be used outside a center or while recovering", () => {
   resting.players[0].party.forEach((entry) => { entry.hp = 0; });
   resting.players[0].restTurnsRemaining = 3;
   for (const action of actions) assert.equal(transition(resting, action), resting);
+});
+
+
+test("consecutive doubles keep the turn and do not consume opponents' rest", () => {
+  let state = game(2);
+  state.players[1].party[0].hp = 0;
+  state.players[1].restTurnsRemaining = 3;
+  const turn = state.turn;
+  for (const dice of [[2, 2], [6, 6], [1, 1]]) {
+    state.phase = "turn-end";
+    state.dice = dice;
+    state.movement = { remaining: 0, encounters: [] };
+    const restored = JSON.parse(JSON.stringify(state));
+    assert.ok(validateSave(restored));
+    state = transition(restored, { type: "END_TURN" });
+    assert.equal(state.activePlayer, 0);
+    assert.equal(state.turn, turn);
+    assert.equal(state.phase, "roll");
+    assert.equal(state.dice, null);
+    assert.equal(state.movement, null);
+    assert.equal(state.players[1].restTurnsRemaining, 3);
+    assert.ok(validateSave(state));
+    const rolled = transition(state, { type: "ROLL" });
+    assert.equal(rolled.phase, "moving");
+    assert.deepEqual(rolled, transition(structuredClone(state), { type: "ROLL" }));
+  }
+  state = finishCurrentTurn(state);
+  assert.equal(state.players[1].restTurnsRemaining, 2);
+});
+
+test("a saved passing battle completes then discards old queued contacts", () => {
+  const initial = game(3);
+  initial.players[1].position = 2;
+  initial.players[2].position = 2;
+  initial.players[0].party.push(pokemon(initial, 1, 30));
+  const legacy = enter(initial, 2);
+  legacy.movement.remaining = 3;
+  assert.ok(validateSave(legacy));
+  const restored = JSON.parse(JSON.stringify(legacy));
+  const resumed = winAsActive(restored);
+  assert.equal(resumed.phase, "moving");
+  assert.equal(resumed.battle, null);
+  assert.deepEqual(resumed.movement, { remaining: 3, encounters: [] });
+  assert.equal(resumed.players[2].restTurnsRemaining, 0);
+  assert.ok(validateSave(resumed));
+});
+
+test("passing the start corner resumes movement after evolution without contact", () => {
+  const initial = game(3);
+  initial.players[0].party[0] = pokemon(initial, 133, 19);
+  let state = enter(initial, 0, 4);
+  assert.equal(state.phase, "evolution");
+  assert.deepEqual(state.movement.encounters, []);
+  state = transition(JSON.parse(JSON.stringify(state)), { type: "CHOOSE_EVOLUTION", speciesId: 134 });
+  assert.equal(state.phase, "moving");
+  assert.equal(state.movement.remaining, 3);
+  assert.equal(state.battle, null);
+  assert.ok(validateSave(state));
 });

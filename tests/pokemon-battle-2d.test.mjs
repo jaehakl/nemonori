@@ -7,7 +7,7 @@ import { loadGameSource } from "./game-test-helpers.mjs";
 
 const path = "app/games/_components/pokemon-marble/";
 const { default: Battle2D } = loadGameSource(`${path}Battle2D.tsx`);
-const { default: GameBoard } = loadGameSource(`${path}GameBoard.tsx`);
+const { default: GameBoard, BattleHud } = loadGameSource(`${path}GameBoard.tsx`);
 const { getBattlePose, BATTLE_ANCHORS } = loadGameSource(`${path}battle-visuals.ts`);
 const { createGame, transitionWithEvents, getActingPlayer, getStats, snapshotForPresentation } = loadGameSource(`${path}engine.ts`);
 const { parseGameSave } = loadGameSource(`${path}save.ts`);
@@ -189,4 +189,26 @@ test("the game has no Three.js imports, WebGL creation or extra battle animation
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
   assert.equal(pkg.dependencies.three, undefined);
   assert.equal(pkg.devDependencies["@types/three"], undefined);
+});
+
+
+test("battle HUD names the current attacker, follows the animation, and hides inactive phases", () => {
+  const active = { ...battle, phase: "attack", defender: { ...battle.defender, hp: 15 } };
+  const hud = (view, frame = null) => renderToStaticMarkup(React.createElement(BattleHud, { battle: view, presentation: frame, inline: true }));
+  for (const side of ["attacker", "defender"]) {
+    const name = side === "attacker" ? "민지" : "준";
+    const pokemon = side === "attacker" ? "이상해씨" : "파이리";
+    assert.match(hud({ ...active, turn: side }), new RegExp(`${name} · ${pokemon} 공격 차례`));
+    const frame = presentation("attack", 0.5, { attack: attack(side) });
+    const html = hud({ ...active, turn: side === "attacker" ? "defender" : "attacker" }, frame);
+    assert.match(html, new RegExp(`${name} · ${pokemon} 공격 중`));
+    assert.doesNotMatch(html, /공격 차례/);
+  }
+  assert.match(hud({ ...active, kind: "wild", defenderName: "야생 포켓몬", turn: "defender" }), /야생 포켓몬 · 파이리 공격 차례/);
+  for (const phase of ["choose-defender", "choose-attacker", "evolution", "capture", "turn-end", "finished"]) {
+    assert.doesNotMatch(hud({ ...active, phase }), /공격 차례|공격 중/);
+  }
+  for (const kind of ["send-out", "faint", "level-up", "evolution"]) {
+    assert.doesNotMatch(hud(active, presentation(kind, 0.5)), /공격 차례|공격 중/);
+  }
 });

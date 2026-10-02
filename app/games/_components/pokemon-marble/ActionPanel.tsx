@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { getStats, transition } from "./engine";
+import { getStats, hasExtraRoll, transition } from "./engine";
 import { BOARD_TILES, PLAYER_COLORS } from "./board";
 import { speciesById, typeColors } from "./pokemon-data";
 import { HealthBar, PokemonSprite, TypeBadge } from "./PokemonSprite";
@@ -29,7 +29,7 @@ export default function ActionPanel({
       className={`${styles.primaryButton} ${styles.fullWidth} ${styles.turnEnd}`}
       onClick={() => dispatch({ type: "END_TURN" })}
     >
-      턴 마치기 →
+      {hasExtraRoll(state) ? "한 번 더 굴리기 →" : "턴 마치기 →"}
     </button>
   );
 
@@ -184,7 +184,9 @@ export default function ActionPanel({
                 ? `${state.dice![0] + state.dice![1]}칸 이동 · 앞으로 ${state.movement?.remaining ?? 0}칸`
                 : player.restTurnsRemaining > 0
                   ? `센터로 돌아왔습니다. 다음 본인 차례 ${player.restTurnsRemaining}번을 쉬면 파티와 박스가 모두 회복됩니다.`
-                  : "이번 턴의 모험을 마쳤습니다. 다음 트레이너에게 차례를 넘겨주세요."}
+                  : hasExtraRoll(state)
+                    ? "더블! 한 번 더 주사위를 굴릴 수 있습니다."
+                    : "이번 턴의 모험을 마쳤습니다. 다음 트레이너에게 차례를 넘겨주세요."}
           </p>
           {state.phase === "roll" ? (
             <button
@@ -413,6 +415,7 @@ export function MovementPanel({
       <p className={styles.actionCopy} role="status">
         {notice ?? (rolling ? "주사위를 굴리고 있어요!" : `${total}칸 이동 · 앞으로 ${remaining}칸`)}
       </p>
+      {!rolling && hasExtraRoll(state) && <p className={styles.actionCopy}>더블! 도착 칸의 행동을 마치면 한 번 더 굴립니다.</p>}
       <progress aria-label="이동 진행" max={total || 1} value={rolling ? 0 : total - remaining} />
       <button className={`${styles.secondaryButton} ${styles.fullWidth}`} disabled={!busy} onClick={onSkip}>
         연출 건너뛰기 →

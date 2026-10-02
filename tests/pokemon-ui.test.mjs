@@ -196,7 +196,9 @@ test("the in-game guide explains capture HP, defeat and battle priority", () => 
   assert.match(html, /박스는 센터에서만 이용/);
   assert.match(html, /스타팅 포켓몬은 레벨 3/);
   assert.match(html, /1~3 중 무작위/);
-  assert.match(html, /트레이너 배틀이 타일 효과보다 먼저/);
+  assert.match(html, /트레이너 배틀은 타일 효과보다 먼저/);
+  assert.match(html, /정확히 같은 칸에 멈춰야 배틀/);
+  assert.match(html, /연속 더블도 허용/);
   assert.match(html, /본인 차례 3번을 쉬고/);
   assert.match(html, /도로 27칸을 모두 소유하면 즉시 승리/);
   assert.match(html, /40칸 탑뷰/);
@@ -264,4 +266,25 @@ test("battle stage HP changes on impact and retains the finishing attack snapsho
   assert.match(render(0.45), /−9/);
   game.battle = null;
   assert.match(render(0.8), /꼬부기/);
+});
+
+
+test("double roll controls wait for tile actions and explain the extra opportunity", () => {
+  const { default: ActionPanel } = loadGameSource("app/games/_components/pokemon-marble/ActionPanel.tsx");
+  const { createGame } = loadGameSource("app/games/_components/pokemon-marble/engine.ts");
+  const state = createGame([1, 4], [], 12);
+  state.dice = [3, 3];
+  const render = () => renderToStaticMarkup(React.createElement(ActionPanel, { state, dispatch: () => {}, onRestart: () => {} }));
+  for (const phase of ["center", "road", "turn-end"]) {
+    state.phase = phase;
+    assert.match(render(), /한 번 더 굴리기/);
+  }
+  state.phase = "turn-end";
+  assert.match(render(), /더블! 한 번 더 주사위를/);
+  state.players[0].restTurnsRemaining = 3;
+  assert.doesNotMatch(render(), /한 번 더 굴리기/);
+  state.players[0].restTurnsRemaining = 0;
+  state.dice = [3, 4];
+  assert.match(render(), /턴 마치기/);
+  assert.doesNotMatch(render(), /한 번 더 굴리기/);
 });

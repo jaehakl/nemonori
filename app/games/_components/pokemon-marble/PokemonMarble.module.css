@@ -111,7 +111,7 @@
   min-height: 0;
 }
 .battleControls .controlActions {
-  overflow: hidden;
+  overflow: auto;
   scrollbar-gutter: auto;
 }
 .battleControls .controlActions .actionPanel {

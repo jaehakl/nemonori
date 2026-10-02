@@ -3,6 +3,11 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import * as THREE from "three";
 import ts from "typescript";
+import { loadGameSource } from "./game-test-helpers.mjs";
+
+const { BOARD_TILES, getTilePosition } = loadGameSource(
+  "app/games/_components/pokemon-marble/board.ts",
+);
 
 const source = readFileSync(
   new URL(
@@ -44,6 +49,9 @@ function rendererHarness(t, { failResize = false } = {}) {
   };
   class Canvas extends EventTarget {
     setAttribute() {}
+    getBoundingClientRect() {
+      return { left: 0, top: 0, width: host.clientWidth, height: host.clientHeight };
+    }
     getContext() {
       return context;
     }
@@ -202,14 +210,248 @@ function rendererHarness(t, { failResize = false } = {}) {
   };
 }
 
-const snapshot = (guardians = []) => ({
-  tokens: [
-    { id: 0, name: "민지", color: "#ef7060", position: 0, eliminated: false },
-  ],
+const snapshot = (guardians = [], tokens = []) => ({
+  tokens,
   guardians,
   activePlayerId: 0,
   dice: [3, 6],
   rolling: false,
+});
+
+const token = (id = 0, additions = {}) => ({
+  id,
+  name: `플레이어 ${id + 1}`,
+  color: ["#ef6559", "#3988e5", "#e8b840", "#9b6ad9"][id],
+  position: 2,
+  starterSpeciesId: 25,
+  restTurnsRemaining: 0,
+  ...additions,
+});
+
+test("the overhead board uses all 40 canonical tiles, preserves orientation and selects every tile by pointer", (t) => {
+  const harness = rendererHarness(t);
+  const selections = [];
+  const board = harness.createBoardRenderer(harness.host, (tile) => selections.push(tile), () => {});
+  board.sync(snapshot());
+  harness.renderFrame();
+  const renderer = harness.renderers[0];
+  const { camera, scene } = renderer;
+  assert.deepEqual(camera.position.toArray(), [0, 20, 0]);
+  assert.deepEqual(camera.up.toArray(), [0, 0, -1]);
+  const direction = camera.getWorldDirection(new THREE.Vector3());
+  assert.ok(direction.distanceTo(new THREE.Vector3(0, -1, 0)) < 1e-10);
+  assert.equal(camera.top - camera.bottom, 12.5);
+  assert.equal(harness.TILE_NAMES.length, 40);
+  assert.equal(harness.TILE_NAMES.filter((name) => name === "도로").length, 27);
+  assert.equal(harness.TILE_NAMES.filter((name) => name === "풀숲").length, 9);
+  assert.equal(scene.getObjectByName("island-atmosphere"), undefined);
+  for (let tile = 0; tile < 40; tile += 1) {
+    assert.equal(scene.getObjectByName(`owner-plate-${tile}`).visible, BOARD_TILES[tile] === "road");
+    const { x, z } = getTilePosition(tile);
+    const projected = new THREE.Vector3(x * 1.08, 0.27, z * 1.08).project(camera);
+    assert.ok(Math.abs(projected.x) < 1 && Math.abs(projected.y) < 1, `tile ${tile} fits the camera`);
+    const click = new Event("click");
+    Object.assign(click, {
+      clientX: (projected.x + 1) * harness.host.clientWidth / 2,
+      clientY: (1 - projected.y) * harness.host.clientHeight / 2,
+    });
+    renderer.domElement.dispatchEvent(click);
+  }
+  assert.deepEqual(selections, Array.from({ length: 40 }, (_, index) => index));
+  board.selectTile(39);
+  const selection = scene.getObjectByName("tile-selection");
+  const last = getTilePosition(39);
+  assert.equal(selection.position.x, last.x * 1.08);
+  assert.equal(selection.position.z, last.z * 1.08);
+  board.dispose();
+});
+
+test("four starter portrait tokens keep unique borders and clear the guardian's tile region", (t) => {
+  const harness = rendererHarness(t);
+  const board = harness.createBoardRenderer(harness.host, () => {}, () => {});
+  const players = Array.from({ length: 4 }, (_, index) => token(index));
+  board.sync(snapshot([{ tile: 2, ownerId: 0, speciesId: 25 }], players));
+  assert.equal(harness.pendingImages.length, 1, "all five portraits share their species image");
+  harness.pendingImages[0].succeed();
+  harness.renderFrame();
+  const scene = harness.renderers[0].scene;
+  const guardian = scene.getObjectByName("road-guardian-2");
+  const guardianSprite = guardian.getObjectByName("pokemon-portrait");
+  assert.equal(guardianSprite.material.map, harness.pendingImages[0].texture);
+  assert.equal(guardianSprite.visible, true);
+  const occupied = [];
+  for (const player of players) {
+    const pawn = scene.getObjectByName(`player-token-${player.id}`);
+    const border = pawn.getObjectByName("player-color-border");
+    const portrait = pawn.getObjectByName("pokemon-portrait");
+    assert.equal(`#${border.material.color.getHexString()}`, player.color);
+    assert.equal(portrait.userData.speciesId, player.starterSpeciesId);
+    assert.equal(portrait.visible, true);
+    assert.ok(pawn.position.z - 0.13 > guardian.position.z + 0.17);
+    for (const other of occupied) {
+      assert.ok(Math.hypot(pawn.position.x - other.x, pawn.position.z - other.z) >= 0.26);
+    }
+    occupied.push(pawn.position.clone());
+  }
+  board.dispose();
+  assert.equal(harness.pendingImages[0].disposals, 1);
+});
+
+test("rolling dice remain between the center panel and the perimeter tiles", (t) => {
+  const harness = rendererHarness(t);
+  const board = harness.createBoardRenderer(harness.host, () => {}, () => {});
+  board.sync({ ...snapshot(), rolling: true });
+  for (let frame = 0; frame < 40; frame += 1) {
+    harness.renderFrame();
+    for (let index = 0; index < 2; index += 1) {
+      const die = harness.renderers[0].scene.getObjectByName(`board-die-${index}`);
+      const bounds = new THREE.Box3().setFromObject(die);
+      assert.ok(bounds.min.z > -4.9025, "a rolling die clears the top road tiles");
+      assert.ok(bounds.max.z < -4, "a rolling die clears the 64% center panel");
+    }
+  }
+  board.dispose();
+});
+
+test("stationary tokens enlarge when alone and reflow as players or guardians enter and leave", (t) => {
+  const harness = rendererHarness(t);
+  const board = harness.createBoardRenderer(harness.host, () => {}, () => {});
+  const tile = getTilePosition(2);
+  const center = { x: tile.x * 1.08, z: tile.z * 1.08 };
+  board.sync(snapshot([], [token()]));
+  harness.renderFrame();
+  const pawn = harness.renderers[0].scene.getObjectByName("player-token-0");
+  const badgeWidth = () => 0.26 * pawn.scale.x;
+  const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9);
+  close(badgeWidth(), 0.6);
+  close(pawn.position.x, center.x);
+  close(pawn.position.z, center.z);
+
+  board.sync(snapshot([], [token(), token(1)]));
+  harness.renderFrame();
+  close(badgeWidth(), 0.26);
+  close(pawn.position.x, center.x - 0.25);
+  close(pawn.position.z, center.z + 0.1);
+
+  board.sync(snapshot([{ tile: 2, ownerId: 0, speciesId: 25 }], [token()]));
+  harness.renderFrame();
+  close(badgeWidth(), 0.36);
+  close(pawn.position.x, center.x);
+  close(pawn.position.z, center.z + 0.27);
+  const guardian = harness.renderers[0].scene.getObjectByName("road-guardian-2");
+  assert.ok(pawn.position.z - 0.18 > guardian.position.z + 0.17);
+
+  board.sync(snapshot([], [token()]));
+  harness.renderFrame();
+  close(badgeWidth(), 0.6);
+  close(pawn.position.x, center.x);
+  close(pawn.position.z, center.z);
+  assert.equal(harness.renderers[0].scene.getObjectByName("player-token-0"), pawn);
+  board.dispose();
+});
+
+test("movement interpolates from a crowded source slot to an enlarged empty destination", (t) => {
+  const harness = rendererHarness(t);
+  const board = harness.createBoardRenderer(harness.host, () => {}, () => {});
+  board.sync(snapshot([], [token(), token(1)]));
+  harness.renderFrame();
+  const pawn = harness.renderers[0].scene.getObjectByName("player-token-0");
+  const origin = pawn.position.clone();
+  const moved = snapshot([], [token(0, { position: 3 }), token(1)]);
+  const movement = event("move", { playerId: 0, fromTile: 2, tile: 3 });
+  board.sync({ ...moved, presentation: { event: movement, progress: 0 } });
+  harness.renderFrame();
+  assert.ok(pawn.position.distanceTo(origin) < 1e-9);
+  assert.equal(pawn.scale.x, 1);
+
+  board.sync({ ...moved, presentation: { event: movement, progress: 1 } });
+  harness.renderFrame();
+  const destination = getTilePosition(3);
+  assert.equal(pawn.position.x, destination.x * 1.08);
+  assert.equal(pawn.position.z, destination.z * 1.08);
+  assert.ok(Math.abs(0.26 * pawn.scale.x - 0.6) < 1e-9);
+  board.sync(moved);
+  harness.renderFrame();
+  assert.equal(pawn.position.z, destination.z * 1.08);
+  board.dispose();
+});
+
+test("cached portrait callbacks normalize transparent padding before the first render", (t) => {
+  const harness = rendererHarness(t);
+  const pixels = new Uint8ClampedArray(4 * 4 * 4);
+  for (const pixel of [5, 6, 9, 10]) pixels[pixel * 4 + 3] = 255;
+  harness.context.getImageData = () => ({ data: pixels });
+  const board = harness.createBoardRenderer(harness.host, () => {}, () => {});
+  board.sync(snapshot([], [token()]));
+  const request = harness.pendingImages[0];
+  request.texture.image = { width: 4, height: 4 };
+  request.succeed();
+  board.sync(snapshot([{ tile: 2, ownerId: 0, speciesId: 25 }], [token()]));
+  harness.renderFrame();
+  const scene = harness.renderers[0].scene;
+  const pawn = scene.getObjectByName("player-token-0").getObjectByName("pokemon-portrait");
+  const guardian = scene.getObjectByName("road-guardian-2");
+  const sprite = guardian.getObjectByName("pokemon-portrait");
+  assert.equal(harness.pendingImages.length, 1);
+  assert.equal(sprite.visible, true);
+  assert.equal(guardian.getObjectByName("portrait-fallback").visible, false);
+  assert.equal(sprite.scale.y, 0.68, "the visible half-height is 0.34 world units");
+  assert.equal(pawn.scale.y, 0.4, "the visible half-height is 0.2 world units");
+  assert.deepEqual(sprite.center.toArray(), [0.5, 0.5]);
+  board.dispose();
+});
+
+test("a starter portrait keeps a shared texture after guardians and battlers leave", (t) => {
+  const harness = rendererHarness(t);
+  const board = harness.createBoardRenderer(harness.host, () => {}, () => {});
+  board.sync({ ...snapshot([{ tile: 2, ownerId: 0, speciesId: 25 }], [token()]), battle: battleView() });
+  harness.renderFrame();
+  assert.equal(harness.pendingImages.length, 2);
+  harness.pendingImages.forEach((request) => request.succeed());
+  const pikachu = harness.pendingImages.find((request) => request.url.endsWith("/25.png"));
+  const charmander = harness.pendingImages.find((request) => request.url.endsWith("/4.png"));
+  board.sync(snapshot([], [token()]));
+  harness.renderFrame();
+  assert.equal(pikachu.disposals, 0);
+  assert.equal(charmander.disposals, 1);
+  board.sync(snapshot());
+  assert.equal(pikachu.disposals, 1);
+  pikachu.fail();
+  board.dispose();
+  assert.equal(pikachu.disposals, 1);
+});
+
+test("failed starter images keep a visible player-colored fallback and release once", (t) => {
+  const harness = rendererHarness(t);
+  const board = harness.createBoardRenderer(harness.host, () => {}, () => assert.fail("render failed"));
+  board.sync(snapshot([], [token()]));
+  const request = harness.pendingImages[0];
+  request.fail();
+  harness.renderFrame();
+  const pawn = harness.renderers[0].scene.getObjectByName("player-token-0");
+  assert.equal(pawn.getObjectByName("pokemon-portrait").visible, false);
+  assert.equal(pawn.getObjectByName("portrait-fallback").visible, true);
+  assert.equal(pawn.getObjectByName("player-color-border").visible, true);
+  board.dispose();
+  assert.equal(request.disposals, 1);
+});
+
+test("token movement wraps from tile 40 to 1 and resting players move directly to their center", (t) => {
+  const harness = rendererHarness(t);
+  const board = harness.createBoardRenderer(harness.host, () => {}, () => {});
+  board.sync(snapshot([], [token(0, { position: 39 })]));
+  harness.renderFrame();
+  const pawn = harness.renderers[0].scene.getObjectByName("player-token-0");
+  board.sync(snapshot([], [token(0, { position: 0 })]));
+  for (let step = 0; step < 12; step += 1) harness.renderFrame();
+  assert.equal(pawn.position.x, -5 * 1.08);
+  assert.equal(pawn.position.z, 5 * 1.08);
+  board.sync(snapshot([], [token(0, { position: 30, restTurnsRemaining: 3 })]));
+  harness.renderFrame();
+  assert.equal(pawn.position.x, 5 * 1.08);
+  assert.equal(pawn.position.z, 5 * 1.08);
+  assert.equal(pawn.visible, true);
+  board.dispose();
 });
 
 test("removing a guardian releases its pending texture even when its request later fails", (t) => {

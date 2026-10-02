@@ -1,0 +1,43 @@
+.iconButton {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  min-height: 48px;
+  max-width: 48px;
+  padding: 0;
+  border: 1px solid #cfddc6;
+  border-radius: 12px;
+  background: #fff;
+  color: #3c6253;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.iconButton > svg {
+  display: block;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+}
+
+.iconButton:hover:not(:disabled),
+.iconButton[aria-pressed="true"] {
+  border-color: #98b88a;
+  background: #edf5e8;
+}
+
+.iconButton:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.iconButton:focus-visible {
+  outline: 3px solid #df9925;
+  outline-offset: 3px;
+}

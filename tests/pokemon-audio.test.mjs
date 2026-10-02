@@ -39,9 +39,11 @@ function audioHarness(t) {
   class FakeContext {
     state = "suspended";
     currentTime = 0;
+    sampleRate = 24000;
     destination = {};
     gains = [];
     oscillators = [];
+    bufferSources = [];
     resumeCalls = 0;
     suspendCalls = 0;
     closeCalls = 0;
@@ -65,10 +67,8 @@ function audioHarness(t) {
       this.gains.push(node);
       return node;
     }
-    createOscillator() {
+    createScheduledSource() {
       const node = {
-        frequency: new FakeParam(),
-        type: "sine",
         onended: null,
         startedAt: null,
         endsAt: null,
@@ -88,7 +88,30 @@ function audioHarness(t) {
           else this.endsAt = time;
         },
       };
+      return node;
+    }
+    createOscillator() {
+      const node = {
+        ...this.createScheduledSource(),
+        frequency: new FakeParam(),
+        type: "sine",
+      };
       this.oscillators.push(node);
+      return node;
+    }
+    createBuffer(channels, length, sampleRate) {
+      const data = Array.from({ length: channels }, () => new Float32Array(length));
+      return {
+        numberOfChannels: channels,
+        length,
+        sampleRate,
+        duration: length / sampleRate,
+        getChannelData: (channel) => data[channel],
+      };
+    }
+    createBufferSource() {
+      const node = { ...this.createScheduledSource(), buffer: null };
+      this.bufferSources.push(node);
       return node;
     }
     async resume() {
@@ -134,9 +157,9 @@ function audioHarness(t) {
     advance(seconds) {
       for (const context of contexts) {
         context.currentTime += seconds;
-        for (const oscillator of context.oscillators) {
-          if (!oscillator.stopped && oscillator.endsAt <= context.currentTime)
-            oscillator.onended?.();
+        for (const node of [...context.oscillators, ...context.bufferSources]) {
+          if (!node.stopped && node.endsAt <= context.currentTime)
+            node.onended?.();
         }
       }
       for (const timer of timers.values()) timer();
@@ -383,17 +406,19 @@ test("all presentation cues have sound, the 18 attacks differ, and polyphony sta
     "faint",
     "heal",
     "capture",
+    "lap",
     "level-up",
     "evolution",
     "deploy",
     "retrieve",
-    "eliminate",
+    "rescue",
+    "rest",
     "victory",
     "turn",
   ]) {
-    const before = context.oscillators.length;
+    const before = context.oscillators.length + context.bufferSources.length;
     audio.playCue(cue);
-    assert.ok(context.oscillators.length > before, cue);
+    assert.ok(context.oscillators.length + context.bufferSources.length > before, cue);
   }
   const attackSignatures = new Set();
   for (let type = 1; type <= 18; type++) {
@@ -407,7 +432,7 @@ test("all presentation cues have sound, the 18 attacks differ, and polyphony sta
   }
   assert.equal(attackSignatures.size, 18);
   assert.ok(
-    context.oscillators.filter((node) => !node.disconnected).length <= 32,
+    [...context.oscillators, ...context.bufferSources].filter((node) => !node.disconnected).length <= 32,
   );
 });
 
@@ -487,4 +512,90 @@ test("an unavailable Web Audio implementation never throws into game controls", 
     audio.dispose();
   });
   assert.equal(contexts.length, 0);
+});
+
+test("dice sound contains stereo rattle, rolling impacts and a quieter settle without game randomness", async (t) => {
+  const { audio, contexts, advance } = audioHarness(t);
+  audio.setPreferences({ ...DEFAULT_AUDIO_PREFERENCES, musicVolume: 0 });
+  await audio.unlock();
+  t.mock.method(Math, "random", () => { throw new Error("Dice audio must use its own noise source"); });
+  const context = contexts[0];
+  audio.playCue("roll");
+  const first = context.bufferSources[0];
+  assert.ok(first, "The cue should synthesize a textured recording");
+  assert.equal(first.buffer.numberOfChannels, 2);
+  assert.ok(first.buffer.duration > 1.5 && first.buffer.duration < 1.8);
+  assert.equal(first.output.connections[0], context.gains[2], "The normal effects volume controls dice too");
+  const left = first.buffer.getChannelData(0);
+  const right = first.buffer.getChannelData(1);
+  let peak = 0;
+  let stereoDifference = 0;
+  for (let index = 0; index < left.length; index++) {
+    assert.ok(Number.isFinite(left[index]) && Number.isFinite(right[index]));
+    peak = Math.max(peak, Math.abs(left[index]), Math.abs(right[index]));
+    stereoDifference += Math.abs(left[index] - right[index]);
+  }
+  assert.ok(peak > 0.15 && peak <= 0.85, "Impacts should have presence without clipping");
+  assert.ok(stereoDifference / left.length > 0.005, "The two dice occupy distinct stereo positions");
+  const energy = (from, to) => {
+    const begin = Math.round(from * context.sampleRate);
+    const end = Math.round(to * context.sampleRate);
+    let total = 0;
+    for (let index = begin; index < end; index++)
+      total += left[index] ** 2 + right[index] ** 2;
+    return Math.sqrt(total / (end - begin));
+  };
+  assert.ok(energy(0, 0.25) > 0.005, "The hand shake has audible dice chatter");
+  assert.ok(energy(0.3, 0.55) > energy(0, 0.25), "Landing has more weight than the shake");
+  assert.ok(energy(1.36, 1.6) > 0.001, "Settling taps continue through the visual landing");
+  assert.ok(energy(1.36, 1.6) < energy(0.3, 0.55), "The roll loses energy as it settles");
+  assert.equal(left.at(-1), 0);
+  audio.playCue("roll");
+  assert.equal(first.stopped, true, "A new roll replaces any lingering dice cue");
+  assert.equal(first.disconnected, true);
+  assert.notDeepEqual(context.bufferSources[1].buffer.getChannelData(0), left, "Successive rolls have small organic timbre variations");
+  advance(2);
+  assert.ok(context.bufferSources.every((node) => node.disconnected && node.output.disconnected));
+});
+
+test("dice buffers obey unlock, mute, effects volume, pause, reduced motion and disposal", async (t) => {
+  const { audio, contexts } = audioHarness(t);
+  audio.setPreferences({ ...DEFAULT_AUDIO_PREFERENCES, musicVolume: 0 });
+  audio.playCue("roll");
+  assert.equal(contexts.length, 0);
+  await audio.unlock();
+  const context = contexts[0];
+  audio.playCue("roll");
+  const fullRoll = context.bufferSources.at(-1);
+  audio.setPreferences({ ...DEFAULT_AUDIO_PREFERENCES, musicVolume: 0, muted: true });
+  assert.ok(fullRoll.stopped && fullRoll.disconnected);
+  audio.playCue("roll");
+  assert.equal(context.bufferSources.length, 1);
+  audio.setPreferences({ muted: false, musicVolume: 0, effectsVolume: 0 });
+  audio.playCue("roll");
+  assert.equal(context.bufferSources.length, 1);
+  audio.setPreferences({ muted: false, musicVolume: 0, effectsVolume: 0.4 });
+  audio.playCue("roll");
+  const interrupted = context.bufferSources.at(-1);
+  audio.setPaused(true);
+  assert.ok(interrupted.stopped && interrupted.disconnected);
+  audio.playCue("roll");
+  assert.equal(context.bufferSources.length, 2);
+  audio.setPaused(false);
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  audio.playCue("roll");
+  const beforeReduction = context.bufferSources.at(-1);
+  audio.setReducedMotion(true);
+  assert.ok(beforeReduction.stopped && beforeReduction.disconnected);
+  audio.playCue("roll");
+  const shortRoll = context.bufferSources.at(-1);
+  assert.ok(shortRoll.buffer.duration <= 0.18, "The static reveal must not leave a long rolling sound behind");
+  assert.equal(context.gains[2].gain.value, 0.4);
+  audio.dispose();
+  assert.ok(shortRoll.stopped && shortRoll.disconnected && shortRoll.output.disconnected);
+  const count = context.bufferSources.length;
+  audio.playCue("roll");
+  assert.equal(context.bufferSources.length, count);
 });

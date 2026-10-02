@@ -4,12 +4,16 @@ import { useMemo, useState } from "react";
 import { isStarter, speciesList, typeNames } from "./pokemon-data";
 import { PokemonSprite, TypeBadge } from "./PokemonSprite";
 import styles from "./PokemonMarble.module.css";
-import { PLAYER_COLORS } from "./board";
+import { getDefaultSeatSides, PLAYER_COLORS } from "./board";
+import type { SeatSide } from "./types";
+import type { DisplayMode } from "./display-preferences";
 
 type Props = {
-  onStart: (starters: number[], names: string[]) => void;
+  onStart: (starters: number[], names: string[], seatSides: SeatSide[]) => void;
   onResume: (() => void) | null;
   loading: boolean;
+  displayMode?: DisplayMode;
+  onDisplayMode?: (mode: DisplayMode) => void;
 };
 
 export function filterStarters(
@@ -29,9 +33,10 @@ export function filterStarters(
   );
 }
 
-export default function Setup({ onStart, onResume, loading }: Props) {
+export default function Setup({ onStart, onResume, loading, displayMode = "fixed", onDisplayMode }: Props) {
   const [count, setCount] = useState(2);
   const [active, setActive] = useState(0);
+  const [seatSides, setSeatSides] = useState<SeatSide[]>(() => getDefaultSeatSides(2));
   const [names, setNames] = useState([
     "트레이너 1",
     "트레이너 2",
@@ -82,10 +87,10 @@ export default function Setup({ onStart, onResume, loading }: Props) {
           <p>
             풀숲에서 새로운 친구를 만나고, 나만의 도로를 지키세요.
             <br />
-            마지막까지 살아남는 트레이너는 누구일까요?
+            도로 27칸을 모두 차지하면 승리합니다.
           </p>
           <div className={styles.featurePills}>
-            <span>◈ 3D 보드</span>
+            <span>◈ 40칸 탑뷰 보드</span>
             <span>2–4인 함께 플레이</span>
             <span>1,025종 도감</span>
           </div>
@@ -114,6 +119,7 @@ export default function Setup({ onStart, onResume, loading }: Props) {
                 aria-pressed={count === value}
                 onClick={() => {
                   setCount(value);
+                  setSeatSides(getDefaultSeatSides(value));
                   setActive(Math.min(active, value - 1));
                 }}
               >
@@ -122,6 +128,14 @@ export default function Setup({ onStart, onResume, loading }: Props) {
             ))}
           </div>
         </div>
+        <label className={styles.displaySetting}>
+          화면 방향
+          <select value={displayMode} onChange={(event) => onDisplayMode?.(event.target.value as DisplayMode)}>
+            <option value="fixed">고정 방향</option>
+            <option value="auto">조작자 방향으로 자동 회전</option>
+          </select>
+          <small>아이패드를 가로로 눕히고, 앉는 위치를 골라주세요.</small>
+        </label>
         <div className={styles.trainerSlots}>
           {Array.from({ length: count }, (_, index) => (
             <div
@@ -165,6 +179,19 @@ export default function Setup({ onStart, onResume, loading }: Props) {
                   )
                 }
               />
+              <label className={styles.seatSetting}>
+                앉는 위치
+                <select
+                  aria-label={`${index + 1}번 트레이너 자리`}
+                  value={seatSides[index]}
+                  onChange={(event) => setSeatSides(seatSides.map((seat, id) => id === index ? event.target.value as SeatSide : seat))}
+                >
+                  <option value="bottom">아래 ↓</option>
+                  <option value="left">왼쪽 ←</option>
+                  <option value="top">위 ↑</option>
+                  <option value="right">오른쪽 →</option>
+                </select>
+              </label>
             </div>
           ))}
         </div>
@@ -182,7 +209,7 @@ export default function Setup({ onStart, onResume, loading }: Props) {
             </h3>
           </div>
           <span className={styles.subtle}>
-            모두 Lv. 1 · 일반 미진화형 선택 가능
+            모두 Lv. 3 · 일반 미진화형 선택 가능
           </span>
         </div>
         <div className={styles.filters}>
@@ -304,6 +331,7 @@ export default function Setup({ onStart, onResume, loading }: Props) {
                 names
                   .slice(0, count)
                   .map((name, index) => name.trim() || `트레이너 ${index + 1}`),
+                seatSides,
               )
             }
           >

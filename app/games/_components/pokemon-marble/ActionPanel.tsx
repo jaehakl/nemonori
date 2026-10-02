@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { getStats, transition } from "./engine";
-import { PLAYER_COLORS } from "./board";
-import { speciesById } from "./pokemon-data";
+import { BOARD_TILES, PLAYER_COLORS } from "./board";
+import { speciesById, typeColors } from "./pokemon-data";
 import { HealthBar, PokemonSprite, TypeBadge } from "./PokemonSprite";
 import BattlePanel, { PokemonChoice } from "./BattlePanel";
 import type { GameAction, GameState } from "./types";
@@ -26,7 +26,7 @@ export default function ActionPanel({
   const allowed = (action: GameAction) => transition(state, action) !== state;
   const endButton = (
     <button
-      className={`${styles.primaryButton} ${styles.fullWidth}`}
+      className={`${styles.primaryButton} ${styles.fullWidth} ${styles.turnEnd}`}
       onClick={() => dispatch({ type: "END_TURN" })}
     >
       턴 마치기 →
@@ -43,7 +43,7 @@ export default function ActionPanel({
       <section className={styles.actionPanel}>
         <div className={styles.winner}>
           <span>🏆</span>
-          <span className={styles.eyebrow}>LAST TRAINER STANDING</span>
+          <span className={styles.eyebrow}>ALL ROADS ARE YOURS</span>
           <h2>
             {state.players[state.winner!].name}
             <br />
@@ -63,7 +63,7 @@ export default function ActionPanel({
           <p>
             {state.turn}번의 턴을 지나
             <br />
-            마지막까지 파티를 지켜냈습니다.
+            모든 도로 {BOARD_TILES.filter((tile) => tile === "road").length}칸을 차지했습니다!
           </p>
           <button className={styles.primaryButton} onClick={onRestart}>
             새로운 모험
@@ -127,12 +127,14 @@ export default function ActionPanel({
           </span>
         </div>
         <p className={styles.actionCopy}>
-          포획하면 {player.party.length >= 6 ? "박스" : "파티"}에 합류합니다.
-          포켓몬센터에서 회복해야 배틀할 수 있습니다.
+          {player.party.length >= 6
+            ? "파티 6칸이 모두 차서 포획할 수 없습니다. 포켓몬센터에서 파티를 정리하세요."
+            : "포획하면 파티에 합류합니다. 포켓몬센터에서 회복해야 배틀할 수 있습니다."}
         </p>
         <div className={styles.buttonRow}>
           <button
             className={styles.primaryButton}
+            disabled={player.party.length >= 6}
             onClick={() => dispatch({ type: "CAPTURE", capture: true })}
           >
             포획하기
@@ -180,8 +182,8 @@ export default function ActionPanel({
               ? "두 개의 주사위를 굴려 모험을 이어가세요."
               : state.phase === "moving"
                 ? `${state.dice![0] + state.dice![1]}칸 이동 · 앞으로 ${state.movement?.remaining ?? 0}칸`
-                : player.eliminated
-                  ? "파티가 모두 행동불능이 되어 탈락했습니다. 다음 트레이너에게 차례를 넘겨주세요."
+                : player.restTurnsRemaining > 0
+                  ? `센터로 돌아왔습니다. 다음 본인 차례 ${player.restTurnsRemaining}번을 쉬면 파티와 박스가 모두 회복됩니다.`
                   : "이번 턴의 모험을 마쳤습니다. 다음 트레이너에게 차례를 넘겨주세요."}
           </p>
           {state.phase === "roll" ? (
@@ -221,8 +223,9 @@ export default function ActionPanel({
               <h4>현재 수비</h4>
               <PokemonChoice
                 pokemon={state.roads[player.position]!.pokemon}
+                disabled={!allowed({ type: "RETRIEVE" })}
                 onClick={() => dispatch({ type: "RETRIEVE" })}
-                label={player.party.length >= 6 ? "박스로 회수" : "파티로 회수"}
+                label={player.party.length >= 6 ? "파티 가득 참" : "파티로 회수"}
               />
             </div>
           )}
@@ -384,45 +387,80 @@ export default function ActionPanel({
   );
 }
 
-export function PartySummary({ state }: { state: GameState }) {
+/** One persistent panel spans the roll, every step, and the gaps between steps. */
+export function MovementPanel({
+  state,
+  rolling,
+  busy,
+  notice,
+  onSkip,
+}: {
+  state: GameState;
+  rolling: boolean;
+  busy: boolean;
+  notice?: string;
+  onSkip: () => void;
+}) {
+  const player = state.players[state.activePlayer];
+  const total = state.dice ? state.dice[0] + state.dice[1] : 0;
+  const remaining = state.movement?.remaining ?? 0;
   return (
-    <div className={styles.players}>
-      {state.players.map((player) => (
-        <section
-          key={player.id}
-          className={`${styles.playerCard} ${(state.winner ?? state.activePlayer) === player.id ? styles.activePlayer : ""} ${player.eliminated ? styles.eliminated : ""}`}
-          style={
-            {
-              "--player-color": PLAYER_COLORS[player.id],
-            } as React.CSSProperties
-          }
-          aria-label={`${player.name}의 파티`}
-        >
-          <div className={styles.playerCardHeader}>
-            <span className={styles.playerDot}>{player.id + 1}</span>
-            <strong>{player.name}</strong>
-            <small>
-              {player.eliminated
-                ? "탈락"
-                : `도로 ${state.roads.filter((guardian) => guardian?.ownerId === player.id).length} · 박스 ${player.box.length}`}
-            </small>
-          </div>
-          <div className={styles.partyMini}>
-            {player.party.map((pokemon) => (
-              <div
-                key={pokemon.id}
-                className={pokemon.hp === 0 ? styles.fainted : ""}
-                title={`${speciesById[pokemon.speciesId].name} · Lv. ${pokemon.level}`}
-              >
-                <PokemonSprite speciesId={pokemon.speciesId} size={46} />
-                <span>{speciesById[pokemon.speciesId].name}</span>
-                <span>Lv. {pokemon.level}</span>
-                <HealthBar hp={pokemon.hp} max={getStats(pokemon).hp} />
+    <section className={`${styles.actionPanel} ${styles.movementPanel}`} aria-label="주사위와 이동">
+      <div className={styles.turnHeading}>
+        <h3>{player.name}</h3>
+        <span className={styles.turnBadge}>TURN {state.turn}</span>
+      </div>
+      <p className={styles.actionCopy} role="status">
+        {notice ?? (rolling ? "주사위를 굴리고 있어요!" : `${total}칸 이동 · 앞으로 ${remaining}칸`)}
+      </p>
+      <progress aria-label="이동 진행" max={total || 1} value={rolling ? 0 : total - remaining} />
+      <button className={`${styles.secondaryButton} ${styles.fullWidth}`} disabled={!busy} onClick={onSkip}>
+        연출 건너뛰기 →
+      </button>
+    </section>
+  );
+}
+
+export function PartySummary({ state }: { state: GameState }) {
+  const player = state.players[state.activePlayer];
+  const ownedRoads = state.roads.filter((guardian) => guardian?.ownerId === player.id).length;
+  const roadCount = BOARD_TILES.filter((tile) => tile === "road").length;
+  return (
+    <section
+      className={styles.partyPanel}
+      style={{ "--player-color": PLAYER_COLORS[player.id] } as React.CSSProperties}
+      aria-label={`${player.name}의 파티`}
+    >
+      <div className={styles.playerCardHeader}>
+        <span className={styles.playerDot}>{player.id + 1}</span>
+        <strong>{player.name}의 파티</strong>
+        <small>도로 {ownedRoads}/{roadCount}</small>
+        {player.restTurnsRemaining > 0 && <small>휴식 {player.restTurnsRemaining}턴</small>}
+      </div>
+      <div className={styles.partyCards} tabIndex={0} aria-label="파티 카드 목록">
+        {player.party.map((pokemon) => {
+          const species = speciesById[pokemon.speciesId];
+          return (
+            <article
+              key={pokemon.id}
+              className={`${styles.tradingCard} ${pokemon.hp === 0 ? styles.fainted : ""}`}
+              style={{ "--type-color": typeColors[species.types[0]] } as React.CSSProperties}
+              aria-label={`${species.name}, 레벨 ${pokemon.level}${pokemon.hp === 0 ? ", 행동불능" : ""}`}
+            >
+              <div className={styles.cardHeading}>
+                <strong>{species.name}</strong><span>Lv. {pokemon.level}</span>
               </div>
-            ))}
-          </div>
-        </section>
-      ))}
-    </div>
+              <div className={styles.cardArtwork}>
+                <PokemonSprite speciesId={pokemon.speciesId} size={144} fit />
+              </div>
+              <div className={styles.typeRow}>
+                {species.types.map((type) => <TypeBadge key={type} type={type} />)}
+              </div>
+              <HealthBar hp={pokemon.hp} max={getStats(pokemon).hp} />
+            </article>
+          );
+        })}
+      </div>
+    </section>
   );
 }

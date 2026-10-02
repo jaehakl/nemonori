@@ -11,12 +11,13 @@ export type GameAudio = {
   setPreferences(preferences: AudioPreferences): void;
   setScene(scene: AudioScene): void;
   setPaused(paused: boolean): void;
+  setReducedMotion(reduced: boolean): void;
   playCue(kind: string, moveType?: number | null): void;
   dispose(): void;
 };
 
 type Voice = {
-  oscillator: OscillatorNode;
+  source: OscillatorNode | AudioBufferSourceNode;
   envelope: GainNode;
   channel: "music" | "effects";
 };
@@ -227,6 +228,9 @@ export function createGameAudio(): GameAudio {
   let preferences: AudioPreferences = { ...DEFAULT_AUDIO_PREFERENCES };
   let scene: AudioScene = "adventure";
   let paused = false;
+  let reducedMotion = false;
+  let diceTake = 0;
+  let diceVoice: Voice | null = null;
   let disposed = false;
   let scheduler: ReturnType<typeof setInterval> | null = null;
   let outgoing: { scene: AudioScene; until: number } | null = null;
@@ -239,15 +243,16 @@ export function createGameAudio(): GameAudio {
 
   function release(voice: Voice, stop = true) {
     if (!voices.delete(voice)) return;
-    voice.oscillator.onended = null;
+    if (voice === diceVoice) diceVoice = null;
+    voice.source.onended = null;
     if (stop) {
       try {
-        voice.oscillator.stop();
+        voice.source.stop();
       } catch {
         /* Already ended. */
       }
     }
-    voice.oscillator.disconnect();
+    voice.source.disconnect();
     voice.envelope.disconnect();
   }
 
@@ -311,7 +316,7 @@ export function createGameAudio(): GameAudio {
     }
     const oscillator = context.createOscillator();
     const envelope = context.createGain();
-    const voice: Voice = { oscillator, envelope, channel };
+    const voice: Voice = { source: oscillator, envelope, channel };
     voices.add(voice);
     oscillator.type = wave;
     oscillator.frequency.setValueAtTime(frequency, start);
@@ -331,6 +336,109 @@ export function createGameAudio(): GameAudio {
     oscillator.onended = () => release(voice, false);
     oscillator.start(start);
     oscillator.stop(start + duration + 0.02);
+  }
+
+  function rollDice(start: number) {
+    if (!context || !graph || !canPlay()) return;
+    if (diceVoice) release(diceVoice);
+    if (voices.size >= MAX_VOICES) {
+      const oldest =
+        [...voices].find((voice) => voice.channel === "music") ??
+        voices.values().next().value;
+      if (oldest) release(oldest);
+    }
+
+    const sampleRate = context.sampleRate;
+    const duration = reducedMotion ? 0.16 : 1.62;
+    const buffer = context.createBuffer(2, Math.ceil(duration * sampleRate), sampleRate);
+    const left = buffer.getChannelData(0);
+    const right = buffer.getChannelData(1);
+    // This generator belongs only to the instrument, never to the saved game.
+    let noiseSeed = (0x6d2b79f5 ^ Math.imul(++diceTake, 0x9e3779b1)) >>> 0;
+    const noise = () => {
+      noiseSeed = (Math.imul(noiseSeed, 1664525) + 1013904223) >>> 0;
+      return noiseSeed / 0x80000000 - 1;
+    };
+
+    function impact(offset: number, strength: number, pan: number, pitch: number) {
+      const begin = Math.round(offset * sampleRate);
+      const length = Math.min(Math.ceil(0.09 * sampleRate), left.length - begin);
+      const leftGain = Math.sqrt((1 - pan) / 2);
+      const rightGain = Math.sqrt((1 + pan) / 2);
+      let softNoise = 0;
+      for (let index = 0; index < length; index++) {
+        const time = index / sampleRate;
+        const grain = noise();
+        softNoise += (grain - softNoise) * 0.3;
+        // A hard plastic click sits above a warm wooden tabletop knock.
+        const click = (grain - softNoise) * Math.exp(-time * 430);
+        const shell = (
+          Math.sin(2 * Math.PI * pitch * time) +
+          0.32 * Math.sin(2 * Math.PI * pitch * 1.73 * time)
+        ) * Math.exp(-time * 95);
+        const table = Math.sin(2 * Math.PI * (145 + pitch * 0.08) * time) * Math.exp(-time * 55);
+        const grainTail = softNoise * Math.exp(-time * 85);
+        const attack = Math.min(1, time / 0.0007);
+        const sample = strength * attack * (0.54 * click + 0.26 * shell + 0.24 * table + 0.22 * grainTail);
+        left[begin + index] += sample * leftGain;
+        right[begin + index] += sample * rightGain;
+      }
+    }
+
+    if (reducedMotion) {
+      // Match the brief, static dice reveal instead of trailing a long roll.
+      impact(0.008, 0.5, -0.45, 780);
+      impact(0.048, 0.43, 0.45, 960);
+    } else {
+      // Loose dice chatter in the hand before two distinct bodies hit the board.
+      [0, 0.034, 0.071, 0.11, 0.154, 0.192, 0.232].forEach((offset, index) => {
+        impact(offset, 0.16 + index * 0.018, index % 2 ? 0.2 : -0.2, 1100 + noise() * 170);
+      });
+      const bounceTimes = [0.31, 0.39, 0.495, 0.635, 0.805, 1.01, 1.255];
+      for (const die of [0, 1]) {
+        const pan = die === 0 ? -0.58 : 0.58;
+        const pitch = die === 0 ? 735 : 930;
+        bounceTimes.forEach((offset, index) => {
+          const jitter = noise() * 0.009;
+          const strength = 0.76 * Math.exp(-index * 0.19);
+          impact(offset + die * 0.043 + jitter, strength, pan, pitch + noise() * 95);
+        });
+        // Quiet, uneven surface friction fills the gaps between collisions.
+        let previousNoise = 0;
+        for (let index = Math.round(0.3 * sampleRate); index < Math.round(1.29 * sampleRate); index++) {
+          const time = index / sampleRate;
+          const grain = noise();
+          const friction = (grain - previousNoise) * 0.022 * (1.3 - time) *
+            (0.6 + 0.4 * Math.sin(time * 77 + die * 2));
+          previousNoise = grain;
+          left[index] += friction * (die === 0 ? 0.85 : 0.3);
+          right[index] += friction * (die === 0 ? 0.3 : 0.85);
+        }
+        impact(1.365 + die * 0.045, 0.2, pan, pitch * 0.94);
+        impact(1.48 + die * 0.034, 0.11, pan, pitch * 0.88);
+      }
+    }
+    // Gentle saturation protects against overlapping clicks without raising volume.
+    for (let index = 0; index < left.length; index++) {
+      left[index] = Math.tanh(left[index] * 1.2) * 0.85;
+      right[index] = Math.tanh(right[index] * 1.2) * 0.85;
+    }
+
+    const source = context.createBufferSource();
+    const envelope = context.createGain();
+    const voice: Voice = { source, envelope, channel: "effects" };
+    voices.add(voice);
+    diceVoice = voice;
+    source.buffer = buffer;
+    envelope.gain.setValueAtTime(0, start);
+    envelope.gain.linearRampToValueAtTime(1, start + 0.002);
+    envelope.gain.setValueAtTime(1, start + duration - 0.015);
+    envelope.gain.linearRampToValueAtTime(0, start + duration);
+    source.connect(envelope);
+    envelope.connect(graph.effects);
+    source.onended = () => release(voice, false);
+    source.start(start);
+    source.stop(start + duration);
   }
 
   function scheduleBeat(track: AudioScene, step: number, time: number) {
@@ -610,6 +718,11 @@ export function createGameAudio(): GameAudio {
         void suspendPromise.then(resumeContext);
       }
     },
+    setReducedMotion(next) {
+      if (disposed || reducedMotion === next) return;
+      reducedMotion = next;
+      if (next && diceVoice) release(diceVoice);
+    },
     playCue(kind, moveType) {
       if (!context || !canPlay() || preferences.effectsVolume === 0) return;
       try {
@@ -620,18 +733,7 @@ export function createGameAudio(): GameAudio {
             break;
           case "dice":
           case "roll":
-            [0, 0.08, 0.18, 0.3, 0.46, 0.65].forEach((offset, index) =>
-              tone(
-                "effects",
-                380 + index * 45,
-                now + offset,
-                0.045,
-                0.13,
-                "triangle",
-                100,
-              ),
-            );
-            tone("effects", 130, now + 0.74, 0.12, 0.3, "sine", 45);
+            rollDice(now);
             break;
           case "move":
             notes([76, 79], 0.045, 0.08, "triangle");
@@ -668,6 +770,7 @@ export function createGameAudio(): GameAudio {
           case "capture":
             notes([67, 72, 76, 79, 84], 0.1, 0.28);
             break;
+          case "lap":
           case "level-up":
             notes([72, 76, 79, 84], 0.065, 0.25);
             break;
@@ -680,8 +783,11 @@ export function createGameAudio(): GameAudio {
           case "retrieve":
             notes([79, 76, 72], 0.07, 0.17, "triangle");
             break;
-          case "eliminate":
-            notes([60, 57, 53, 48], 0.16, 0.35, "triangle");
+          case "rescue":
+            notes([60, 64, 67, 72], 0.14, 0.3, "triangle");
+            break;
+          case "rest":
+            notes([67, 64], 0.12, 0.16, "triangle");
             break;
           case "victory":
             notes([72, 72, 76, 79, 84, 79, 84, 88, 91], 0.2, 0.5, "triangle");

@@ -28,7 +28,7 @@ export function PokemonChoice({
       disabled={disabled}
       aria-label={`${species.name} ${label}`}
     >
-      <PokemonSprite speciesId={pokemon.speciesId} size={52} />
+      <PokemonSprite speciesId={pokemon.speciesId} size={52} fit />
       <div>
         <strong>{species.name}</strong>
         <small>Lv. {pokemon.level}</small>

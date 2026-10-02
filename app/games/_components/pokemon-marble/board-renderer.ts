@@ -1,8 +1,6 @@
 import * as THREE from "three";
-import {
-  batchStaticScenery,
-  createBoardEnvironment,
-} from "./board-environment";
+import { batchStaticScenery } from "./board-environment";
+import { BOARD_SIZE, BOARD_TILES, getTilePosition } from "./board";
 import { createBattleStage, type LoadPokemonTexture } from "./battle-stage";
 import { createBoardEffects, type EffectCue } from "./board-effects";
 import type { BattleView, PresentationEvent } from "./presentation-events";
@@ -12,7 +10,8 @@ export type BoardToken = {
   name: string;
   color: string;
   position: number;
-  eliminated: boolean;
+  starterSpeciesId: number;
+  restTurnsRemaining: number;
 };
 
 export type BoardGuardian = {
@@ -33,13 +32,8 @@ export type BoardSnapshot = {
   reducedMotion?: boolean;
 };
 
-export const TILE_NAMES = Array.from(
-  { length: 32 },
-  (_, index) =>
-    ["포켓몬센터", "풀숲", "도로", "풀숲", "도로", "풀숲", "도로", "도로"][
-      index % 8
-    ],
-);
+const TILE_LABELS = { center: "포켓몬센터", grass: "풀숲", road: "도로" };
+export const TILE_NAMES = BOARD_TILES.map((kind) => TILE_LABELS[kind]);
 
 const TILE_SPACING = 1.08;
 
@@ -48,21 +42,19 @@ function tilePosition(
   index: number,
   target = new THREE.Vector3(),
 ): THREE.Vector3 {
-  const step = ((index % 32) + 32) % 32;
-  const offset = step % 8;
-  const side = Math.floor(step / 8);
-  const x =
-    side === 0 ? -4 : side === 1 ? -4 + offset : side === 2 ? 4 : 4 - offset;
-  const z =
-    side === 0 ? 4 - offset : side === 1 ? -4 : side === 2 ? -4 + offset : 4;
+  const normalized = ((index % BOARD_SIZE) + BOARD_SIZE) % BOARD_SIZE;
+  const { x, z } = getTilePosition(normalized);
   return target.set(x * TILE_SPACING, 0.27, z * TILE_SPACING);
 }
 
 type Pawn = {
   group: THREE.Group;
-  body: THREE.MeshStandardMaterial;
+  body: THREE.MeshBasicMaterial;
+  portrait: THREE.Sprite;
+  speciesId: number;
   halo: THREE.Mesh;
   position: number;
+  offset: THREE.Vector3;
   from: THREE.Vector3;
   to: THREE.Vector3;
   startedAt: number;
@@ -110,9 +102,10 @@ function initializeBoardRenderer(
   const boardRoot = new THREE.Group();
   boardRoot.name = "adventure-board";
   scene.add(boardRoot);
-  const camera = new THREE.OrthographicCamera(-8, 8, 8, -8, 0.1, 80);
-  camera.position.set(12, 16, 16);
-  camera.lookAt(0, 0.2, 0);
+  const camera = new THREE.OrthographicCamera(-6.25, 6.25, 6.25, -6.25, 0.1, 80);
+  camera.position.set(0, 20, 0);
+  camera.up.set(0, 0, -1);
+  camera.lookAt(0, 0, 0);
   camera.updateMatrixWorld();
   const battleCamera = new THREE.OrthographicCamera(-6, 6, 5, -5, 0.1, 80);
   battleCamera.position.set(0, 7, 13);
@@ -146,7 +139,6 @@ function initializeBoardRenderer(
   let selectedTile: number | null = null;
   // Ownership is recorded as construction progresses, including partial failures.
   const resources: {
-    environment?: ReturnType<typeof createBoardEnvironment>;
     effects?: ReturnType<typeof createBoardEffects>;
     battleStage?: ReturnType<typeof createBattleStage>;
     disposeBatches?: () => void;
@@ -193,7 +185,7 @@ function initializeBoardRenderer(
     if (textures.delete(texture)) texture.dispose();
   }
 
-  // Only active users retain a sprite: at most 32 guardians and two battlers.
+  // Pawns, guardians and battlers share one lease-counted texture per species.
   const loadPokemonTexture: LoadPokemonTexture = (speciesId, ready, failed) => {
     let entry = textureCache.get(speciesId);
     if (!entry) {
@@ -366,22 +358,6 @@ function initializeBoardRenderer(
     return sprite;
   }
 
-  function tree(parent: THREE.Object3D, x: number, z: number, scale = 1) {
-    const group = new THREE.Group();
-    group.position.set(x, 0.2, z);
-    group.scale.setScalar(scale);
-    box(group, [0.13, 0.5, 0.13], [0, 0.25, 0], "#ac8061");
-    const crown = new THREE.Mesh(
-      geometry(new THREE.IcosahedronGeometry(0.46, 1)),
-      paint("#4b9a77"),
-    );
-    crown.position.y = 0.68;
-    crown.scale.set(1, 1.12, 1);
-    crown.castShadow = true;
-    group.add(crown);
-    parent.add(group);
-  }
-
   scene.add(new THREE.HemisphereLight("#fff9e8", "#698b77", 2.5));
   sunlight = new THREE.DirectionalLight("#fff4da", 3.1);
   sunlight.position.set(-6, 15, 8);
@@ -395,107 +371,66 @@ function initializeBoardRenderer(
   sunlight.shadow.bias = -0.0002;
   scene.add(sunlight);
 
-  // Layered edges make the board read as a small, tangible island.
-  box(boardRoot, [10.25, 0.48, 10.25], [0, -0.47, 0], "#478b7a");
-  box(boardRoot, [10.45, 0.14, 10.45], [0, -0.19, 0], "#ffe7a4");
-  box(boardRoot, [10.15, 0.18, 10.15], [0, -0.04, 0], "#97ca91");
-  box(boardRoot, [7.25, 0.08, 7.25], [0, 0.09, 0], "#b4da98");
+  // Keep the center clear for the current player's HTML party and controls.
+  box(boardRoot, [12.05, 0.48, 12.05], [0, -0.47, 0], "#478b7a");
+  box(boardRoot, [12.15, 0.14, 12.15], [0, -0.19, 0], "#ffe7a4");
+  box(boardRoot, [11.95, 0.18, 11.95], [0, -0.04, 0], "#97ca91");
+  box(boardRoot, [9.3, 0.08, 9.3], [0, 0.09, 0], "#dcebc9");
 
-  const water = new THREE.Mesh(
-    geometry(new THREE.CylinderGeometry(1.12, 1.12, 0.025, 48)),
-    paint("#83c8cd", { roughness: 0.25 }),
-  );
-  water.position.set(1.63, 0.16, -1.87);
-  water.scale.z = 0.65;
-  boardRoot.add(water);
-  const pondBorder = new THREE.Mesh(
-    geometry(new THREE.TorusGeometry(1.17, 0.065, 6, 48)),
-    paint("#dbdfb5"),
-  );
-  pondBorder.rotation.x = -Math.PI / 2;
-  pondBorder.position.copy(water.position);
-  pondBorder.scale.y = 0.65;
-  boardRoot.add(pondBorder);
-  tree(boardRoot, -2.55, -2.3, 1.25);
-  tree(boardRoot, -1.63, -2.67, 0.9);
-  tree(boardRoot, 2.57, 2.37, 1.15);
-  tree(boardRoot, 1.63, 2.65, 0.8);
-  tree(boardRoot, -2.58, 1.8, 0.72);
-  box(boardRoot, [0.82, 0.13, 0.28], [-2.32, 0.29, -0.58], "#b69365");
-  box(boardRoot, [0.12, 0.22, 0.26], [-2.59, 0.18, -0.58], "#64786a");
-  box(boardRoot, [0.12, 0.22, 0.26], [-2.05, 0.18, -0.58], "#64786a");
-
-  const emblem = new THREE.Mesh(
-    geometry(new THREE.CylinderGeometry(1.75, 1.75, 0.035, 64)),
-    paint("#d9e7be"),
-  );
-  emblem.position.set(0, 0.17, 0.1);
-  boardRoot.add(emblem);
-  const innerRing = new THREE.Mesh(
-    geometry(new THREE.TorusGeometry(1.55, 0.016, 4, 64)),
-    paint("#92b591"),
-  );
-  innerRing.rotation.x = -Math.PI / 2;
-  innerRing.position.set(0, 0.2, 0.1);
-  boardRoot.add(innerRing);
-  label(boardRoot, "POKÉMON", "#356e59", 2.25, 0.37, [0, 0.24, -1.32]);
-  label(boardRoot, "MARBLE", "#6d8c63", 1.54, 0.24, [0, 0.24, 1.4]);
-
-  for (let index = 0; index < 32; index += 1) {
-    const type = TILE_NAMES[index];
+  for (let index = 0; index < BOARD_SIZE; index += 1) {
+    const type = BOARD_TILES[index];
     const position = tilePosition(index);
     const tile = box(
       boardRoot,
       [0.995, 0.2, 0.995],
       [position.x, 0.15, position.z],
-      type === "포켓몬센터"
+      type === "center"
         ? "#fff1e1"
-        : type === "풀숲"
+        : type === "grass"
           ? "#79b484"
           : "#e5dfce",
     );
     tile.userData.tile = index;
+    tile.userData.kind = type;
     tileMeshes.push(tile);
 
     const plate = box(
       boardRoot,
-      [0.76, 0.035, 0.1],
-      [position.x, 0.267, position.z + 0.38],
+      [0.92, 0.035, 0.04],
+      [position.x, 0.267, position.z - 0.475],
       "#a99c84",
     );
-    plate.visible = type === "도로";
+    plate.name = `owner-plate-${index}`;
+    plate.visible = type === "road";
     ownerPlates.push(plate);
     label(
       boardRoot,
       String(index + 1).padStart(2, "0"),
-      type === "풀숲" ? "#244f3f" : "#657163",
-      0.4,
-      0.23,
-      [position.x + 0.28, 0.34, position.z + 0.33],
+      type === "grass" ? "#244f3f" : "#657163",
+      0.15,
+      0.12,
+      [position.x - 0.38, 0.34, position.z - 0.32],
     );
 
-    if (type === "포켓몬센터") {
+    if (type === "center") {
       const center = new THREE.Group();
-      center.position.set(position.x - 0.09, 0.255, position.z - 0.09);
-      box(center, [0.57, 0.41, 0.48], [0, 0.205, 0], "#fffcf2");
-      box(center, [0.67, 0.13, 0.58], [0, 0.455, 0], "#e86e67");
-      box(center, [0.49, 0.08, 0.42], [0, 0.55, 0], "#ef8c80");
-      box(center, [0.15, 0.24, 0.025], [0, 0.13, 0.249], "#85c9d0");
-      box(center, [0.21, 0.055, 0.014], [0, 0.354, 0.251], "#e66a61");
-      box(center, [0.06, 0.18, 0.016], [0, 0.354, 0.253], "#e66a61");
+      center.position.set(position.x, 0.255, position.z - 0.25);
+      box(center, [0.48, 0.04, 0.35], [0, 0.02, 0], "#fffdf6");
+      box(center, [0.27, 0.02, 0.075], [0, 0.05, 0], "#e66a61");
+      box(center, [0.075, 0.02, 0.27], [0, 0.051, 0], "#e66a61");
       boardRoot.add(center);
-    } else if (type === "풀숲") {
+    } else if (type === "grass") {
       const grass = new THREE.Group();
-      grass.position.set(position.x, 0.25, position.z);
+      grass.position.set(position.x, 0.25, position.z - 0.23);
       for (let blade = 0; blade < 5; blade += 1) {
         const stalk = new THREE.Mesh(
           geometry(new THREE.ConeGeometry(0.065, 0.24 + (blade % 2) * 0.08, 4)),
           paint(blade % 2 ? "#d2e9a1" : "#b6d98d"),
         );
         stalk.position.set(
-          -0.29 + (blade % 3) * 0.23,
+          -0.19 + (blade % 3) * 0.19,
           0.1,
-          -0.18 + Math.floor(blade / 3) * 0.26,
+          -0.09 + Math.floor(blade / 3) * 0.18,
         );
         stalk.rotation.z = (blade % 2 ? -1 : 1) * 0.12;
         grass.add(stalk);
@@ -504,8 +439,8 @@ function initializeBoardRenderer(
     } else {
       box(
         boardRoot,
-        [0.12, 0.015, 0.3],
-        [position.x, 0.257, position.z - 0.08],
+        [0.12, 0.015, 0.26],
+        [position.x, 0.257, position.z - 0.25],
         "#fffaf0",
       );
     }
@@ -522,6 +457,7 @@ function initializeBoardRenderer(
       }),
     ),
   );
+  selection.name = "tile-selection";
   selection.rotation.x = -Math.PI / 2;
   selection.rotation.z = Math.PI / 4;
   selection.visible = false;
@@ -530,8 +466,6 @@ function initializeBoardRenderer(
     boardRoot,
     new Set([...ownerPlates, selection]),
   );
-  resources.environment = createBoardEnvironment();
-  boardRoot.add(resources.environment.root);
   resources.battleStage = createBattleStage(loadPokemonTexture);
   scene.add(resources.battleStage.root);
   resources.effects = createBoardEffects();
@@ -563,10 +497,11 @@ function initializeBoardRenderer(
 
   for (let index = 0; index < 2; index += 1) {
     const die = new THREE.Mesh(
-      geometry(new THREE.BoxGeometry(0.65, 0.65, 0.65)),
+      geometry(new THREE.BoxGeometry(0.5, 0.5, 0.5)),
       [3, 4, 1, 6, 2, 5].map(diceFace),
     );
-    die.position.set(index ? 0.56 : -0.56, 0.57, 0.05);
+    die.name = `board-die-${index}`;
+    die.position.set(index ? 0.56 : -0.56, 0.57, -4.45);
     die.castShadow = true;
     boardRoot.add(die);
     dice.push(die);
@@ -586,60 +521,152 @@ function initializeBoardRenderer(
     );
   }
 
-  function pawnOffset(tokenId: number, target = new THREE.Vector3()) {
+  function pawnLayout(tokenId: number, tile?: number) {
+    const token = snapshot.tokens.find((entry) => entry.id === tokenId);
+    const position = tile ?? token?.position;
+    const occupants = snapshot.tokens.filter(
+      (entry) => entry.position === position || entry.id === tokenId,
+    );
+    if (occupants.length === 1) {
+      const hasGuardian = snapshot.guardians.some(
+        (guardian) => guardian.tile === position,
+      );
+      return {
+        x: 0,
+        z: hasGuardian ? 0.27 : 0,
+        scale: (hasGuardian ? 0.36 : 0.6) / 0.26,
+      };
+    }
     const index = Math.max(
       0,
       snapshot.tokens.findIndex((token) => token.id === tokenId),
     );
-    return target.set(
-      (index % 2 ? 1 : -1) * 0.19,
-      0,
-      (index < 2 ? -1 : 1) * 0.18,
+    return {
+      x: (index % 2 ? 1 : -1) * 0.25,
+      z: index < 2 ? 0.1 : 0.38,
+      scale: 1,
+    };
+  }
+
+  function pawnOffset(
+    tokenId: number,
+    target = new THREE.Vector3(),
+    tile?: number,
+  ) {
+    const { x, z } = pawnLayout(tokenId, tile);
+    return target.set(x, 0, z);
+  }
+
+  /** Center the visible silhouette, rather than the transparent 96px image. */
+  function boardPortrait(
+    group: THREE.Group,
+    speciesId: number,
+    width: number,
+    height: number,
+    fallbackText: string,
+  ) {
+    const fallback = label(
+      group,
+      fallbackText,
+      "#294b41",
+      width,
+      height * 0.55,
+      [0, 0.08, 0],
     );
+    fallback.name = "portrait-fallback";
+    fallback.center.set(0.5, 0.5);
+    const spriteMaterial = material(
+      new THREE.SpriteMaterial({ transparent: true, depthWrite: false }),
+    );
+    const sprite = new THREE.Sprite(spriteMaterial);
+    sprite.name = "pokemon-portrait";
+    sprite.userData.speciesId = speciesId;
+    sprite.position.y = 0.1;
+    sprite.visible = false;
+    group.add(sprite);
+    let ready = false;
+    function refresh() {
+      if (disposed || !group.parent || !ready || !spriteMaterial.map) return;
+      const bounds = spriteMaterial.map.userData.spriteBounds as
+        | { centerX: number; bottom: number; width: number; height: number }
+        | undefined;
+      sprite.center.set(
+        bounds?.centerX ?? 0.5,
+        bounds ? bounds.bottom + bounds.height / 2 : 0.5,
+      );
+      const scale = Math.min(
+        width / (bounds?.width ?? 1),
+        height / (bounds?.height ?? 1),
+      );
+      sprite.scale.set(scale, scale, 1);
+      spriteMaterial.needsUpdate = true;
+      sprite.visible = true;
+      fallback.visible = false;
+    }
+    const lease = loadPokemonTexture(
+      speciesId,
+      () => {
+        ready = true;
+        refresh();
+      },
+      () => {
+        if (disposed || !group.parent) return;
+        spriteMaterial.map = null;
+        sprite.visible = false;
+        fallback.visible = true;
+      },
+    );
+    spriteMaterial.map = lease.texture;
+    sprite.userData.releaseSprite = lease.release;
+    // A cached texture invokes ready synchronously, before its map is assigned.
+    refresh();
+    return sprite;
   }
 
   function makePawn(token: BoardToken) {
     const group = new THREE.Group();
-    const body = paint(token.color);
+    group.name = `player-token-${token.id}`;
+    const body = material(new THREE.MeshBasicMaterial({ color: token.color }));
     const base = new THREE.Mesh(
-      geometry(new THREE.CylinderGeometry(0.16, 0.2, 0.15, 20)),
+      geometry(new THREE.CircleGeometry(0.13, 32)),
       body,
     );
-    base.position.y = 0.08;
-    base.castShadow = true;
+    base.name = "player-color-border";
+    base.rotation.x = -Math.PI / 2;
+    base.position.y = 0.04;
     group.add(base);
-    const torso = new THREE.Mesh(
-      geometry(new THREE.ConeGeometry(0.15, 0.31, 20)),
-      body,
+    const face = new THREE.Mesh(
+      geometry(new THREE.CircleGeometry(0.108, 32)),
+      material(new THREE.MeshBasicMaterial({ color: "#fffdf3" })),
     );
-    torso.position.y = 0.25;
-    torso.castShadow = true;
-    group.add(torso);
-    const head = new THREE.Mesh(
-      geometry(new THREE.SphereGeometry(0.13, 16, 12)),
-      body,
-    );
-    head.position.y = 0.46;
-    head.castShadow = true;
-    group.add(head);
+    face.rotation.x = -Math.PI / 2;
+    face.position.y = 0.05;
+    group.add(face);
     const halo = new THREE.Mesh(
-      geometry(new THREE.TorusGeometry(0.22, 0.03, 8, 32)),
+      geometry(new THREE.RingGeometry(0.141, 0.154, 32)),
       material(new THREE.MeshBasicMaterial({ color: "#fff7cb" })),
     );
     halo.rotation.x = -Math.PI / 2;
     halo.position.y = 0.04;
     group.add(halo);
-    const playerIndex = snapshot.tokens.findIndex(
-      (player) => player.id === token.id,
-    );
-    label(group, `P${playerIndex + 1}`, "#284b42", 0.42, 0.24, [0, 0.62, 0]);
-    group.position.copy(tilePosition(token.position)).add(pawnOffset(token.id));
+    const offset = pawnOffset(token.id);
+    group.position.copy(tilePosition(token.position)).add(offset);
     boardRoot.add(group);
+    const portrait = boardPortrait(
+      group,
+      token.starterSpeciesId,
+      0.2,
+      0.2,
+      `P${token.id + 1}`,
+    );
     const pawn: Pawn = {
       group,
       body,
+      portrait,
+      speciesId: token.starterSpeciesId,
       halo,
       position: token.position,
+      offset,
       from: group.position.clone(),
       to: group.position.clone(),
       startedAt: 0,
@@ -679,50 +706,28 @@ function initializeBoardRenderer(
 
   function makeGuardian(guardian: BoardGuardian) {
     const group = new THREE.Group();
+    group.name = `road-guardian-${guardian.tile}`;
     const owner = snapshot.tokens.find(
       (token) => token.id === guardian.ownerId,
     );
     const position = tilePosition(guardian.tile);
-    group.position.set(position.x + 0.12, position.y, position.z - 0.15);
+    group.position.set(position.x, position.y, position.z - 0.27);
     const stand = new THREE.Mesh(
-      geometry(new THREE.CylinderGeometry(0.22, 0.25, 0.06, 24)),
-      paint(owner?.color ?? "#698773"),
+      geometry(new THREE.CircleGeometry(0.2, 32)),
+      material(
+        new THREE.MeshBasicMaterial({
+          color: owner?.color ?? "#698773",
+          transparent: true,
+          opacity: 0.15,
+        }),
+      ),
     );
+    stand.rotation.x = -Math.PI / 2;
+    stand.scale.set(1.5, 0.75, 1);
     stand.position.y = 0.02;
     group.add(stand);
     boardRoot.add(group);
-    const spriteMaterial = material(
-      new THREE.SpriteMaterial({ transparent: true, depthWrite: false }),
-    );
-    const sprite = new THREE.Sprite(spriteMaterial);
-    sprite.scale.set(0.83, 0.83, 1);
-    sprite.position.y = 0.46;
-    sprite.visible = false;
-    group.add(sprite);
-    const lease = loadPokemonTexture(
-      guardian.speciesId,
-      () => {
-        if (disposed || !group.parent) return;
-        spriteMaterial.needsUpdate = true;
-        sprite.visible = true;
-      },
-      () => {
-        if (!disposed && group.parent) {
-          spriteMaterial.map = null;
-          label(
-            group,
-            `#${guardian.speciesId}`,
-            "#294b41",
-            0.6,
-            0.2,
-            [0, 0.35, 0],
-          );
-        }
-      },
-    );
-    // Assign ownership immediately, including while loading, so removal can release it.
-    spriteMaterial.map = lease.texture;
-    sprite.userData.releaseSprite = lease.release;
+    boardPortrait(group, guardian.speciesId, 0.6, 0.34, `#${guardian.speciesId}`);
     return group;
   }
 
@@ -734,15 +739,24 @@ function initializeBoardRenderer(
     renderer.shadowMap.needsUpdate = true;
     const now = animationTime;
     for (const token of next.tokens) {
+      const previous = pawns.get(token.id);
+      if (previous && previous.speciesId !== token.starterSpeciesId) {
+        disposeObject(previous.group);
+        pawns.delete(token.id);
+      }
       const pawn = pawns.get(token.id) ?? makePawn(token);
-      pawn.group.visible = !token.eliminated;
+      const nextOffset = pawnOffset(token.id);
+      const offsetChanged = !nextOffset.equals(pawn.offset);
+      pawn.group.scale.setScalar(pawnLayout(token.id).scale);
       pawn.body.color.set(token.color);
-      pawn.halo.visible = token.id === next.activePlayerId && !token.eliminated;
+      pawn.portrait.material.opacity = token.restTurnsRemaining > 0 ? 0.6 : 1;
+      pawn.halo.visible = token.id === next.activePlayerId;
       if (token.position !== pawn.position) {
-        const distance = (token.position - pawn.position + 32) % 32;
+        const distance =
+          (token.position - pawn.position + BOARD_SIZE) % BOARD_SIZE;
         pawn.route = Array.from(
           { length: distance },
-          (_, step) => (pawn.position + step + 1) % 32,
+          (_, step) => (pawn.position + step + 1) % BOARD_SIZE,
         );
         pawn.position = token.position;
         pawn.from.copy(pawn.group.position);
@@ -752,16 +766,25 @@ function initializeBoardRenderer(
         pawn.startedAt = now;
         const first = pawn.route.shift();
         if (first !== undefined)
-          pawn.to.copy(tilePosition(first)).add(pawnOffset(token.id));
-        if (motionReduced()) {
+          pawn.to
+            .copy(tilePosition(first))
+            .add(pawnOffset(token.id, moveOffset, first));
+        if (motionReduced() || token.restTurnsRemaining > 0) {
           pawn.group.position
             .copy(tilePosition(token.position))
             .add(pawnOffset(token.id));
           pawn.route = [];
           pawn.to.copy(pawn.group.position);
         }
+      } else if (offsetChanged) {
+        // Arrival/departure and guardian changes also reflow stationary tokens.
+        const change = nextOffset.clone().sub(pawn.offset);
+        pawn.group.position.add(change);
+        pawn.from.add(change);
+        pawn.to.add(change);
       }
-      if (motionReduced()) {
+      pawn.offset.copy(nextOffset);
+      if (motionReduced() || token.restTurnsRemaining > 0) {
         pawn.group.position
           .copy(tilePosition(token.position))
           .add(pawnOffset(token.id));
@@ -831,7 +854,7 @@ function initializeBoardRenderer(
     const width = Math.max(1, host.clientWidth);
     const height = Math.max(1, host.clientHeight);
     const aspect = width / height;
-    const halfHeight = Math.max(6.7, 7.7 / aspect);
+    const halfHeight = Math.max(6.25, 6.25 / aspect);
     camera.left = -halfHeight * aspect;
     camera.right = halfHeight * aspect;
     camera.top = halfHeight;
@@ -926,8 +949,6 @@ function initializeBoardRenderer(
         kick * (event.attack?.side === "defender" ? -1 : 1);
       battleCamera.position.y -= kick * 0.4;
     }
-    if (!snapshot.paused && !battleVisible)
-      resources.environment?.update(time, reduced, lowQuality);
     for (const [id, pawn] of pawns) {
       if (snapshot.paused || battleVisible) continue;
       if (
@@ -935,11 +956,17 @@ function initializeBoardRenderer(
         event.playerId === id &&
         event.fromTile !== undefined
       ) {
-        pawnOffset(id, moveOffset);
+        pawnOffset(id, moveOffset, event.fromTile);
         tilePosition(event.fromTile, moveFrom).add(moveOffset);
+        pawnOffset(id, moveOffset, event.tile);
         tilePosition(event.tile, moveTo).add(moveOffset);
         const progress = reduced ? 1 : eventProgress;
         const eased = progress * progress * (3 - 2 * progress);
+        const sourceScale = pawnLayout(id, event.fromTile).scale;
+        const targetScale = pawnLayout(id, event.tile).scale;
+        pawn.group.scale.setScalar(
+          sourceScale + (targetScale - sourceScale) * eased,
+        );
         pawn.group.position.lerpVectors(moveFrom, moveTo, eased);
         pawn.group.position.y += reduced
           ? 0
@@ -963,7 +990,7 @@ function initializeBoardRenderer(
         const next = pawn.route.shift();
         if (next !== undefined) {
           pawn.from.copy(pawn.to);
-          pawn.to.copy(tilePosition(next)).add(pawnOffset(id));
+          pawn.to.copy(tilePosition(next)).add(pawnOffset(id, moveOffset, next));
           pawn.startedAt = time;
         }
       }
@@ -1096,7 +1123,6 @@ function initializeBoardRenderer(
     );
     resources.battleStage?.dispose();
     resources.effects?.dispose();
-    resources.environment?.dispose();
     resources.disposeBatches?.();
     for (const texture of textures) texture.dispose();
     for (const item of geometries) item.dispose();

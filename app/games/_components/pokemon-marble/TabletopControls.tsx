@@ -1,0 +1,84 @@
+"use client";
+
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { DisplayMode } from "./display-preferences";
+import { getTabletopLayout } from "./tabletop-layout";
+import type { SeatSide } from "./types";
+import styles from "./TabletopControls.module.css";
+
+type Props = {
+  battle: boolean;
+  seatSide: SeatSide;
+  mode: DisplayMode;
+  board: ReactNode;
+  children: ReactNode;
+  compact?: boolean;
+};
+
+/** Stable stage sibling: changing a seat never remounts the WebGL canvas. */
+export default function TabletopControls({
+  battle,
+  seatSide,
+  mode,
+  board,
+  children,
+}: Props) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const seat = mode === "fixed" ? "bottom" : seatSide;
+  const layout = getTabletopLayout(size.width, size.height, battle, seat);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const measure = () => {
+      const width = host.clientWidth;
+      const height = host.clientHeight;
+      setSize((previous) =>
+        previous.width === width && previous.height === height
+          ? previous
+          : { width, height },
+      );
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(host);
+    const frame = requestAnimationFrame(measure);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, []);
+
+  return (
+    <div
+      ref={hostRef}
+      className={styles.tabletop}
+      data-mode={mode}
+      data-seat={seat}
+      data-battle={battle}
+      data-ready={size.width > 0 && size.height > 0}
+    >
+      <div className={styles.stage} style={layout.stage}>
+        {board}
+      </div>
+      <div
+        className={styles.panelBounds}
+        style={layout.panel}
+        role={battle ? "dialog" : undefined}
+        aria-modal={battle ? false : undefined}
+        aria-label={battle ? "배틀 행동" : undefined}
+      >
+        <div
+          className={styles.orientedPanel}
+          style={{
+            width: layout.contentWidth,
+            height: layout.contentHeight,
+            transform: `translate(-50%, -50%) rotate(${layout.rotation}deg)`,
+          }}
+        >
+          <div className={styles.panelContent}>{children}</div>
+        </div>
+      </div>
+    </div>
+  );
+}

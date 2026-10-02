@@ -1,4 +1,7 @@
 import type { AudioPreferences } from "./audio-preferences";
+import type { DisplayMode } from "./display-preferences";
+import SystemIcon from "./SystemIcon";
+import systemStyles from "./SystemControls.module.css";
 import styles from "./Experience.module.css";
 
 export default function ExperienceControls({
@@ -7,17 +10,34 @@ export default function ExperienceControls({
   reducedMotion,
   onReducedMotion,
   onUnlock,
+  displayMode,
+  onDisplayMode,
 }: {
   preferences: AudioPreferences;
   onPreferences: (preferences: AudioPreferences) => void;
   reducedMotion: boolean;
   onReducedMotion: (value: boolean) => void;
   onUnlock: () => void;
+  displayMode: DisplayMode;
+  onDisplayMode: (mode: DisplayMode) => void;
 }) {
   return (
     <details className={styles.settings}>
-      <summary aria-label="사운드와 연출 설정">♫ 사운드·연출</summary>
+      <summary
+        className={systemStyles.iconButton}
+        aria-label="화면 방향과 사운드 설정"
+        title="화면 방향과 사운드 설정"
+      >
+        <SystemIcon name="settings" />
+      </summary>
       <div className={styles.settingsPopover}>
+        <label>
+          화면 방향
+          <select value={displayMode} onChange={(event) => onDisplayMode(event.target.value as DisplayMode)}>
+            <option value="fixed">고정 방향</option>
+            <option value="auto">조작자 방향 자동 회전</option>
+          </select>
+        </label>
         <strong>모험의 소리</strong>
         <button
           type="button"

@@ -1,8 +1,9 @@
 import type { PresentationEvent } from "./presentation-events";
 
 export const EVENT_DURATION: Record<PresentationEvent["kind"], number> = {
-  roll: 800,
+  roll: 1800,
   move: 300,
+  lap: 800,
   encounter: 600,
   "send-out": 400,
   attack: 1000,
@@ -13,7 +14,8 @@ export const EVENT_DURATION: Record<PresentationEvent["kind"], number> = {
   capture: 1000,
   deploy: 500,
   retrieve: 500,
-  eliminate: 700,
+  rescue: 900,
+  rest: 500,
   victory: 2600,
   turn: 350,
 };

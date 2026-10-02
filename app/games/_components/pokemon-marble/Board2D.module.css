@@ -1,0 +1,46 @@
+.board {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  background: transparent;
+  font-family: inherit;
+  text-rendering: geometricPrecision;
+}
+
+.tile {
+  cursor: pointer;
+  outline: none;
+}
+
+.tile:focus-visible .tileFace {
+  stroke: #142e27;
+  stroke-width: 5px;
+}
+
+.tile[aria-disabled="true"] {
+  cursor: default;
+}
+
+.tileNumber {
+  fill: #4f6253;
+  font-size: 12px;
+  font-weight: 750;
+  pointer-events: none;
+}
+
+.pieces,
+.portrait {
+  pointer-events: none;
+}
+
+.portrait {
+  image-rendering: pixelated;
+}
+
+.playerLabel {
+  fill: #102d27;
+  font-weight: 900;
+  text-anchor: middle;
+  pointer-events: none;
+}

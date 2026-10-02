@@ -30,6 +30,11 @@ test("setup offers 2–4 local players, accessible search filters and blocks inc
     assert.match(html, new RegExp(`>${count}인</button>`));
   assert.match(html, /aria-label="1번 트레이너 이름"/);
   assert.match(html, /aria-label="2번 트레이너 이름"/);
+  assert.match(html, /aria-label="1번 트레이너 자리"/);
+  assert.match(html, /value="bottom" selected=""/);
+  assert.match(html, /value="top" selected=""/);
+  assert.match(html, /조작자 방향으로 자동 회전/);
+  assert.match(html, /모두 Lv\. 3/);
   assert.doesNotMatch(html, /aria-label="3번 트레이너 이름"/);
   assert.match(html, /aria-label="포켓몬 이름 또는 도감 번호 검색"/);
   assert.match(html, /aria-label="세대 필터"/);
@@ -37,6 +42,88 @@ test("setup offers 2–4 local players, accessible search filters and blocks inc
   assert.match(html, /<button[^>]*disabled=""[^>]*>모험 시작하기/);
   assert.doesNotMatch(html, /이전 모험 이어하기/);
   assert.match(renderSetup({ onResume: () => {} }), /이전 모험 이어하기/);
+});
+
+test("party cards reveal only the active player's party, with large art and fainted HP", () => {
+  const { PartySummary } = loadGameSource("app/games/_components/pokemon-marble/ActionPanel.tsx");
+  const { createGame } = loadGameSource("app/games/_components/pokemon-marble/engine.ts");
+  const game = createGame([1, 4], ["민지", "준"], 1);
+  game.players[0].party[0].hp = 0;
+  game.players[0].restTurnsRemaining = 3;
+  const html = renderToStaticMarkup(React.createElement(PartySummary, { state: game }));
+  assert.match(html, /민지의 파티/);
+  assert.match(html, /이상해씨/);
+  assert.match(html, /width="144"/);
+  assert.match(html, /행동불능/);
+  assert.match(html, /휴식 3턴/);
+  assert.doesNotMatch(html, /준|파이리/);
+  game.activePlayer = 1;
+  const next = renderToStaticMarkup(React.createElement(PartySummary, { state: game }));
+  assert.match(next, /준의 파티/);
+  assert.match(next, /파이리/);
+  assert.doesNotMatch(next, /민지|이상해씨/);
+});
+
+test("legacy saves are reported separately without altering stored data", () => {
+  const { createGame } = loadGameSource("app/games/_components/pokemon-marble/engine.ts");
+  const legacy = { version: 1, players: [{ name: "기존 플레이어" }] };
+  const original = structuredClone(legacy);
+  let stored = { ok: true, value: { data: legacy } };
+  const { loadPokemonSave } = loadGameSource("app/games/_components/pokemon-marble/load-save.ts", {
+    "app/lib/save-protocol.ts": { loadGameSave: () => stored },
+  });
+  const result = loadPokemonSave();
+  assert.equal(result.ok, false);
+  assert.match(result.error.message, /이전 32칸 버전/);
+  assert.deepEqual(legacy, original);
+  stored = { ok: true, value: { data: createGame([1, 4], [], 1) } };
+  assert.equal(loadPokemonSave().ok, true);
+  stored = { ok: true, value: { data: { version: 2 } } };
+  assert.equal(loadPokemonSave().ok, false);
+  stored = { ok: true, value: null };
+  assert.deepEqual(loadPokemonSave(), stored);
+  stored = { ok: false, error: { code: "storage-unavailable", message: "저장소 접근 불가" } };
+  assert.deepEqual(loadPokemonSave(), stored);
+});
+
+test("movement feedback stays present between step animations and counts remaining spaces", () => {
+  const { MovementPanel } = loadGameSource("app/games/_components/pokemon-marble/ActionPanel.tsx");
+  const { createGame, transition } = loadGameSource("app/games/_components/pokemon-marble/engine.ts");
+  const moving = transition(createGame([1, 4], [], 4), { type: "ROLL" });
+  const render = (rolling, busy) => renderToStaticMarkup(React.createElement(MovementPanel, {
+    state: moving, rolling, busy, onSkip: () => {},
+  }));
+  assert.match(render(true, true), /주사위를 굴리고 있어요/);
+  const betweenSteps = render(false, false);
+  assert.match(betweenSteps, /aria-label="주사위와 이동"/);
+  assert.match(betweenSteps, new RegExp(`앞으로 ${moving.movement.remaining}칸`));
+  assert.match(betweenSteps, /disabled=""/);
+  assert.doesNotMatch(render(false, true), /disabled=""/);
+});
+
+test("a full party cannot capture and is directed to the Pokemon Center", () => {
+  const { default: ActionPanel } = loadGameSource("app/games/_components/pokemon-marble/ActionPanel.tsx");
+  const { createGame } = loadGameSource("app/games/_components/pokemon-marble/engine.ts");
+  const state = createGame([1, 4], [], 12);
+  state.phase = "capture";
+  state.battle = {
+    kind: "wild", defenderOwner: null, defenderPokemonId: "wild",
+    attackerPokemonId: state.players[0].party[0].id,
+    wild: { id: "wild", speciesId: 7, level: 2, hp: 0 },
+    turn: "attacker", winner: "attacker", lastAttack: null,
+  };
+  while (state.players[0].party.length < 6) {
+    state.players[0].party.push({ ...state.players[0].party[0], id: `extra-${state.players[0].party.length}` });
+  }
+  const render = () => renderToStaticMarkup(React.createElement(ActionPanel, {
+    state, dispatch: () => {}, onRestart: () => {},
+  }));
+  assert.match(render(), /파티 6칸이 모두 차서 포획할 수 없습니다/);
+  assert.match(render(), /<button[^>]*disabled=""[^>]*>포획하기<\/button>/);
+  assert.match(render(), /<button[^>]*>놓아주기<\/button>/);
+  state.players[0].party.pop();
+  assert.doesNotMatch(render(), /<button[^>]*disabled=""[^>]*>포획하기<\/button>/);
+  assert.match(render(), /포획하면 파티에 합류/);
 });
 
 test("the initial setup page contains only the first 24 eligible starter cards", () => {
@@ -105,8 +192,15 @@ test("the in-game guide explains capture HP, defeat and battle priority", () => 
   );
   assert.match(html, /<dialog[^>]*aria-labelledby="dialog-title"/);
   assert.match(html, /HP 0으로 합류/);
+  assert.match(html, /파티가 6마리면 포획할 수 없습니다/);
+  assert.match(html, /박스는 센터에서만 이용/);
+  assert.match(html, /스타팅 포켓몬은 레벨 3/);
+  assert.match(html, /1~3 중 무작위/);
   assert.match(html, /트레이너 배틀이 타일 효과보다 먼저/);
-  assert.match(html, /즉시 탈락/);
+  assert.match(html, /본인 차례 3번을 쉬고/);
+  assert.match(html, /도로 27칸을 모두 소유하면 즉시 승리/);
+  assert.match(html, /40칸 탑뷰/);
+  assert.doesNotMatch(html, /즉시 탈락|마지막 생존자/);
   assert.match(html, /레벨업과 진화는 HP를 회복하지 않습니다/);
   assert.match(html, /aria-label="닫기"/);
 });

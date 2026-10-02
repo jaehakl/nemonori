@@ -15,7 +15,10 @@ export interface BattleView {
 }
 
 export interface PresentationSnapshot {
-  players: Pick<Player, "id" | "name" | "position" | "eliminated">[];
+  players: Pick<
+    Player,
+    "id" | "name" | "position" | "starterSpeciesId" | "restTurnsRemaining" | "seatSide"
+  >[];
   guardians: { tile: number; ownerId: number; speciesId: number }[];
   activePlayerId: number;
   dice: [number, number] | null;
@@ -25,6 +28,7 @@ export interface PresentationSnapshot {
 export type PresentationEventKind =
   | "roll"
   | "move"
+  | "lap"
   | "encounter"
   | "send-out"
   | "attack"
@@ -35,7 +39,8 @@ export type PresentationEventKind =
   | "capture"
   | "deploy"
   | "retrieve"
-  | "eliminate"
+  | "rescue"
+  | "rest"
   | "victory"
   | "turn";
 

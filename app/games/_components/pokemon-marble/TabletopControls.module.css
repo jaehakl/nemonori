@@ -1,0 +1,72 @@
+.tabletop {
+  position: relative;
+  width: 100%;
+  height: var(--tabletop-height, 100dvh);
+  min-height: 560px;
+  overflow: hidden;
+  border-radius: 20px;
+  background: #edf2df;
+  isolation: isolate;
+}
+
+.stage,
+.panelBounds {
+  position: absolute;
+  min-width: 0;
+  min-height: 0;
+}
+
+.stage {
+  z-index: 0;
+}
+
+.panelBounds {
+  z-index: 2;
+  pointer-events: none;
+}
+
+.orientedPanel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-origin: center;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  pointer-events: none;
+}
+
+.panelContent {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid #c3d5b5;
+  border-radius: 20px;
+  background: #fffdf3f5;
+  box-shadow: 0 4px 20px #36553016;
+  pointer-events: auto;
+}
+
+.panelContent button,
+.panelContent select,
+.panelContent input:not([type="checkbox"]):not([type="range"]) {
+  min-height: 48px;
+}
+
+.tabletop[data-battle="true"] .panelContent {
+  border-radius: 20px;
+  border: 2px solid #a6c78d;
+  background: #fffef7;
+  box-shadow: 0 10px 35px #29452f30;
+}
+
+.tabletop[data-battle="true"] {
+  background: #c7e9e8;
+}
+
+.tabletop[data-ready="false"] {
+  visibility: hidden;
+}

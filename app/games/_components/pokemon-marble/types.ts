@@ -5,13 +5,17 @@ export interface Pokemon {
   hp: number;
 }
 
+export type SeatSide = "bottom" | "left" | "top" | "right";
+
 export interface Player {
   id: number;
   name: string;
   position: number;
   party: Pokemon[];
   box: Pokemon[];
-  eliminated: boolean;
+  starterSpeciesId: number;
+  restTurnsRemaining: number;
+  seatSide: SeatSide;
 }
 
 export interface Guardian {
@@ -43,6 +47,10 @@ export interface PendingEvolution {
   options: number[];
 }
 
+export interface PendingLapGrowth {
+  remainingPokemonIds: string[];
+}
+
 export type GamePhase =
   | "roll"
   | "moving"
@@ -57,7 +65,7 @@ export type GamePhase =
   | "finished";
 
 export interface GameState {
-  version: 1;
+  version: 2;
   revision: number;
   rng: number;
   nextPokemonId: number;
@@ -70,6 +78,8 @@ export interface GameState {
   movement: { remaining: number; encounters: number[] } | null;
   battle: Battle | null;
   evolution: PendingEvolution | null;
+  /** Missing only in earlier version-2 saves, before lap growth was introduced. */
+  lapGrowth?: PendingLapGrowth | null;
   winner: number | null;
   log: string[];
 }

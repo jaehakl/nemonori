@@ -53,6 +53,7 @@ export function useExperience() {
     const updateMotion = () => {
       setReducedMotion(motion.matches);
       timeline.setReducedMotion(motion.matches);
+      sound.setReducedMotion(motion.matches);
     };
     updatePause();
     updateMotion();
@@ -84,6 +85,7 @@ export function useExperience() {
   const updateReducedMotion = useCallback((next: boolean) => {
     setReducedMotion(next);
     player.current?.setReducedMotion(next);
+    audio.current?.setReducedMotion(next);
   }, []);
   const reset = useCallback(() => {
     player.current?.reset();

@@ -50,7 +50,7 @@ function harness(onCue) {
 test("dice settles before movement and attack impact sounds exactly once", () => {
   const h = harness();
   h.player.enqueue([event("roll"), event("move", 1), event("attack", 2)]);
-  h.advance(750);
+  h.advance(1750);
   assert.equal(h.frames.at(-1).event.kind, "roll");
   assert.deepEqual(h.cues, ["roll"]);
   h.advance(50);
@@ -125,4 +125,17 @@ test("reduced motion is short and sound errors never block completion", () => {
   h.advance(400);
   assert.equal(h.player.busy, false);
   assert.deepEqual(h.cues, ["attack", "evolution"]);
+});
+
+test("reduced dice motion reveals the result promptly and plays its cue only once", () => {
+  const h = harness();
+  h.player.setReducedMotion(true);
+  h.player.enqueue([event("roll"), event("move", 1)]);
+  h.advance(150);
+  assert.equal(h.frames.at(-1).event.kind, "roll");
+  h.advance(30);
+  assert.equal(h.frames.at(-1).event.kind, "move");
+  h.advance(180);
+  assert.equal(h.player.busy, false);
+  assert.deepEqual(h.cues, ["roll", "move"]);
 });

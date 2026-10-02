@@ -1,6 +1,6 @@
 import { getStats } from "./battle";
 import { BOARD_SIZE, BOARD_TILES } from "./board";
-import { speciesById, movesById } from "./pokemon-data";
+import { speciesById, movesById, isStarter } from "./pokemon-data";
 import type { GameState, Pokemon } from "./types";
 
 const phases = new Set([
@@ -34,6 +34,29 @@ const integer = (
   (value as number) >= minimum &&
   (value as number) <= maximum;
 
+function matchesEvolution(
+  value: unknown,
+  pokemon: Pokemon,
+  ownerId: number,
+): boolean {
+  if (
+    !record(value) ||
+    value.ownerId !== ownerId ||
+    value.pokemonId !== pokemon.id ||
+    !Array.isArray(value.options)
+  )
+    return false;
+  const options = value.options;
+  const expected = speciesById[pokemon.speciesId].evolutions
+    .filter((entry) => entry.level <= pokemon.level)
+    .map((entry) => entry.speciesId);
+  return (
+    expected.length >= 2 &&
+    expected.length === options.length &&
+    expected.every((id, index) => id === options[index])
+  );
+}
+
 /** Validate references and phase invariants before resuming any stored state. */
 export function validateSave(value: unknown): value is GameState {
   try {
@@ -46,7 +69,7 @@ export function validateSave(value: unknown): value is GameState {
 function validate(value: unknown): value is GameState {
   if (
     !record(value) ||
-    value.version !== 1 ||
+    value.version !== 2 ||
     !integer(value.revision) ||
     !integer(value.rng, 1, 0xffffffff) ||
     !integer(value.nextPokemonId, 1) ||
@@ -104,6 +127,7 @@ function validate(value: unknown): value is GameState {
     return true;
   };
 
+  const pendingRecovery: number[] = [];
   for (const [index, player] of value.players.entries()) {
     if (
       !record(player) ||
@@ -112,7 +136,12 @@ function validate(value: unknown): value is GameState {
       !player.name.trim() ||
       player.name.length > 30 ||
       !integer(player.position, 0, BOARD_SIZE - 1) ||
-      typeof player.eliminated !== "boolean" ||
+      !integer(player.starterSpeciesId, 1, 1025) ||
+      !speciesById[player.starterSpeciesId] ||
+      !isStarter(speciesById[player.starterSpeciesId]) ||
+      !integer(player.restTurnsRemaining, 0, 3) ||
+      typeof player.seatSide !== "string" ||
+      !["bottom", "left", "top", "right"].includes(player.seatSide) ||
       !Array.isArray(player.party) ||
       player.party.length < 1 ||
       player.party.length > 6 ||
@@ -124,11 +153,17 @@ function validate(value: unknown): value is GameState {
       !player.box.every((pokemon) => validatePokemon(pokemon, index, "box"))
     )
       return false;
-    if (
-      player.eliminated ===
-      player.party.some((pokemon: Pokemon) => pokemon.hp > 0)
-    )
-      return false;
+    const hasHealthyPokemon = player.party.some(
+      (pokemon: Pokemon) => pokemon.hp > 0,
+    );
+    if (player.restTurnsRemaining > 0) {
+      if (hasHealthyPokemon || BOARD_TILES[player.position] !== "center")
+        return false;
+    } else if (!hasHealthyPokemon) {
+      // Rescue follows the winner's branching evolution, before play continues.
+      if (value.phase !== "evolution") return false;
+      pendingRecovery.push(index);
+    }
   }
   const state = value as unknown as GameState;
   for (const [index, guardian] of state.roads.entries()) {
@@ -137,31 +172,28 @@ function validate(value: unknown): value is GameState {
       !record(guardian) ||
       BOARD_TILES[index] !== "road" ||
       !integer(guardian.ownerId, 0, state.players.length - 1) ||
-      state.players[guardian.ownerId].eliminated ||
       !validatePokemon(guardian.pokemon, guardian.ownerId, "road") ||
       guardian.pokemon.hp <= 0
     )
       return false;
   }
-  const survivors = state.players.filter((player) => !player.eliminated);
+  const monopolyOwner =
+    state.players.find((player) =>
+      BOARD_TILES.every(
+        (kind, tile) => kind !== "road" || state.roads[tile]?.ownerId === player.id,
+      ),
+    )?.id ?? null;
   if (
     state.winner !== null &&
     (!integer(state.winner, 0, state.players.length - 1) ||
-      survivors.length !== 1 ||
-      survivors[0].id !== state.winner)
+      state.winner !== state.activePlayer)
   )
     return false;
-  if (state.winner === null && survivors.length < 2) return false;
-  if (
-    (state.phase === "finished") !==
-    (state.winner !== null && state.phase !== "evolution")
-  )
+  if (state.winner !== monopolyOwner) return false;
+  if ((state.phase === "finished") !== (state.winner !== null))
     return false;
   const active = state.players[state.activePlayer];
-  if (
-    active.eliminated &&
-    !["evolution", "turn-end", "finished"].includes(state.phase)
-  )
+  if (active.restTurnsRemaining > 0 && state.phase !== "turn-end")
     return false;
 
   if (
@@ -185,7 +217,7 @@ function validate(value: unknown): value is GameState {
         (id, index) =>
           !integer(id, 0, state.players.length - 1) ||
           id === state.activePlayer ||
-          state.players[id].eliminated ||
+          state.players[id].restTurnsRemaining > 0 ||
           state.players[id].position !== active.position ||
           (index > 0 && id <= movement.encounters[index - 1]),
       )
@@ -216,12 +248,13 @@ function validate(value: unknown): value is GameState {
     return false;
   if (
     state.phase === "turn-end" &&
-    !active.eliminated &&
+    active.restTurnsRemaining === 0 &&
     (!state.movement ||
       state.movement.remaining !== 0 ||
       state.movement.encounters.length !== 0)
   )
     return false;
+  if (active.restTurnsRemaining > 0 && state.movement !== null) return false;
   if (
     state.phase === "center" &&
     (BOARD_TILES[active.position] !== "center" ||
@@ -238,8 +271,45 @@ function validate(value: unknown): value is GameState {
   )
     return false;
 
+  // Older v2 saves have no lapGrowth field. A live queue exists only while a
+  // party member's branching evolution interrupts the completed lap.
+  if (state.lapGrowth !== undefined && state.lapGrowth !== null) {
+    const growth = state.lapGrowth;
+    const evolution = state.evolution;
+    if (
+      !record(growth) ||
+      !Array.isArray(growth.remainingPokemonIds) ||
+      state.phase !== "evolution" ||
+      state.battle !== null ||
+      active.position !== 0 ||
+      !state.movement ||
+      pendingRecovery.length > 0 ||
+      !record(evolution)
+    )
+      return false;
+    const currentIndex = active.party.findIndex(
+      (pokemon) => pokemon.id === evolution.pokemonId,
+    );
+    if (
+      currentIndex < 0 ||
+      !matchesEvolution(evolution, active.party[currentIndex], active.id)
+    )
+      return false;
+    const remaining = active.party.slice(currentIndex + 1);
+    return (
+      remaining.length === growth.remainingPokemonIds.length &&
+      remaining.every(
+        (pokemon, index) => pokemon.id === growth.remainingPokemonIds[index],
+      )
+    );
+  }
+
   if (!battlePhases.has(state.phase))
-    return state.battle === null && state.evolution === null;
+    return (
+      state.battle === null &&
+      state.evolution === null &&
+      pendingRecovery.length === 0
+    );
   const battle = state.battle;
   if (
     !record(battle) ||
@@ -267,7 +337,8 @@ function validate(value: unknown): value is GameState {
       return false;
     if (
       battle.kind === "trainer" &&
-      state.players[battle.defenderOwner].position !== active.position
+      (state.players[battle.defenderOwner].position !== active.position ||
+        state.players[battle.defenderOwner].restTurnsRemaining > 0)
     )
       return false;
     if (
@@ -351,6 +422,13 @@ function validate(value: unknown): value is GameState {
     const loser = battle.winner === "attacker" ? defender! : attacker!;
     if (winner.pokemon.hp <= 0 || loser.pokemon.hp !== 0) return false;
     if (
+      pendingRecovery.length > 1 ||
+      pendingRecovery.some(
+        (ownerId) => ownerId !== loser.ownerId || loser.location !== "party",
+      )
+    )
+      return false;
+    if (
       state.phase === "capture" &&
       (battle.kind !== "wild" ||
         battle.winner !== "attacker" ||
@@ -358,21 +436,9 @@ function validate(value: unknown): value is GameState {
     )
       return false;
     if (state.phase === "evolution") {
-      const evolution = state.evolution;
       if (
-        !record(evolution) ||
-        evolution.ownerId !== winner.ownerId ||
-        evolution.pokemonId !== winner.pokemon.id ||
-        !Array.isArray(evolution.options)
-      )
-        return false;
-      const expected = speciesById[winner.pokemon.speciesId].evolutions
-        .filter((entry) => entry.level <= winner.pokemon.level)
-        .map((entry) => entry.speciesId);
-      if (
-        expected.length < 2 ||
-        expected.length !== evolution.options.length ||
-        expected.some((id, index) => id !== evolution.options[index])
+        winner.ownerId === null ||
+        !matchesEvolution(state.evolution, winner.pokemon, winner.ownerId)
       )
         return false;
     }

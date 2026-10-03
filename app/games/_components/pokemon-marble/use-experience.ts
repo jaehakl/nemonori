@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createGameAudio } from "./audio";
+import { createGameAudio, type AudioScene } from "./audio";
 import {
   loadAudioPreferences,
   saveAudioPreferences,
@@ -23,6 +23,7 @@ const EMPTY_FRAME: PresentationFrame = {
 
 export function useExperience() {
   const [frame, setFrame] = useState(EMPTY_FRAME);
+  const [skippedRevision, setSkippedRevision] = useState<number | null>(null);
   const [preferences, setPreferences] = useState(loadAudioPreferences);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [portrait, setPortrait] = useState(false);
@@ -87,11 +88,13 @@ export function useExperience() {
     player.current?.setReducedMotion(next);
     audio.current?.setReducedMotion(next);
   }, []);
-  const reset = useCallback(() => {
+  const reset = useCallback((scene: AudioScene = "opening") => {
+    setSkippedRevision(null);
     player.current?.reset();
     // Discard already scheduled cues without overriding orientation/visibility pause.
     audio.current?.setPaused(true);
-    audio.current?.setScene("adventure");
+    audio.current?.resetAdventure();
+    audio.current?.setScene(scene);
     audio.current?.setPaused(pausedRef.current);
   }, []);
   const enqueue = useCallback(
@@ -99,23 +102,24 @@ export function useExperience() {
     [],
   );
   const skip = useCallback(() => {
+    setSkippedRevision(frame.event?.revision ?? null);
     player.current?.skip();
     audio.current?.setPaused(true);
     audio.current?.setPaused(pausedRef.current);
-  }, []);
+  }, [frame.event?.revision]);
   const isBlocked = useCallback(
     () => pausedRef.current || Boolean(player.current?.busy),
     [],
   );
   const setScene = useCallback(
-    (battle: boolean) =>
-      audio.current?.setScene(battle ? "battle" : "adventure"),
+    (scene: AudioScene) => audio.current?.setScene(scene),
     [],
   );
   const click = useCallback(() => audio.current?.playCue("button"), []);
 
   return {
     frame,
+    skippedRevision,
     preferences,
     reducedMotion,
     portrait,

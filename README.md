@@ -114,10 +114,52 @@ iPad Pro 12.9형 2세대의 iPadOS 17 Safari 가로 화면을 기준으로 설�
 iPadOS 16.4 이상 Safari의 표준 Fullscreen API를 사용하며, 시스템 제스처나 Esc로
 종료해도 버튼 상태가 동기화됩니다. 미지원 브라우저에서는 버튼을 비활성화합니다.
 지원 범위는 [WebKit의 Safari 16.4 안내](https://webkit.org/blog/13966/webkit-features-in-safari-16-4/)를 따릅니다.
-모험/배틀 BGM과 효과음은 Web Audio로 합성한 오리지널 소리이며 외부 음원 요청이
-없습니다. 시작·이어하기·소리 재생 버튼에서 오디오를 활성화합니다. Safari 복귀 후
+배경음악은 제공된 포켓몬 음악 10곡을 AAC-LC로 압축한 파일이며, 필요한 곡만 같은
+사이트에서 불러옵니다. 효과음은 기존 Web Audio 합성을 유지합니다. 게임 영역의 첫
+클릭·터치·키 입력이나 시작·이어하기·소리 재생 버튼에서 오디오를 활성화합니다. Safari 복귀 후
 소리가 없으면 **소리 재생·다시 연결**을 누릅니다. 기본 볼륨은 음악 30%, 효과음 60%이며,
 설정은 `nemonori:pokemon-marble:audio:v1`에 게임 세이브와 별도로 저장합니다.
+
+| 상황 | 배경음악 |
+| --- | --- |
+| 준비·파트너 선택 | Blue Red - Opening |
+| 일반 이동·도로 관리 | Black and White - Gym → Route 2 - Spring → Route 6 - Spring 순환 |
+| 포켓몬 센터 | Black and White - Pokemon Center |
+| 야생전 | Black and White - Wild Pokemon Battle |
+| 도로 수비전 | Black and White - Rival Battle |
+| 트레이너전 | Black and White - Gym Leader - Last Pokemon |
+| 야생전 승리·포획 성공 결과 | Platinum - Victory Against Wild Pokemon |
+| 도로·트레이너전 승리 결과 및 최종 승리 연출 | Platinum - Victory Against Trainer |
+
+전투·센터에서 돌아오면 중단했던 이동곡의 위치부터 이어 재생합니다. 새 게임·이어하기는
+이동 목록을 Gym부터 시작하며, 음악 재생 위치는 세이브에 포함하지 않습니다.
+승리곡은 반복하지 않고 결과·경험치·진화 연출 동안만 재생하며 게임 진행을 지연시키지
+않습니다. 야생전 패배에는 승리곡을 재생하지 않습니다. 최종 승리 연출 후에는 이동곡으로
+복귀합니다. 탭 숨김·세로 방향·음소거·음악 볼륨 0에서는 음악을 일시정지합니다.
+
+원본은 `app/games/_components/pokemon-marble/bgm/`, 배포 파일은
+`public/pokemon-marble/bgm/`에 있습니다. FFmpeg가 설치된 환경에서
+`npm run encode:pokemon-bgm`으로 64kbps, 44.1kHz 스테레오 AAC-LC 파일을 다시 생성합니다.
+필요하면 `FFMPEG_PATH`로 실행 파일을 지정하고, 변환 스크립트의 `bitrateOverrides`에
+곡별 `80k` 설정을 추가할 수 있습니다. 앨범 이미지·메타데이터를 제외하고 faststart를
+적용합니다. 생성한 파일을 저장소에 포함하므로 일반 빌드에는 FFmpeg가 필요하지 않습니다.
+현재 10곡은 원본 13,841,068바이트에서 배포용 6,741,776바이트로 약 51.3% 줄었습니다.
+
+| 배포 파일 | 크기(바이트) |
+| --- | ---: |
+| opening.m4a | 935,975 |
+| gym.m4a | 758,590 |
+| route-2.m4a | 758,263 |
+| route-6.m4a | 676,277 |
+| pokemon-center.m4a | 605,098 |
+| wild-battle.m4a | 1,021,103 |
+| rival-battle.m4a | 815,194 |
+| last-pokemon.m4a | 839,516 |
+| wild-victory.m4a | 149,869 |
+| trainer-victory.m4a | 181,891 |
+
+파일의 AAC-LC 프로필·채널 수·원본 대비 길이 및 전체 디코딩은 확인했습니다.
+청취에 따른 압축 음질·반복 지점 평가와 iPad Safari 실기기 재생은 별도 확인이 필요합니다.
 
 진행 상황은 확정 행동마다 공통 저장 API에 자동 저장합니다. 시작 화면의 이어하기는
 주사위, 이동 잔여 거리, 진행 중 배틀, 진화 선택과 난수 상태를 복원합니다.

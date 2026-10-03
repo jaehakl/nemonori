@@ -17,6 +17,7 @@ export interface BattleView {
 }
 
 export interface PresentationSnapshot {
+  phase: GamePhase;
   players: (Pick<
     Player,
     "id" | "name" | "position" | "starterSpeciesId" | "restTurnsRemaining" | "seatSide"

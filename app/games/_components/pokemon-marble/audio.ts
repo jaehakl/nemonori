@@ -4,12 +4,15 @@ import {
   type AudioPreferences,
 } from "./audio-preferences";
 
-export type AudioScene = "adventure" | "battle";
+import { createMusicPlayer } from "./music";
+import type { AudioScene } from "./music-scene";
+export type { AudioScene } from "./music-scene";
 export type GameAudio = {
   /** Call from a start, continue, or sound button gesture. */
   unlock(): Promise<void>;
   setPreferences(preferences: AudioPreferences): void;
   setScene(scene: AudioScene): void;
+  resetAdventure(): void;
   setPaused(paused: boolean): void;
   setReducedMotion(reduced: boolean): void;
   playCue(kind: string, moveType?: number | null, captureSuccess?: boolean): void;
@@ -19,15 +22,12 @@ export type GameAudio = {
 type Voice = {
   source: OscillatorNode | AudioBufferSourceNode;
   envelope: GainNode;
-  channel: "music" | "effects";
+  channel: "effects";
 };
-type MusicClock = { step: number; next: number; remaining: number };
 type AudioGraph = {
   master: GainNode;
   music: GainNode;
   effects: GainNode;
-  adventure: GainNode;
-  battle: GainNode;
 };
 type AttackTimbre = {
   wave: OscillatorType;
@@ -37,166 +37,7 @@ type AttackTimbre = {
 };
 
 const MAX_VOICES = 32;
-const LOOK_AHEAD = 0.12;
-const CROSSFADE = 0.35;
-const TEMPO: Record<AudioScene, number> = { adventure: 104, battle: 152 };
-// Original eight-bar themes: each row is one 4/4 bar of eighth notes.
-// A null note lets the previous tone ring, giving each phrase room to breathe.
-const ADVENTURE_MELODY = [
-  76,
-  null,
-  79,
-  81,
-  79,
-  null,
-  76,
-  74,
-  72,
-  null,
-  76,
-  79,
-  81,
-  79,
-  null,
-  76,
-  77,
-  null,
-  81,
-  84,
-  83,
-  81,
-  79,
-  null,
-  74,
-  76,
-  79,
-  null,
-  77,
-  74,
-  71,
-  null,
-  76,
-  null,
-  79,
-  83,
-  86,
-  83,
-  81,
-  79,
-  81,
-  79,
-  76,
-  null,
-  72,
-  76,
-  79,
-  null,
-  77,
-  81,
-  84,
-  null,
-  81,
-  79,
-  77,
-  76,
-  74,
-  null,
-  79,
-  77,
-  76,
-  74,
-  72,
-  null,
-];
-const BATTLE_MELODY = [
-  76,
-  71,
-  74,
-  76,
-  null,
-  79,
-  78,
-  76,
-  76,
-  null,
-  72,
-  76,
-  79,
-  83,
-  81,
-  null,
-  81,
-  76,
-  72,
-  71,
-  null,
-  72,
-  76,
-  81,
-  78,
-  75,
-  71,
-  null,
-  75,
-  78,
-  83,
-  null,
-  76,
-  79,
-  83,
-  86,
-  83,
-  null,
-  81,
-  79,
-  79,
-  null,
-  74,
-  71,
-  74,
-  79,
-  81,
-  83,
-  84,
-  83,
-  79,
-  null,
-  76,
-  79,
-  84,
-  83,
-  78,
-  75,
-  71,
-  75,
-  78,
-  83,
-  75,
-  null,
-];
-// Bass and close-voiced harmony advance together, once per full bar.
-const ADVENTURE_HARMONY = [
-  { bass: 48, chord: [60, 64, 67] }, // C
-  { bass: 45, chord: [57, 60, 64] }, // Am
-  { bass: 41, chord: [57, 60, 65] }, // F
-  { bass: 43, chord: [55, 59, 62] }, // G
-  { bass: 40, chord: [55, 59, 64] }, // Em
-  { bass: 45, chord: [57, 60, 64] }, // Am
-  { bass: 41, chord: [57, 60, 65] }, // F
-  { bass: 43, chord: [55, 59, 62] }, // G
-];
-const BATTLE_HARMONY = [
-  { bass: 40, chord: [55, 59, 64] }, // Em
-  { bass: 48, chord: [55, 60, 64] }, // C
-  { bass: 45, chord: [57, 60, 64] }, // Am
-  { bass: 47, chord: [54, 59, 63] }, // B, resolving to Em
-  { bass: 40, chord: [55, 59, 64] }, // Em
-  { bass: 43, chord: [55, 59, 62] }, // G
-  { bass: 48, chord: [55, 60, 64] }, // C
-  { bass: 47, chord: [54, 59, 63] }, // B
-];
 const midi = (note: number) => 440 * 2 ** ((note - 69) / 12);
-const stepLength = (scene: AudioScene) => 60 / TEMPO[scene] / 2;
 
 // Indexed by the catalog's 18 type IDs, with distinct contours and textures.
 const ATTACK_TIMBRES: readonly AttackTimbre[] = [
@@ -221,25 +62,20 @@ const ATTACK_TIMBRES: readonly AttackTimbre[] = [
   { wave: "sine", start: 1046, end: 2093, notes: 3 }, // fairy
 ];
 
-/** A small, lazy Web Audio instrument rack; no assets, network, or game RNG. */
+/** Lazy streaming BGM and synthesized effects, independent of the game RNG. */
 export function createGameAudio(): GameAudio {
   let context: AudioContext | null = null;
   let graph: AudioGraph | null = null;
   let preferences: AudioPreferences = { ...DEFAULT_AUDIO_PREFERENCES };
-  let scene: AudioScene = "adventure";
+  let scene: AudioScene = "opening";
+  let music: ReturnType<typeof createMusicPlayer> | null = null;
   let paused = false;
   let reducedMotion = false;
   let diceTake = 0;
   let diceVoice: Voice | null = null;
   let disposed = false;
-  let scheduler: ReturnType<typeof setInterval> | null = null;
-  let outgoing: { scene: AudioScene; until: number } | null = null;
   let suspendPromise: Promise<void> = Promise.resolve();
   const voices = new Set<Voice>();
-  const clocks: Record<AudioScene, MusicClock> = {
-    adventure: { step: 0, next: 0, remaining: 0.03 },
-    battle: { step: 0, next: 0, remaining: 0.03 },
-  };
 
   function release(voice: Voice, stop = true) {
     if (!voices.delete(voice)) return;
@@ -262,17 +98,12 @@ export function createGameAudio(): GameAudio {
     }
   }
 
-  function stopScheduler() {
-    if (scheduler !== null) clearInterval(scheduler);
-    scheduler = null;
-    if (context) {
-      for (const track of ["adventure", "battle"] as const) {
-        clocks[track].remaining = Math.max(
-          0.03,
-          Math.min(stepLength(track), clocks[track].next - context.currentTime),
-        );
-      }
-    }
+  function stopMusic() {
+    music?.update(scene, false);
+  }
+
+  function startMusic() {
+    music?.update(scene, canPlay() && preferences.musicVolume > 0);
   }
 
   function canPlay() {
@@ -303,15 +134,12 @@ export function createGameAudio(): GameAudio {
     amplitude: number,
     wave: OscillatorType = "sine",
     endFrequency?: number,
-    track: AudioScene = scene,
     attack = 0.012,
   ) {
     if (!context || !graph || !canPlay()) return;
     if (voices.size >= MAX_VOICES) {
-      // Effects take priority over a musical tail; polyphony stays bounded.
-      const oldest =
-        [...voices].find((voice) => voice.channel === "music") ??
-        voices.values().next().value;
+      // Keep effect polyphony bounded.
+      const oldest = voices.values().next().value;
       if (oldest) release(oldest);
     }
     const oscillator = context.createOscillator();
@@ -332,7 +160,7 @@ export function createGameAudio(): GameAudio {
     );
     envelope.gain.exponentialRampToValueAtTime(0.0001, start + duration);
     oscillator.connect(envelope);
-    envelope.connect(channel === "music" ? graph[track] : graph.effects);
+    envelope.connect(graph.effects);
     oscillator.onended = () => release(voice, false);
     oscillator.start(start);
     oscillator.stop(start + duration + 0.02);
@@ -342,9 +170,7 @@ export function createGameAudio(): GameAudio {
     if (!context || !graph || !canPlay()) return;
     if (diceVoice) release(diceVoice);
     if (voices.size >= MAX_VOICES) {
-      const oldest =
-        [...voices].find((voice) => voice.channel === "music") ??
-        voices.values().next().value;
+      const oldest = voices.values().next().value;
       if (oldest) release(oldest);
     }
 
@@ -441,135 +267,6 @@ export function createGameAudio(): GameAudio {
     source.stop(start + duration);
   }
 
-  function scheduleBeat(track: AudioScene, step: number, time: number) {
-    const beat = stepLength(track);
-    const melody = track === "adventure" ? ADVENTURE_MELODY : BATTLE_MELODY;
-    const progression =
-      track === "adventure" ? ADVENTURE_HARMONY : BATTLE_HARMONY;
-    const phraseStep = step % melody.length;
-    const barStep = phraseStep % 8;
-    const harmony = progression[Math.floor(phraseStep / 8)];
-    const note = melody[phraseStep];
-    if (note !== null) {
-      const ringsIntoRest = melody[(phraseStep + 1) % melody.length] === null;
-      // A wooden mallet fundamental with a quiet bell overtone, never a square lead.
-      tone(
-        "music",
-        midi(note),
-        time,
-        beat * (ringsIntoRest ? 1.9 : 1.05),
-        track === "adventure" ? 0.13 : 0.14,
-        "triangle",
-        undefined,
-        track,
-      );
-      tone(
-        "music",
-        midi(note + 12),
-        time,
-        beat * 0.65,
-        0.025,
-        "sine",
-        undefined,
-        track,
-      );
-    }
-    if (barStep === 0) {
-      // Soft, slow-attack chords add a sustained bed beneath the plucked parts.
-      harmony.chord.forEach((pitch, index) =>
-        tone(
-          "music",
-          midi(pitch),
-          time + index * 0.008,
-          beat * 7.2,
-          0.027,
-          "triangle",
-          undefined,
-          track,
-          0.12,
-        ),
-      );
-    }
-    if (barStep === 0 || barStep === 4) {
-      const bassNote = harmony.bass + (barStep === 4 ? 7 : 0);
-      tone(
-        "music",
-        midi(bassNote),
-        time,
-        beat * 3.3,
-        track === "adventure" ? 0.13 : 0.16,
-        "triangle",
-        undefined,
-        track,
-      );
-      tone(
-        "music",
-        track === "battle" ? 145 : 95,
-        time,
-        0.11,
-        track === "battle" ? 0.14 : 0.055,
-        "sine",
-        42,
-        track,
-      );
-    }
-    if (barStep % 2 === 1) {
-      const pitch = harmony.chord[Math.floor(barStep / 2) % 3] + 12;
-      tone(
-        "music",
-        midi(pitch),
-        time,
-        beat * 1.25,
-        0.045,
-        "triangle",
-        undefined,
-        track,
-      );
-    }
-    if (track === "battle" && (barStep === 2 || barStep === 6)) {
-      // A restrained backbeat keeps battles energetic without a piercing chip lead.
-      tone("music", 650, time, 0.075, 0.055, "triangle", 170, track);
-      tone("music", 2400, time, 0.035, 0.018, "triangle", 1300, track);
-    }
-  }
-
-  function tick(): boolean {
-    if (!context || !canPlay() || preferences.musicVolume === 0) return false;
-    try {
-      const now = context.currentTime;
-      if (outgoing && outgoing.until <= now) outgoing = null;
-      for (const track of ["adventure", "battle"] as const) {
-        if (track !== scene && outgoing?.scene !== track) continue;
-        const clock = clocks[track];
-        // A delayed timer skips silence instead of playing a backlog of notes.
-        if (clock.next < now - LOOK_AHEAD) clock.next = now + 0.03;
-        while (clock.next < now + LOOK_AHEAD) {
-          scheduleBeat(track, clock.step++, clock.next);
-          clock.next += stepLength(track);
-        }
-      }
-      return true;
-    } catch {
-      stopScheduler();
-      cancelVoices();
-      return false;
-    }
-  }
-
-  function startScheduler() {
-    if (
-      !context ||
-      !canPlay() ||
-      preferences.musicVolume === 0 ||
-      scheduler !== null
-    )
-      return;
-    for (const track of ["adventure", "battle"] as const) {
-      clocks[track].next = context.currentTime + clocks[track].remaining;
-    }
-    if (tick()) scheduler = setInterval(tick, 40);
-  }
-
   function applyVolumes() {
     if (!graph) return;
     ramp(graph.master.gain, preferences.muted ? 0 : 0.65);
@@ -594,25 +291,25 @@ export function createGameAudio(): GameAudio {
       master: context.createGain(),
       music: context.createGain(),
       effects: context.createGain(),
-      adventure: context.createGain(),
-      battle: context.createGain(),
     };
     graph.master.gain.value = preferences.muted ? 0 : 0.65;
     graph.music.gain.value = preferences.musicVolume;
     graph.effects.gain.value = preferences.effectsVolume;
-    graph.adventure.gain.value = scene === "adventure" ? 1 : 0;
-    graph.battle.gain.value = scene === "battle" ? 1 : 0;
-    graph.adventure.connect(graph.music);
-    graph.battle.connect(graph.music);
     graph.music.connect(graph.master);
     graph.effects.connect(graph.master);
     graph.master.connect(context.destination);
+    try {
+      music = createMusicPlayer(context, graph.music);
+    } catch {
+      // An unavailable media backend must not disable synthesized effects.
+      music = null;
+    }
     context.onstatechange = () => {
       if (context?.state === "running") {
-        startScheduler();
+        startMusic();
       } else {
         // Safari can enter its additional "interrupted" state after screen lock.
-        stopScheduler();
+        stopMusic();
         cancelVoices();
       }
     };
@@ -627,10 +324,11 @@ export function createGameAudio(): GameAudio {
       if (paused) {
         await current.suspend();
       } else {
-        startScheduler();
+        startMusic();
       }
     } catch {
       // A later explicit sound-button gesture can retry a blocked resume.
+      stopMusic();
     }
   }
 
@@ -652,17 +350,22 @@ export function createGameAudio(): GameAudio {
       if (disposed) return;
       try {
         if (context?.state === "closed") {
-          stopScheduler();
+          stopMusic();
           cancelVoices();
           context.onstatechange = null;
+          music?.dispose();
+          music = null;
           disconnectGraph();
           context = null;
         }
         if (!context) createContext();
+        // Call play inside the gesture, before awaiting AudioContext.resume (Safari).
+        music?.update(scene, !paused && !preferences.muted && preferences.musicVolume > 0);
+        music?.retry();
         await resumeContext();
       } catch {
         // Unsupported browsers or an unavailable audio device remain playable.
-        stopScheduler();
+        stopMusic();
         cancelVoices();
       }
     },
@@ -672,13 +375,12 @@ export function createGameAudio(): GameAudio {
       try {
         applyVolumes();
         if (preferences.muted) {
-          stopScheduler();
+          stopMusic();
           cancelVoices();
         } else {
           if (preferences.musicVolume === 0) {
-            stopScheduler();
-            cancelVoices("music");
-          } else startScheduler();
+            stopMusic();
+          } else startMusic();
           if (preferences.effectsVolume === 0) cancelVoices("effects");
         }
       } catch {
@@ -687,27 +389,19 @@ export function createGameAudio(): GameAudio {
     },
     setScene(next) {
       if (disposed || next === scene) return;
-      const previous = scene;
       scene = next;
-      if (!context || !graph) return;
-      try {
-        outgoing = { scene: previous, until: context.currentTime + CROSSFADE };
-        clocks[next].next = context.currentTime + 0.03;
-        ramp(graph[previous].gain, 0, CROSSFADE);
-        ramp(graph[next].gain, 1, CROSSFADE);
-        tick();
-      } catch {
-        /* Silence is the fallback for device failures. */
-      }
+      startMusic();
+    },
+    resetAdventure() {
+      if (!disposed) music?.resetAdventure();
     },
     setPaused(next) {
       if (disposed) return;
       paused = next;
       if (!context) return;
       if (next) {
-        stopScheduler();
+        stopMusic();
         cancelVoices();
-        outgoing = null;
         try {
           suspendPromise = context.suspend().catch(() => {});
         } catch {
@@ -825,7 +519,7 @@ export function createGameAudio(): GameAudio {
     dispose() {
       if (disposed) return;
       disposed = true;
-      stopScheduler();
+      stopMusic();
       cancelVoices();
       if (context) {
         context.onstatechange = null;
@@ -835,6 +529,8 @@ export function createGameAudio(): GameAudio {
           /* Already closed. */
         }
       }
+      music?.dispose();
+      music = null;
       disconnectGraph();
       context = null;
     },

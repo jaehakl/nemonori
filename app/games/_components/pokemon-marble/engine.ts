@@ -153,6 +153,7 @@ export function snapshotForPresentation(
   const defender = getBattlePokemon(state, "defender");
   const battle = state.battle;
   return {
+    phase: state.phase,
     players: state.players.map(
       ({ id, name, position, party, starterSpeciesId, restTurnsRemaining, seatSide }) => ({
         id,

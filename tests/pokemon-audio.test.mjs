@@ -33,9 +33,35 @@ class FakeParam {
 
 function audioHarness(t) {
   const contexts = [];
+  const media = [];
+  let now = 0;
   const timers = new Map();
   let nextTimer = 0;
   const original = Object.getOwnPropertyDescriptor(globalThis, "AudioContext");
+  const originalAudio = Object.getOwnPropertyDescriptor(globalThis, "Audio");
+  class FakeAudio {
+    src = "";
+    paused = true;
+    currentTime = 0;
+    loop = false;
+    playCalls = 0;
+    loadCalls = 0;
+    failPlay = false;
+    error = null;
+    pendingPlay = null;
+    constructor() { media.push(this); }
+    play() {
+      this.playCalls++;
+      if (this.failPlay) return Promise.reject(new Error("Playback blocked"));
+      this.paused = false;
+      return this.pendingPlay || Promise.resolve();
+    }
+    pause() { this.paused = true; }
+    load() { this.loadCalls++; this.error = null; }
+    removeAttribute(name) { if (name === "src") this.src = ""; }
+    end() { this.paused = true; this.onended?.(); }
+  }
+  Object.defineProperty(globalThis, "Audio", { configurable: true, value: FakeAudio });
   class FakeContext {
     state = "suspended";
     currentTime = 0;
@@ -66,6 +92,14 @@ function audioHarness(t) {
       };
       this.gains.push(node);
       return node;
+    }
+    createMediaElementSource(element) {
+      this.mediaSource = {
+        mediaElement: element,
+        connect(target) { this.output = target; },
+        disconnect() { this.disconnected = true; },
+      };
+      return this.mediaSource;
     }
     createScheduledSource() {
       const node = {
@@ -139,22 +173,26 @@ function audioHarness(t) {
     value: FakeContext,
     writable: true,
   });
-  t.mock.method(globalThis, "setInterval", (callback) => {
-    timers.set(++nextTimer, callback);
+  t.mock.method(globalThis, "setTimeout", (callback, delay) => {
+    timers.set(++nextTimer, { callback, due: now + delay });
     return nextTimer;
   });
-  t.mock.method(globalThis, "clearInterval", (id) => timers.delete(id));
+  t.mock.method(globalThis, "clearTimeout", (id) => timers.delete(id));
   const audio = createGameAudio();
   t.after(() => {
     audio.dispose();
     if (original) Object.defineProperty(globalThis, "AudioContext", original);
     else delete globalThis.AudioContext;
+    if (originalAudio) Object.defineProperty(globalThis, "Audio", originalAudio);
+    else delete globalThis.Audio;
   });
   return {
     audio,
     contexts,
+    media,
     timers,
     advance(seconds) {
+      now += seconds * 1000;
       for (const context of contexts) {
         context.currentTime += seconds;
         for (const node of [...context.oscillators, ...context.bufferSources]) {
@@ -162,7 +200,12 @@ function audioHarness(t) {
             node.onended?.();
         }
       }
-      for (const timer of timers.values()) timer();
+      for (const [id, timer] of [...timers]) {
+        if (timer.due <= now) {
+          timers.delete(id);
+          timer.callback();
+        }
+      }
     },
   };
 }
@@ -226,170 +269,176 @@ test("audio preferences use separate storage, sanitize values, and tolerate unav
   );
 });
 
-test("context creation is lazy and the initial channel volumes match user defaults", async (t) => {
-  const { audio, contexts, timers } = audioHarness(t);
-  audio.setScene("battle");
+test("music is lazy, uses the selected file, and shares independent gain controls", async (t) => {
+  const { audio, contexts, media } = audioHarness(t);
+  audio.setScene("road");
   audio.playCue("button");
   audio.setPreferences(DEFAULT_AUDIO_PREFERENCES);
-  audio.setPaused(false);
   assert.equal(contexts.length, 0);
+  assert.equal(media.length, 0);
   await audio.unlock();
   assert.equal(contexts.length, 1);
+  assert.equal(media.length, 1);
+  assert.equal(media[0].src, "/pokemon-marble/bgm/rival-battle.m4a");
+  assert.equal(media[0].loop, true);
+  assert.equal(media[0].preload, "none");
   assert.equal(contexts[0].gains[1].gain.value, 0.3);
   assert.equal(contexts[0].gains[2].gain.value, 0.6);
-  assert.equal(contexts[0].gains[3].gain.value, 0);
-  assert.equal(contexts[0].gains[4].gain.value, 1);
-  assert.equal(timers.size, 1);
+  assert.equal(contexts[0].oscillators.length, 0, "No synthesized BGM remains");
   await audio.unlock();
-  assert.equal(contexts.length, 1);
-  assert.equal(timers.size, 1);
+  assert.equal(media.length, 1);
+  assert.equal(media[0].playCalls, 1);
 });
 
-test("music scene changes crossfade both buses while the battle adds percussion", async (t) => {
-  const { audio, contexts, timers, advance } = audioHarness(t);
+test("adventure cycles all three tracks and resumes its offset after battle and center", async (t) => {
+  const { audio, media, advance } = audioHarness(t);
+  audio.setScene("adventure");
   await audio.unlock();
-  const context = contexts[0];
-  const before = context.oscillators.length;
-  audio.setScene("battle");
-  const adventureFade = context.gains[3].gain.changes.at(-1);
-  const battleFade = context.gains[4].gain.changes.at(-1);
-  assert.equal(adventureFade[0], "linear");
-  assert.equal(adventureFade[1], 0);
-  assert.equal(battleFade[1], 1);
-  assert.ok(battleFade[2] > context.currentTime);
-  assert.equal(battleFade[2], adventureFade[2]);
-  assert.ok(
-    context.oscillators
-      .slice(before)
-      .some((node) =>
-        node.frequency.changes.some(
-          ([method, value]) => method === "exponential" && value < 100,
-        ),
-      ),
-  );
-  advance(30);
-  assert.ok(
-    context.oscillators.length - before < 12,
-    "late timers must not play thirty seconds of queued beats",
-  );
-  assert.equal(timers.size, 1);
+  const player = media[0];
+  assert.match(player.src, /gym.m4a$/);
+  player.end();
+  assert.match(player.src, /route-2.m4a$/);
+  player.currentTime = 23;
+  audio.setScene("road");
+  advance(0.2);
+  assert.match(player.src, /rival-battle.m4a$/);
+  audio.setScene("center");
+  advance(0.2);
+  assert.match(player.src, /pokemon-center.m4a$/);
+  audio.setScene("adventure");
+  advance(0.2);
+  assert.match(player.src, /route-2.m4a$/);
+  assert.equal(player.currentTime, 23);
+  const calls = player.playCalls;
+  audio.setScene("adventure");
+  assert.equal(player.playCalls, calls);
+  player.end();
+  assert.match(player.src, /route-6.m4a$/);
+  assert.equal(player.currentTime, 0);
+  player.end();
+  assert.match(player.src, /gym.m4a$/);
+  audio.resetAdventure();
+  await audio.unlock();
+  assert.match(player.src, /gym.m4a$/);
+  assert.equal(player.currentTime, 0);
 });
 
-for (const [scene, tempo] of [
-  ["adventure", 104],
-  ["battle", 152],
-]) {
-  test(`${scene} score develops across eight bars with sustained harmony and a complete repeat`, async (t) => {
-    const { audio, contexts, advance } = audioHarness(t);
-    audio.setScene(scene);
-    await audio.unlock();
-    const context = contexts[0];
-    const beat = 60 / tempo / 2;
-    const steps = [context.oscillators.slice()];
-    for (let step = 1; step <= 64; step++) {
-      const before = context.oscillators.length;
-      advance(beat);
-      steps.push(context.oscillators.slice(before));
-      assert.ok(
-        context.oscillators.filter((node) => !node.disconnected).length <= 32,
-      );
-    }
-    const signature = (nodes) =>
-      nodes.map((node) => [node.type, node.frequency.changes[0][1]]);
-    assert.deepEqual(
-      signature(steps[0]),
-      signature(steps[64]),
-      "repeat begins after the whole eight-bar phrase",
-    );
-    assert.notDeepEqual(
-      signature(steps[0]),
-      signature(steps[16]),
-      "third bar develops the opening motif",
-    );
-    assert.notDeepEqual(
-      steps.slice(0, 8).map(signature),
-      steps.slice(32, 40).map(signature),
-      "second phrase varies the opening melody",
-    );
-    const chords = new Set();
-    for (let bar = 0; bar < 8; bar++) {
-      const sustained = steps[bar * 8].filter(
-        (node) => node.endsAt - node.startedAt > beat * 5,
-      );
-      assert.equal(
-        sustained.length,
-        3,
-        "a soft three-note harmony supports each full bar",
-      );
-      chords.add(JSON.stringify(signature(sustained)));
-    }
-    assert.ok(chords.size >= 4, "bass and harmony follow a varied progression");
-  });
-}
-
-test("muting cancels voices and independent zero-volume channels do not schedule work", async (t) => {
-  const { audio, contexts, timers } = audioHarness(t);
+test("scene fades coalesce rapid changes and never load canceled tracks", async (t) => {
+  const { audio, media, contexts, timers, advance } = audioHarness(t);
   await audio.unlock();
-  const context = contexts[0];
-  audio.playCue("victory");
-  audio.setPreferences({ ...DEFAULT_AUDIO_PREFERENCES, muted: true });
+  audio.setScene("road");
+  audio.setScene("trainer");
+  assert.equal(timers.size, 1);
+  assert.match(media[0].src, /opening.m4a$/);
+  assert.equal(contexts[0].gains[3].gain.changes.at(-1)[1], 0);
+  advance(0.2);
+  assert.match(media[0].src, /last-pokemon.m4a$/);
+  assert.equal(contexts[0].gains[3].gain.changes.at(-1)[1], 1);
+  audio.setScene("wild");
+  audio.setScene("trainer");
+  advance(0.2);
+  assert.match(media[0].src, /last-pokemon.m4a$/);
   assert.equal(timers.size, 0);
-  assert.ok(
-    context.oscillators.every((node) => node.stopped && node.disconnected),
-  );
-  const count = context.oscillators.length;
+});
+
+test("victory is one-shot and leaves immediately when the presentation scene changes", async (t) => {
+  const { audio, media, advance } = audioHarness(t);
+  audio.setScene("wild-victory");
+  await audio.unlock();
+  assert.match(media[0].src, /wild-victory.m4a$/);
+  assert.equal(media[0].loop, false);
+  media[0].end();
+  const count = media[0].playCalls;
+  await audio.unlock();
+  assert.equal(media[0].playCalls, count, "A finished fanfare must not replay on input");
+  audio.setScene("adventure");
+  assert.match(media[0].src, /gym.m4a$/);
+  audio.setScene("trainer-victory");
+  advance(0.2);
+  audio.setScene("center");
+  advance(0.2);
+  assert.match(media[0].src, /pokemon-center.m4a$/);
+});
+
+test("mute and zero music volume pause streaming without disabling effects", async (t) => {
+  const { audio, media, contexts } = audioHarness(t);
+  await audio.unlock();
+  media[0].currentTime = 12;
+  audio.setPreferences({ ...DEFAULT_AUDIO_PREFERENCES, muted: true });
+  assert.equal(media[0].paused, true);
   audio.playCue("attack", 10);
-  assert.equal(context.oscillators.length, count);
+  assert.equal(contexts[0].oscillators.length, 0);
   audio.setPreferences({ muted: false, musicVolume: 0, effectsVolume: 0.7 });
   audio.playCue("button");
-  assert.equal(context.oscillators.length, count + 1);
-  assert.equal(timers.size, 0);
-  assert.equal(context.gains[2].gain.value, 0.7);
+  assert.equal(contexts[0].oscillators.length, 1);
+  assert.equal(media[0].paused, true);
   audio.setPreferences({ muted: false, musicVolume: 0.2, effectsVolume: 0 });
-  const withMusic = context.oscillators.length;
+  assert.equal(media[0].paused, false);
+  assert.equal(media[0].currentTime, 12);
+  assert.equal(contexts[0].gains[1].gain.value, 0.2);
   audio.playCue("attack", 13);
-  assert.equal(context.oscillators.length, withMusic);
-  assert.equal(timers.size, 1);
+  assert.equal(contexts[0].oscillators.length, 1);
 });
 
-test("pause clears scheduled notes and rapid resume serializes with suspend", async (t) => {
-  const { audio, contexts, timers } = audioHarness(t);
+test("pause cancels transitions and resumes the latest scene after suspend", async (t) => {
+  const { audio, media, contexts, timers, advance } = audioHarness(t);
   await audio.unlock();
-  const context = contexts[0];
   audio.playCue("evolution");
-  assert.ok(context.oscillators.some((node) => node.startedAt > 1));
+  audio.setScene("road");
   audio.setPaused(true);
-  assert.equal(context.suspendCalls, 1);
   assert.equal(timers.size, 0);
-  assert.ok(context.oscillators.every((node) => node.disconnected));
-  const count = context.oscillators.length;
-  audio.playCue("attack", 1);
-  assert.equal(context.oscillators.length, count);
+  assert.equal(media[0].paused, true);
+  assert.ok(contexts[0].oscillators.every((node) => node.disconnected));
+  audio.setScene("center");
+  advance(1);
+  assert.match(media[0].src, /opening.m4a$/);
   audio.setPaused(false);
   await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
-  assert.equal(context.state, "running");
-  assert.equal(timers.size, 1);
-  assert.ok(context.oscillators.length - count < 8);
+  assert.match(media[0].src, /pokemon-center.m4a$/);
+  assert.equal(media[0].paused, false);
 });
 
-test("Safari interruption and denied resume stay silent until a later successful gesture", async (t) => {
-  const { audio, contexts, timers } = audioHarness(t);
+test("media errors and denied play recover on an explicit gesture", async (t) => {
+  const { audio, media, contexts } = audioHarness(t);
   await audio.unlock();
-  const context = contexts[0];
-  context.interrupt();
-  assert.equal(timers.size, 0);
-  assert.ok(context.oscillators.every((node) => node.disconnected));
-  const count = context.oscillators.length;
-  context.failResume = true;
-  await assert.doesNotReject(audio.unlock());
-  audio.playCue("heal");
-  assert.equal(context.oscillators.length, count);
-  context.failResume = false;
+  const player = media[0];
+  player.pause();
+  player.error = { code: 2 };
+  player.onerror();
+  player.failPlay = true;
   await audio.unlock();
-  assert.equal(context.state, "running");
-  assert.equal(timers.size, 1);
+  assert.equal(player.loadCalls, 1);
+  assert.equal(player.paused, true);
+  player.failPlay = false;
+  await audio.unlock();
+  assert.equal(player.paused, false);
+  contexts[0].interrupt();
+  assert.equal(player.paused, true);
+  contexts[0].failResume = true;
+  await audio.unlock();
+  assert.equal(player.paused, true);
+  contexts[0].failResume = false;
+  await audio.unlock();
+  assert.equal(contexts[0].state, "running");
+  assert.equal(player.paused, false);
+});
+
+test("late play completion cannot resurrect disposed audio", async (t) => {
+  const { audio, media, contexts } = audioHarness(t);
+  await audio.unlock();
+  let finishPlay;
+  media[0].pendingPlay = new Promise((resolve) => { finishPlay = resolve; });
+  media[0].pause();
+  await audio.unlock();
+  audio.dispose();
+  finishPlay();
+  await Promise.resolve();
+  assert.equal(media[0].paused, true);
+  assert.equal(media[0].src, "");
+  assert.equal(media[0].onended, null);
+  assert.ok(contexts[0].mediaSource.disconnected);
 });
 
 test("all presentation cues have sound, the 18 attacks differ, and polyphony stays bounded", async (t) => {
@@ -476,7 +525,7 @@ test("disposal closes and disconnects every audio resource and prevents late res
   await Promise.resolve();
   await audio.unlock();
   audio.playCue("victory");
-  audio.setScene("battle");
+  audio.setScene("road");
   audio.setPreferences(DEFAULT_AUDIO_PREFERENCES);
   audio.setPaused(false);
   assert.equal(context.closeCalls, 1);
@@ -505,7 +554,7 @@ test("finished effects release nodes and a failed instrument does not leave a re
   assert.equal(timers.size, 0);
   context.createOscillator = createOscillator;
   await audio.unlock();
-  assert.equal(timers.size, 1);
+  assert.equal(timers.size, 0);
 });
 
 test("a closed context is replaced only by an explicit unlock and its old graph is released", async (t) => {
@@ -520,7 +569,7 @@ test("a closed context is replaced only by an explicit unlock and its old graph 
   await audio.unlock();
   assert.equal(contexts.length, 2);
   assert.equal(contexts[1].state, "running");
-  assert.equal(timers.size, 1);
+  assert.equal(timers.size, 0);
   assert.equal(first.onstatechange, null);
   assert.ok(first.gains.every((node) => node.disconnected));
 });
@@ -535,7 +584,7 @@ test("an unavailable Web Audio implementation never throws into game controls", 
   await assert.doesNotReject(audio.unlock());
   assert.doesNotThrow(() => {
     audio.setPreferences(DEFAULT_AUDIO_PREFERENCES);
-    audio.setScene("battle");
+    audio.setScene("road");
     audio.setPaused(true);
     audio.playCue("roll");
     audio.dispose();

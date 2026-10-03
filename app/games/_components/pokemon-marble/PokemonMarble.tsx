@@ -19,6 +19,7 @@ import styles from "./PokemonMarble.module.css";
 import experienceStyles from "./Experience.module.css";
 import ExperienceControls from "./ExperienceControls";
 import { useExperience } from "./use-experience";
+import { getAudioScene } from "./music-scene";
 import { useAutomaticAction } from "./use-automatic-action";
 import TabletopControls from "./TabletopControls";
 import FullscreenToggle from "./FullscreenToggle";
@@ -78,7 +79,12 @@ export default function PokemonMarble() {
     saveDisplayPreferences({ mode });
   }
 
-  useEffect(() => setScene(battleVisible), [battleVisible, setScene]);
+  const audioScene = getAudioScene(
+    view,
+    experience.frame.event,
+    experience.skippedRevision === (experience.frame.event?.revision ?? game?.revision),
+  );
+  useEffect(() => setScene(audioScene), [audioScene, setScene]);
   useEffect(() => {
     if (playing) gameRoot.current?.scrollIntoView({ block: "start" });
   }, [playing]);
@@ -133,7 +139,7 @@ export default function PokemonMarble() {
   function start(starters: number[], names: string[], seatSides: SeatSide[]) {
     try {
       const seed = crypto.getRandomValues(new Uint32Array(1))[0];
-      experience.reset();
+      experience.reset("adventure");
       experience.unlockAudio();
       commit(createGame(starters, names, seed, seatSides));
       setPendingStart(null);
@@ -198,7 +204,10 @@ export default function PokemonMarble() {
         data-playing={playing}
         data-battle={battleVisible}
         data-control-seat={controlLayout.mode === "fixed" ? "bottom" : controlLayout.seatSide}
+        onPointerDownCapture={experience.unlockAudio}
+        onKeyDownCapture={experience.unlockAudio}
         onClickCapture={(event) => {
+          experience.unlockAudio();
           if ((event.target as HTMLElement).closest("button"))
             experience.click();
         }}
@@ -235,7 +244,7 @@ export default function PokemonMarble() {
               onResume={
                 savedGame
                   ? () => {
-                      experience.reset();
+                      experience.reset(getAudioScene(snapshotForPresentation(savedGame)));
                       experience.unlockAudio();
                       gameRef.current = savedGame;
                       setGame(savedGame);

@@ -12,7 +12,7 @@ import {
 import { loadPokemonSave } from "./load-save";
 import Setup from "./Setup";
 import GuardianPopup from "./GuardianPopup";
-import ActionPanel, { MovementPanel, PartySummary } from "./ActionPanel";
+import ActionPanel, { ExchangeControls, MovementPanel, PartySummary } from "./ActionPanel";
 import RulesDialog, { Modal } from "./RulesDialog";
 import type { GameAction, GameState, SeatSide } from "./types";
 import styles from "./PokemonMarble.module.css";
@@ -117,6 +117,10 @@ export default function PokemonMarble() {
         const { state: next, events } = transitionWithEvents(current, action);
         if (next !== current) {
           setGameError(null);
+          // Start a combined turn handoff with the dice already facing its roller.
+          if (action.type === "ROLL" || action.type === "END_TURN_AND_ROLL") {
+            setControlLayout((previous) => resolveControlLayout(next, displayPreferences.mode, previous, false));
+          }
           commit(next);
           enqueue(events);
         }
@@ -126,7 +130,7 @@ export default function PokemonMarble() {
         );
       }
     },
-    [commit, enqueue, isBlocked],
+    [commit, displayPreferences.mode, enqueue, isBlocked],
   );
 
   useAutomaticAction(
@@ -278,8 +282,6 @@ export default function PokemonMarble() {
                     }))}
                     guardians={view!.guardians}
                     activePlayerId={view!.activePlayerId}
-                    dice={view!.dice}
-                    rolling={experience.frame.event?.kind === "roll" && experience.frame.progress < 0.8}
                     battle={view!.battle}
                     presentation={presentation}
                     paused={experience.paused}
@@ -297,23 +299,19 @@ export default function PokemonMarble() {
                     {!battleVisible && movementVisible ? (
                       <MovementPanel
                         state={game}
-                        rolling={experience.frame.event?.kind === "roll"}
-                        busy={experience.busy}
+                        presentation={presentation}
+                        reducedMotion={experience.reducedMotion}
                         notice={
                           presentation && ["lap", "level-up", "evolution"].includes(presentation.event.kind)
                             ? presentation.event.message
                             : undefined
                         }
-                        onSkip={experience.skip}
                       />
                     ) : experience.frame.event ? (
                       <section className={styles.tableNotice} aria-label="진행 중인 연출">
                         {experience.frame.event.attack && <EventCaption presentation={presentation} inline />}
                         <strong role="status">{experience.frame.event.message}</strong>
                         <progress aria-label="연출 진행" max={1} value={experience.frame.progress} />
-                        <button className={styles.secondaryButton} type="button" onClick={experience.skip}>
-                          연출 건너뛰기 →
-                        </button>
                       </section>
                     ) : (
                       <ActionPanel
@@ -327,6 +325,7 @@ export default function PokemonMarble() {
 
                   </div>
                   {!battleVisible && <PartySummary state={game} blocked={experience.busy || experience.paused} dispatch={(action) => dispatch(action, game.revision)} />}
+                  {!battleVisible && <ExchangeControls state={game} blocked={experience.busy || experience.paused} dispatch={(action) => dispatch(action, game.revision)} />}
                 </div>
               </TabletopControls>
               {selectedTile !== null && game.roads[selectedTile] && !battleVisible && !movementVisible && !experience.busy && !experience.paused && (

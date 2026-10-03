@@ -16,7 +16,7 @@ type Props = {
   compact?: boolean;
 };
 
-/** Stable stage sibling: changing a seat keeps the board and battle artwork independent. */
+/** Rotate battle artwork and controls together without turning the normal board. */
 export default function TabletopControls({
   battle,
   seatSide,
@@ -61,8 +61,17 @@ export default function TabletopControls({
       data-ready={size.width > 0 && size.height > 0}
     >
       <div className={styles.stage} style={layout.stage}>
-        {board}
-        {systemControls}
+        <div
+          className={styles.orientedStage}
+          style={{
+            width: layout.stageContentWidth,
+            height: layout.stageContentHeight,
+            transform: `translate(-50%, -50%) rotate(${layout.stageRotation}deg)`,
+          }}
+        >
+          {board}
+          {systemControls}
+        </div>
       </div>
       <div
         className={styles.panelBounds}

@@ -19,7 +19,7 @@ const BATTLE_MODAL_DEPTH = 260;
 const BATTLE_MODAL_WIDTH = 620;
 const MODAL_MARGIN = 16;
 
-/** CSS rotates only the controls; the board and battle stage stay upright. */
+/** Keep the normal board fixed; fit the battle stage and controls to the same seat. */
 export function getTabletopLayout(
   width: number,
   height: number,
@@ -88,6 +88,9 @@ export function getTabletopLayout(
     stage,
     panel,
     rotation: SEAT_ROTATION[seat],
+    stageRotation: battle ? SEAT_ROTATION[seat] : 0,
+    stageContentWidth: battle && sideways ? stage.height : stage.width,
+    stageContentHeight: battle && sideways ? stage.width : stage.height,
     contentWidth: sideways ? panel.height : panel.width,
     contentHeight: sideways ? panel.width : panel.height,
   };

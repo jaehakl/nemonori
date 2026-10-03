@@ -70,10 +70,6 @@
   width: auto;
   flex-direction: row;
 }
-.game[data-battle="true"][data-control-seat="top"] .topActions {
-  top: auto;
-  bottom: max(16px, env(safe-area-inset-bottom));
-}
 .game[data-playing="true"] .topActions.systemLeft {
   right: auto;
   left: max(24px, env(safe-area-inset-left));
@@ -226,25 +222,11 @@
 .controlActions .turnHeading {
   margin-bottom: 6px;
 }
-.controlActions .dicePair {
-  margin: 6px 0;
-  gap: 10px;
-  padding: 2px 0;
-}
-.tableControls .dicePair {
-  display: none;
-}
-.controlActions .die {
-  font-size: 36px;
-  width: 46px;
-  height: 46px;
-}
 .controlActions .actionCopy {
   margin: 8px 0 !important;
   font-size: 12px;
 }
-.controlActions .actionPanel > .fullWidth,
-.controlActions .turnEnd {
+.controlActions .actionPanel > .fullWidth {
   position: sticky;
   bottom: 0;
   z-index: 1;
@@ -1068,30 +1050,6 @@
 .fullWidth {
   width: 100%;
 }
-.dicePair {
-  display: flex;
-  justify-content: center;
-  gap: 16px;
-  padding: 20px 0;
-}
-.die {
-  width: 60px;
-  height: 60px;
-  display: grid;
-  place-items: center;
-  border: 1px solid #e5e8dc;
-  border-radius: 14px;
-  background: #fbfaf4;
-  color: var(--green);
-  font-size: 47px;
-  box-shadow: 0 5px 0 #e6e7d8;
-}
-.rolling .die {
-  animation: shake 0.3s infinite alternate;
-}
-.rolling .die:nth-child(2) {
-  animation-delay: 0.12s;
-}
 .battlePanel {
   border-color: #c9dfd4;
 }
@@ -1369,11 +1327,6 @@
   font-size: 9px;
   letter-spacing: 0.5px;
 }
-@keyframes shake {
-  to {
-    transform: rotate(12deg) translateY(-5px);
-  }
-}
 @keyframes hit {
   30% {
     transform: translateX(-5px);
@@ -1567,10 +1520,6 @@ button.tradingCard:focus-visible {
 
 .guardianPopup .sectionHeading > strong { min-width: 0; overflow-wrap: anywhere; }
 
-.tableControls .controlActions .turnEnd {
-  position: static;
-  box-shadow: none;
-}
 .journeyHeading {
   display: flex;
   align-items: center;
@@ -1580,7 +1529,7 @@ button.tradingCard:focus-visible {
   margin-bottom: 12px;
   border-bottom: 1px solid #d9c491;
 }
-.journeyHeading > div:not(.journeyStats) {
+.journeyHeading > div {
   flex: 1;
   min-width: 0;
 }
@@ -1596,19 +1545,6 @@ button.tradingCard:focus-visible {
   color: #69765c;
   font-size: 10px;
   font-weight: 700;
-}
-.journeyStats {
-  display: grid;
-  gap: 4px;
-  flex-shrink: 0;
-  text-align: right;
-  font-size: 11px;
-}
-.journeyStats strong {
-  color: #176c50;
-}
-.journeyStats span {
-  color: #7b6340;
 }
 .controlActions .journeyPanel {
   display: flex;
@@ -1631,98 +1567,89 @@ button.tradingCard:focus-visible {
   gap: 8px;
   padding: 12px 0;
 }
-.diceCradle {
+.rollButton {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: min(360px, 100%);
+  flex-shrink: 0;
+  padding: 10px 12px;
+  border: 2px solid var(--player-color);
+  border-radius: 22px;
+  background: #fff9e8;
+  color: #173f35;
+  box-shadow: 0 4px 0 #51362924;
+  cursor: pointer;
+}
+.rollButton:hover {
+  background: #fffdf5;
+  box-shadow: 0 4px 0 #51362940;
+}
+.rollButton:focus-visible {
+  outline: 3px solid #173f35;
+  outline-offset: 3px;
+}
+.rollLabel {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  width: min(250px, 85%);
-  height: 116px;
-  flex-shrink: 0;
-  border: 3px solid #b49356;
-  border-radius: 60px;
-  background: radial-gradient(ellipse, #2f6951, #173f35);
-  box-shadow: 0 3px 0 #513629, inset 0 0 0 3px #0e3129;
+  gap: 8px;
+  font-size: 16px;
+  line-height: 1.4;
+  font-weight: 800;
+  overflow-wrap: anywhere;
 }
-.cradleDie {
-  width: 28%;
-  height: 75%;
-  filter: drop-shadow(0 4px 2px #061c2660);
-}
-.cradleDie:first-child {
-  transform: rotate(-12deg);
-}
-.cradleDie:last-child {
-  transform: rotate(12deg);
+.rollLabel .playerDot {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  font-size: 12px;
 }
 .journeyHint {
   color: #6b7253;
   font-size: 12px;
   line-height: 1.4;
   text-align: center;
-}
-.rollingLabel {
-  color: #fff3d6;
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 1px;
-}
-.journeyButton {
-  width: 100%;
-  min-height: 60px !important;
-  flex-shrink: 0;
-  font-size: 17px !important;
+  margin: 0 !important;
 }
 .journeyCenter progress {
   width: min(260px, 90%);
   margin: 0;
 }
+.exchangeFooter {
+  display: flex;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-top: 1px solid #d9c491;
+  background: #f2e5be;
+}
+.exchangeFooter button {
+  min-width: 96px;
+}
 @container journey-actions (max-height: 320px) {
-  .controlActions .journeyPanel {
-    padding: 10px;
-  }
-  .journeyHeading {
-    min-height: 36px;
-    padding-bottom: 5px;
-    gap: 7px;
-  }
-  .journeyHeading h3 {
-    font-size: 13px;
-  }
-  .journeyHeading small,
-  .journeyStats {
-    font-size: 9px;
-  }
-  .journeyCenter {
-    gap: 4px;
-    padding: 7px 0;
-  }
-  .diceCradle {
-    width: 156px;
-    height: 62px;
-    gap: 8px;
-  }
-  .journeyHint {
-    font-size: 10px;
-  }
-  .journeyButton {
-    min-height: 48px !important;
-    padding: 9px 12px;
-    font-size: 14px !important;
-  }
+  .controlActions .journeyPanel { padding: 10px; }
+  .journeyHeading { min-height: 36px; padding-bottom: 5px; gap: 7px; }
+  .journeyHeading h3 { font-size: 13px; }
+  .journeyHeading small { font-size: 9px; }
+  .journeyCenter { --dice-cradle-width: 200px; gap: 5px; padding: 7px 0; }
+  .journeyHint { font-size: 11px; }
+  .rollButton { gap: 6px; padding: 7px 10px; }
+  .rollLabel { font-size: 14px; }
 }
 @container journey-actions (max-height: 240px) {
-  .diceCradle { height: 48px; width: 140px; }
-  .journeyCenter { padding: 5px 0; }
-}
-@container journey-actions (max-height: 210px) {
-  .diceCradle { display: none; }
+  .journeyCenter { --dice-cradle-width: 190px; padding: 5px 0; }
+  .rollButton { gap: 4px; padding: 5px 8px; }
+  .rollLabel { font-size: 12px; }
 }
 @container journey-actions (max-height: 190px) {
   .controlActions .journeyPanel { padding: 7px 10px; }
   .journeyHeading { min-height: 32px; padding-bottom: 3px; }
   .journeyHeading h3 { margin-top: 0; }
-  .journeyCenter { padding: 4px 0; gap: 3px; }
+  .journeyCenter { --dice-cradle-width: 150px; padding: 4px 0; gap: 3px; }
+  .rollLabel .playerDot { flex-basis: 22px; width: 22px; height: 22px; }
 }
 .legacyCaptureNote {
   margin: 4px 0 8px !important;
@@ -1832,4 +1759,27 @@ button.tradingCard:focus-visible {
   .controlActions .typeRow,
   .controlActions .health { grid-column: 2; }
   .controlActions .cardHeading { flex-wrap: wrap; }
+}
+
+@container exchange-controls (max-height: 440px) {
+  .partyPanel { padding: 6px 9px; }
+  .partyPanel .tradingCard {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+    align-content: center;
+    gap: 4px;
+    flex-basis: 230px;
+  }
+  .partyPanel .cardArtwork {
+    grid-column: 1;
+    grid-row: 1 / 5;
+    width: 64px;
+    height: 80px;
+    margin: 0;
+  }
+  .partyPanel .cardArtwork > span { transform: scale(0.44); }
+  .partyPanel .tradingCard > :not(.cardArtwork):not(.leaderBadge) { grid-column: 2; }
+  .partyPanel .typeRow { margin-bottom: 0; }
+  .partyPanel .cardHeading { flex-wrap: wrap; }
+  .exchangeFooter { padding-block: 4px; }
 }

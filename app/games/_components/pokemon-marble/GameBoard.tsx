@@ -15,8 +15,6 @@ type Props = {
   tokens: BoardToken[];
   guardians: BoardGuardian[];
   activePlayerId: number;
-  dice: [number, number] | null;
-  rolling: boolean;
   battle?: BattleView | null;
   presentation?: { event: PresentationEvent; progress: number } | null;
   paused?: boolean;
@@ -128,8 +126,6 @@ export default function GameBoard({
   tokens,
   guardians,
   activePlayerId,
-  dice,
-  rolling,
   battle = null,
   presentation = null,
   paused = false,
@@ -170,8 +166,6 @@ export default function GameBoard({
             tokens={tokens}
             guardians={guardians}
             activePlayerId={activePlayerId}
-            dice={dice}
-            rolling={rolling}
             presentation={presentation}
             paused={paused}
             reducedMotion={reducedMotion}
@@ -184,22 +178,6 @@ export default function GameBoard({
         )}
         {!hideHud && battle && <BattleHud battle={battle} presentation={presentation} />}
         {!hideHud && <EventCaption presentation={presentation} />}
-        {!hideHud && !battle && !presentation && (
-          <div className={styles.diceResult} aria-live="polite">
-            {rolling ? (
-              "주사위를 굴리는 중…"
-            ) : dice ? (
-              <>
-                <span>
-                  {dice[0]} + {dice[1]}
-                </span>
-                <strong>{dice[0] + dice[1]}칸{dice[0] === dice[1] ? " · 더블!" : ""}</strong>
-              </>
-            ) : (
-              "주사위를 굴려 모험을 시작하세요"
-            )}
-          </div>
-        )}
       </div>
       {!tabletop && (
         <>

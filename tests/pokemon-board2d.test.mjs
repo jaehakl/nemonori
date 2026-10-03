@@ -7,6 +7,9 @@ import { loadGameSource } from "./game-test-helpers.mjs";
 const { default: Board2D } = loadGameSource(
   "app/games/_components/pokemon-marble/Board2D.tsx",
 );
+const { default: DiceCradle } = loadGameSource(
+  "app/games/_components/pokemon-marble/DiceCradle.tsx",
+);
 
 const player = (id = 0, additions = {}) => ({
   id,
@@ -22,8 +25,6 @@ const props = (additions = {}) => ({
   tokens: [player()],
   guardians: [],
   activePlayerId: 0,
-  dice: [3, 6],
-  rolling: false,
   ...additions,
 });
 const render = (additions = {}) => renderToStaticMarkup(React.createElement(Board2D, props(additions)));
@@ -59,6 +60,7 @@ test("the crisp SVG board contains all 40 selectable canonical cells with fixed 
   }
   assert.equal([...html.matchAll(/role="button"/g)].length, 40);
   assert.doesNotMatch(html, /<canvas|linearGradient|radialGradient|filter=/);
+  assert.doesNotMatch(html, /data-die=/, "the board never duplicates the central dice");
 });
 
 test("the board portrait follows the party leader independently of the original starter", () => {
@@ -134,17 +136,20 @@ test("movement uses presentation progress without mutating snapshots and respect
 });
 
 test("dice have deterministic changing faces and decelerating tumble before showing the correct result", () => {
-  const show = (progress, reducedMotion = false) => render({
-    rolling: progress < 0.86,
+  const show = (progress, reducedMotion = false) => renderToStaticMarkup(React.createElement(DiceCradle, {
+    dice: [3, 6],
+    progress,
     reducedMotion,
-    presentation: { event: event("roll"), progress },
-  });
+  }));
   const mid = show(0.4);
   assert.equal(mid, show(0.4), "paused or repeated progress cannot advance a visual random generator");
   assert.notEqual(mid, show(0.45));
   assert.match(mid, /width="60" height="60"/);
   assert.match(mid, /rotate\((?!0\))/);
+  assert.match(mid, /aria-label="주사위를 굴리는 중"/);
+  assert.match(show(0.85), /aria-label="주사위를 굴리는 중"/);
   for (const html of [show(1), show(0.3, true)]) {
+    assert.match(html, /aria-label="주사위 3 \+ 6"/);
     assert.match(html, /data-die="0" data-face="3" data-result="3"/);
     assert.match(html, /data-die="1" data-face="6" data-result="6"/);
     assert.equal([...html.matchAll(/rotate\(0\) scale\(1\)/g)].length, 2);
@@ -152,24 +157,29 @@ test("dice have deterministic changing faces and decelerating tumble before show
   assert.match(show(0.78), /fill="none" stroke="#718e61"/);
 });
 
-test("all rotating dice corners clear the road and the 70% center controls throughout the roll", () => {
+test("the central dice remain fully inside their responsive viewport throughout the roll", () => {
   for (let step = 0; step <= 100; step += 1) {
-    const tree = Board2D(props({
-      rolling: true,
-      presentation: { event: event("roll"), progress: step / 100 },
-    }));
+    const tree = DiceCradle({ dice: [3, 6], progress: step / 100 });
     for (const index of [0, 1]) {
       const die = findElement(tree, (element) => element.props.index === index && typeof element.props.progress === "number");
       const rendered = die.type(die.props);
-      const [, , y] = rendered.props.transform.match(/translate\(([-\d.]+) ([-\d.]+)\)/).map(Number);
+      const [, x, y] = rendered.props.transform.match(/translate\(([-\d.]+) ([-\d.]+)\)/).map(Number);
       const body = findElement(rendered, (element) => element.props.transform?.startsWith("rotate("));
       const [, degrees, scale] = body.props.transform.match(/rotate\(([-\d.]+)\) scale\(([-\d.]+)\)/).map(Number);
       const radians = degrees * Math.PI / 180;
       const halfHeight = 31.25 * scale * (Math.abs(Math.cos(radians)) + Math.abs(Math.sin(radians)));
-      assert.ok(y - halfHeight >= 100, `die ${index} clears the road at ${step}%`);
-      assert.ok(y + halfHeight <= 165, `die ${index} clears center controls at ${step}%`);
+      assert.ok(x - halfHeight >= 0 && x + halfHeight <= 220, `die ${index} stays within horizontal bounds at ${step}%`);
+      assert.ok(y - halfHeight >= 0 && y + halfHeight <= 110, `die ${index} stays within vertical bounds at ${step}%`);
     }
   }
+});
+
+test("the central dice pair remains visible before the first roll without announcing a result", () => {
+  const html = renderToStaticMarkup(React.createElement(DiceCradle, { dice: null }));
+  assert.match(html, /aria-label="주사위 두 개"/);
+  assert.match(html, /viewBox="0 0 220 110"/);
+  assert.equal([...html.matchAll(/data-die=/g)].length, 2);
+  assert.equal([...html.matchAll(/rotate\(0\) scale\(1\)/g)].length, 2);
 });
 
 test("shared artwork measurement requests each species once and notifies only mounted consumers", (t) => {

@@ -26,11 +26,15 @@
   pointer-events: none;
 }
 
+.orientedStage,
 .orientedPanel {
   position: absolute;
   left: 50%;
   top: 50%;
   transform-origin: center;
+}
+
+.orientedPanel {
   display: flex;
   align-items: stretch;
   justify-content: stretch;

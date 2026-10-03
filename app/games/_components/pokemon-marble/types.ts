@@ -106,4 +106,5 @@ export type GameAction =
   | { type: "START_EXCHANGE" }
   | { type: "END_EXCHANGE" }
   | { type: "CENTER_TRANSFER"; pokemonId: string; to: "party" | "box" }
-  | { type: "END_TURN" };
+  | { type: "END_TURN" }
+  | { type: "END_TURN_AND_ROLL" };

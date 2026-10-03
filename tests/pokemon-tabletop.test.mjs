@@ -41,6 +41,9 @@ test("every seat keeps the square board fixed and controls clear of its outer ti
       assert.deepEqual(layout.stage, baseline.stage);
       assert.deepEqual(layout.panel, baseline.panel);
       assert.equal(layout.stage.width, layout.stage.height);
+      assert.equal(layout.stageRotation, 0);
+      assert.equal(layout.stageContentWidth, layout.stage.width);
+      assert.equal(layout.stageContentHeight, layout.stage.height);
       assert.equal(layout.contentWidth, layout.contentHeight);
       inside(layout.stage, width, height);
       inside(layout.panel, width, height);
@@ -119,6 +122,53 @@ test("movement does not change the tabletop structure or resize its control pane
     board: React.createElement("svg", { "aria-label": "게임판" }),
   }, React.createElement("button", null, "주사위 굴리기")));
   assert.equal(render(true), render(false));
+});
+
+test("rotated battle contents fill the reserved stage at every seat and tablet size", () => {
+  for (const [width, height] of [[1366, 928], [1024, 672], [844, 560], [768, 560], [560, 768]]) {
+    for (const seat of seats) {
+      const layout = getTabletopLayout(width, height, true, seat);
+      const { stage, panel, stageRotation, stageContentWidth, stageContentHeight } = layout;
+      assert.equal(stageRotation, layout.rotation);
+      const radians = stageRotation * Math.PI / 180;
+      const rotatedWidth = Math.abs(Math.cos(radians)) * stageContentWidth
+        + Math.abs(Math.sin(radians)) * stageContentHeight;
+      const rotatedHeight = Math.abs(Math.sin(radians)) * stageContentWidth
+        + Math.abs(Math.cos(radians)) * stageContentHeight;
+      assert.ok(Math.abs(rotatedWidth - stage.width) < 0.001);
+      assert.ok(Math.abs(rotatedHeight - stage.height) < 0.001);
+      inside(stage, width, height);
+      inside(panel, width, height);
+      const overlaps = stage.left < panel.left + panel.width
+        && stage.left + stage.width > panel.left
+        && stage.top < panel.top + panel.height
+        && stage.top + stage.height > panel.top;
+      assert.equal(overlaps, false, `${width}x${height} at ${seat}`);
+    }
+  }
+});
+
+test("the whole battle stage and its system controls face the same seat as the action panel", () => {
+  for (const mode of ["auto", "fixed"]) {
+    for (const seatSide of seats) {
+      for (const battle of [true, false]) {
+        const rotation = mode === "fixed" ? 0 : SEAT_ROTATION[seatSide];
+        const html = renderToStaticMarkup(React.createElement(TabletopControls, {
+          battle,
+          seatSide,
+          mode,
+          board: React.createElement("svg", { "aria-label": "배경·포켓몬·효과" }),
+          systemControls: React.createElement("header", null, "화면 설정"),
+        }, React.createElement("button", null, "배틀 행동")));
+        const stage = html.match(/<div class="orientedStage"[^>]*>[\s\S]*?<\/header><\/div>/)?.[0];
+        assert.ok(stage, "artwork and system controls share one rotation container");
+        assert.ok(stage.includes(`rotate(${battle ? rotation : 0}deg)`));
+        assert.match(stage, /<svg aria-label="배경·포켓몬·효과"><\/svg><header>화면 설정<\/header>/);
+        const panel = html.match(/<div class="orientedPanel"[^>]*>/)?.[0];
+        assert.ok(panel?.includes(`rotate(${rotation}deg)`));
+      }
+    }
+  }
 });
 
 test("compact battle HP groups identify each trainer and reflect damage only at impact", () => {

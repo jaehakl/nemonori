@@ -4,6 +4,17 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { loadGameSource } from "./game-test-helpers.mjs";
 
+function* renderedElements(node) {
+  if (!React.isValidElement(node)) return;
+  if (typeof node.type === "function") {
+    yield* renderedElements(node.type(node.props));
+    return;
+  }
+  yield node;
+  for (const child of React.Children.toArray(node.props.children))
+    yield* renderedElements(child);
+}
+
 test("party cards sort by level without mutating storage and identify the highest-level leader", () => {
   const { PartySummary } = loadGameSource("app/games/_components/pokemon-marble/ActionPanel.tsx");
   const { createGame } = loadGameSource("app/games/_components/pokemon-marble/engine.ts");
@@ -34,17 +45,62 @@ test("maximum-level XP meter communicates completion", () => {
   assert.doesNotMatch(nearlyLeveled, />100%<\/small>/);
 });
 
-test("idle turn panel identifies the player and objective beside the prominent roll action", () => {
+test("idle turn panel puts the only dice pair inside the player's roll button without old counters or copy", () => {
   const { default: ActionPanel } = loadGameSource("app/games/_components/pokemon-marble/ActionPanel.tsx");
   const { createGame } = loadGameSource("app/games/_components/pokemon-marble/engine.ts");
   const state = createGame([1], ["민지"], 1);
   const html = renderToStaticMarkup(React.createElement(ActionPanel, { state, dispatch() {}, onRestart() {} }));
   assert.match(html, /aria-label="이번 차례"/);
   assert.match(html, /<h3>민지<\/h3>/);
-  assert.match(html, /TURN 1/);
-  assert.match(html, /도로 0\/27/);
-  assert.match(html, /class="diceCradle" aria-hidden="true"/);
-  assert.match(html, /class="primaryButton journeyButton"/);
+  assert.match(html, /aria-label="민지 주사위 굴리기"/);
+  assert.match(html, /role="img" aria-label="주사위 두 개"/);
+  assert.equal((html.match(/data-die=/g) ?? []).length, 2);
+  assert.equal((html.match(/<button/g) ?? []).length, 1);
+  assert.doesNotMatch(html, /TURN \d+|도로 \d+\/27|두 개의 주사위, 새로운 만남|연출 건너뛰기|턴 마치기/);
+});
+
+test("the dice image and next-player label share one button that dispatches exactly one roll action", () => {
+  const { default: ActionPanel } = loadGameSource("app/games/_components/pokemon-marble/ActionPanel.tsx");
+  const { createGame } = loadGameSource("app/games/_components/pokemon-marble/engine.ts");
+  const { PLAYER_COLORS } = loadGameSource("app/games/_components/pokemon-marble/board.ts");
+  for (const phase of ["roll", "center", "road", "turn-end"]) {
+    const state = createGame([1, 4], ["민지", "준"], 1);
+    state.phase = phase;
+    state.dice = phase === "roll" ? null : [2, 3];
+    const actions = [];
+    const nodes = [...renderedElements(React.createElement(ActionPanel, {
+      state, dispatch: (action) => actions.push(action), onRestart() {},
+    }))];
+    const buttons = nodes.filter((node) => node.type === "button");
+    assert.equal(buttons.length, 1);
+    const button = buttons[0];
+    const playerId = phase === "roll" ? 0 : 1;
+    assert.equal(button.props["aria-label"], `${state.players[playerId].name} 주사위 굴리기`);
+    assert.equal(button.props.style["--player-color"], PLAYER_COLORS[playerId]);
+    const content = [...renderedElements(button)];
+    assert.equal(content.filter((node) => node.type === "svg").length, 1);
+    assert.equal(content.filter((node) => node.props["data-die"] !== undefined).length, 2);
+    assert.equal(content.filter((node) => typeof node.props.onClick === "function").length, 1);
+    button.props.onClick();
+    assert.deepEqual(actions, [{ type: phase === "roll" ? "ROLL" : "END_TURN_AND_ROLL" }]);
+  }
+});
+
+test("the roll button identifies the actual next player and color after skipped rest turns", () => {
+  const { default: ActionPanel } = loadGameSource("app/games/_components/pokemon-marble/ActionPanel.tsx");
+  const { createGame } = loadGameSource("app/games/_components/pokemon-marble/engine.ts");
+  const { PLAYER_COLORS } = loadGameSource("app/games/_components/pokemon-marble/board.ts");
+  const state = createGame([1, 4, 7], ["민지", "준", "하늘"], 1);
+  state.phase = "turn-end";
+  state.dice = [1, 2];
+  state.players[1].restTurnsRemaining = 1;
+  state.players[1].party[0].hp = 0;
+  const original = structuredClone(state);
+  const nodes = [...renderedElements(React.createElement(ActionPanel, { state, dispatch() {}, onRestart() {} }))];
+  const button = nodes.find((node) => node.type === "button");
+  assert.equal(button.props["aria-label"], "하늘 주사위 굴리기");
+  assert.equal(button.props.style["--player-color"], PLAYER_COLORS[2]);
+  assert.deepEqual(state, original);
 });
 
 test("legacy pending captures retain a playable continuation choice", () => {
@@ -147,20 +203,23 @@ test("legacy saves are reported separately without altering stored data", () => 
 
 test("movement feedback stays present between step animations and counts remaining spaces", () => {
   const { MovementPanel } = loadGameSource("app/games/_components/pokemon-marble/ActionPanel.tsx");
-  const { createGame, transition } = loadGameSource("app/games/_components/pokemon-marble/engine.ts");
-  const moving = transition(createGame([1, 4], [], 4), { type: "ROLL" });
-  const render = (rolling, busy) => renderToStaticMarkup(React.createElement(MovementPanel, {
-    state: moving, rolling, busy, onSkip: () => {},
+  const { createGame, transitionWithEvents } = loadGameSource("app/games/_components/pokemon-marble/engine.ts");
+  const { state: moving, events } = transitionWithEvents(createGame([1, 4], [], 4), { type: "ROLL" });
+  const render = (presentation, reducedMotion = false) => renderToStaticMarkup(React.createElement(MovementPanel, {
+    state: moving, presentation, reducedMotion,
   }));
-  const rolling = render(true, true);
+  const rolling = render({ event: events[0], progress: 0.25 });
   assert.match(rolling, /주사위를 굴리고 있어요/);
-  assert.match(rolling, /결과를 기다려요/);
-  assert.doesNotMatch(rolling, /class="cradleDie"/);
-  const betweenSteps = render(false, false);
-  assert.match(betweenSteps, /aria-label="주사위와 이동"/);
-  assert.match(betweenSteps, new RegExp(`앞으로 ${moving.movement.remaining}칸`));
-  assert.match(betweenSteps, /disabled=""/);
-  assert.doesNotMatch(render(false, true), /disabled=""/);
+  assert.match(rolling, /aria-label="주사위를 굴리는 중"/);
+  for (const html of [rolling, render(null), render({ event: events[0], progress: 0.95 }), render({ event: events[0], progress: 0.25 }, true)]) {
+    assert.match(html, /aria-label="주사위와 이동"/);
+    assert.equal((html.match(/data-die=/g) ?? []).length, 2);
+    assert.doesNotMatch(html, /<button|연출 건너뛰기|TURN \d+|도로 \d+\/27/);
+  }
+  for (const settled of [render(null), render({ event: events[0], progress: 0.95 }), render({ event: events[0], progress: 0.25 }, true)]) {
+    assert.match(settled, new RegExp(`앞으로 ${moving.movement.remaining}칸`));
+    assert.ok(settled.includes(`aria-label="주사위 ${moving.dice[0]} + ${moving.dice[1]}"`));
+  }
 });
 
 test("wild battle offers HP-based capture odds only on the player's turn with party space", () => {
@@ -271,6 +330,8 @@ test("the in-game guide explains capture HP, defeat and battle priority", () => 
   assert.match(html, /미진화형 야생 포켓몬/);
   assert.match(html, /AI 상대가 없습니다/);
   assert.match(html, /파티와 도로 수비 포켓몬 모두/);
+  assert.match(html, /교환/);
+  assert.doesNotMatch(html, /교환 시작하기/);
   assert.match(html, /aria-label="닫기"/);
 });
 
@@ -339,19 +400,20 @@ test("battle stage HP changes on impact and retains the finishing attack snapsho
 test("double roll controls wait for tile actions and explain the extra opportunity", () => {
   const { default: ActionPanel } = loadGameSource("app/games/_components/pokemon-marble/ActionPanel.tsx");
   const { createGame } = loadGameSource("app/games/_components/pokemon-marble/engine.ts");
-  const state = createGame([1, 4], [], 12);
+  const state = createGame([1, 4], ["민지", "준"], 12);
   state.dice = [3, 3];
   const render = () => renderToStaticMarkup(React.createElement(ActionPanel, { state, dispatch: () => {}, onRestart: () => {} }));
   for (const phase of ["center", "road", "turn-end"]) {
     state.phase = phase;
-    assert.match(render(), /한 번 더 굴리기/);
+    assert.match(render(), /aria-label="민지 한 번 더 주사위 굴리기"/);
   }
   state.phase = "turn-end";
-  assert.match(render(), /한 번 더 굴리기/);
+  assert.match(render(), /민지 한 번 더 주사위 굴리기/);
   state.players[0].restTurnsRemaining = 3;
-  assert.doesNotMatch(render(), /한 번 더 굴리기/);
+  assert.doesNotMatch(render(), /한 번 더 주사위 굴리기/);
+  assert.match(render(), /aria-label="준 주사위 굴리기"/);
   state.players[0].restTurnsRemaining = 0;
   state.dice = [3, 4];
-  assert.match(render(), /턴 마치기/);
-  assert.doesNotMatch(render(), /한 번 더 굴리기/);
+  assert.match(render(), /aria-label="준 주사위 굴리기"/);
+  assert.doesNotMatch(render(), /턴 마치기|한 번 더 주사위 굴리기/);
 });

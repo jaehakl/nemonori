@@ -621,6 +621,14 @@ export function hasExtraRoll(state: GameState): boolean {
   );
 }
 
+function canEndTurn(state: GameState): boolean {
+  return (
+    !state.exchangeActive &&
+    state.players[state.activePlayer].party.length <= 6 &&
+    ["center", "road", "turn-end"].includes(state.phase)
+  );
+}
+
 function nextTurn(state: GameState, events?: EventSink) {
   const extraRoll = hasExtraRoll(state);
   state.dice = null;
@@ -657,6 +665,29 @@ function nextTurn(state: GameState, events?: EventSink) {
   });
 }
 
+/** Preview the same rest and extra-roll rules without changing the game or RNG. */
+export function getNextRollPlayer(state: GameState): Player | null {
+  if (state.phase === "roll") return state.players[state.activePlayer];
+  if (!canEndTurn(state)) return null;
+  const preview = structuredClone(state);
+  nextTurn(preview);
+  return preview.players[preview.activePlayer];
+}
+
+function rollDice(state: GameState, events?: EventSink) {
+  state.dice = [random(state, 6) + 1, random(state, 6) + 1];
+  state.movement = {
+    remaining: state.dice[0] + state.dice[1],
+    encounters: [],
+  };
+  state.phase = "moving";
+  addLog(state, `${state.players[state.activePlayer].name}: 주사위 ${state.dice.join(" + ")}`);
+  events?.(state, {
+    kind: "roll",
+    message: `${state.dice.join(" + ")} = ${state.movement.remaining}칸!${hasExtraRoll(state) ? " 더블! 도착 칸의 행동을 마치면 한 번 더!" : ""}`,
+  });
+}
+
 function finishIfAllRoadsOwned(state: GameState, events?: EventSink) {
   const player = state.players[state.activePlayer];
   const ownsEveryRoad = BOARD_TILES.every(
@@ -686,17 +717,7 @@ function applyTransition(
   switch (action.type) {
     case "ROLL": {
       if (state.phase !== "roll") return previous;
-      state.dice = [random(state, 6) + 1, random(state, 6) + 1];
-      state.movement = {
-        remaining: state.dice[0] + state.dice[1],
-        encounters: [],
-      };
-      state.phase = "moving";
-      addLog(state, `${player.name}: 주사위 ${state.dice.join(" + ")}`);
-      events?.(state, {
-        kind: "roll",
-        message: `${state.dice.join(" + ")} = ${state.movement.remaining}칸!${hasExtraRoll(state) ? " 더블! 도착 칸의 행동을 마치면 한 번 더!" : ""}`,
-      });
+      rollDice(state, events);
       break;
     }
     case "STEP": {
@@ -942,10 +963,13 @@ function applyTransition(
       destination.push(pokemon);
       break;
     }
-    case "END_TURN": {
-      if (state.exchangeActive || player.party.length > 6 || !["center", "road", "turn-end"].includes(state.phase))
-        return previous;
-      nextTurn(state, events);
+    case "END_TURN":
+    case "END_TURN_AND_ROLL": {
+      if (!canEndTurn(state)) return previous;
+      const rollImmediately = action.type === "END_TURN_AND_ROLL";
+      // Keep rest/heal/turn logs, but let the dice be the first visible event.
+      nextTurn(state, rollImmediately ? undefined : events);
+      if (rollImmediately) rollDice(state, events);
       break;
     }
     default:

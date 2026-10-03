@@ -1,0 +1,9 @@
+.cradle {
+  display: block;
+  flex: 0 0 auto;
+  width: min(var(--dice-cradle-width, 250px), 100%);
+  height: auto;
+  aspect-ratio: 2;
+  margin-inline: auto;
+  overflow: visible;
+}

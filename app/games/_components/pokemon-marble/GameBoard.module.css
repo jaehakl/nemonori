@@ -251,31 +251,6 @@
 }
 
 
-.diceResult {
-  position: absolute;
-  right: 20px;
-  bottom: 14px;
-  left: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  color: #5a7661;
-  font-size: 12px;
-  pointer-events: none;
-}
-
-.diceResult span {
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
-}
-.diceResult strong {
-  padding: 4px 10px;
-  border-radius: 20px;
-  background: #ffffff99;
-  color: #386347;
-}
-
 .legend {
   display: flex;
   flex-wrap: wrap;

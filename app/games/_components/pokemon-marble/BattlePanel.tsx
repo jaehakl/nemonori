@@ -8,6 +8,8 @@ import { getAvailableMoves, movesById, speciesById } from "./pokemon-data";
 import { HealthBar, PokemonSprite, TypeBadge } from "./PokemonSprite";
 import type { GameAction, GameState, Pokemon } from "./types";
 import styles from "./PokemonMarble.module.css";
+import { sortPartyByLevel } from "./party";
+import { getCaptureChance } from "./progression";
 
 export function PokemonChoice({
   pokemon,
@@ -67,6 +69,8 @@ export default function BattlePanel({
     battle.defenderOwner === null
       ? "야생"
       : state.players[battle.defenderOwner].name;
+  const canThrow = state.phase === "attack" && battle.kind === "wild" && battle.turn === "attacker";
+  const partyFull = state.players[state.activePlayer].party.length >= 6;
 
   return (
     <section
@@ -169,7 +173,7 @@ export default function BattlePanel({
       )}
       {choosing && actorId !== null && (
         <div className={styles.selectionList}>
-          {state.players[actorId].party.map((pokemon) => (
+          {sortPartyByLevel(state.players[actorId].party).map((pokemon) => (
             <PokemonChoice
               key={pokemon.id}
               pokemon={pokemon}
@@ -183,6 +187,7 @@ export default function BattlePanel({
         </div>
       )}
       {state.phase === "attack" && actingPokemon && targetPokemon && (
+        <div className={`${styles.commandDeck} ${battle.kind === "wild" ? styles.wildCommandDeck : ""}`}>
         <div className={styles.moves}>
           {getAvailableMoves(actingPokemon.speciesId, actingPokemon.level).map(
             (move) => {
@@ -198,22 +203,36 @@ export default function BattlePanel({
                   disabled={actorId === null || preview.damage === 0}
                   onClick={() => dispatch({ type: "ATTACK", moveId: move.id })}
                   aria-label={`${move.name}, 예상 피해 ${preview.damage}`}
+                  title={`${move.category === "physical" ? "물리" : "특수"} · 위력 ${move.power} · 상성 ×${preview.effectiveness}${preview.stab > 1 ? " · 자속" : ""}`}
                 >
-                  <TypeBadge type={move.type} />
-                  <strong>{move.name}</strong>
-                  <small>
-                    {move.category === "physical" ? "물리" : "특수"} · 위력{" "}
-                    {move.power}
-                  </small>
+                  <span className={styles.moveHeading}><TypeBadge type={move.type} /><strong>{move.name}</strong></span>
                   <small>
                     {preview.damage === 0
                       ? "효과 없음"
-                      : `피해 ${preview.damage} · 상성 ×${preview.effectiveness}${preview.stab > 1 ? " · 자속" : ""}`}
+                      : `피해 ${preview.damage} · ${move.category === "physical" ? "물리" : "특수"} · ×${preview.effectiveness}`}
                   </small>
                 </button>
               );
             },
           )}
+        </div>
+        {battle.kind === "wild" && battle.wild && (
+          <button className={styles.captureButton}
+            disabled={!canThrow || partyFull}
+            onClick={() => dispatch({ type: "THROW_BALL" })}
+            aria-label={partyFull ? "파티가 가득 차 포획할 수 없습니다" : `포켓볼 던지기, 성공률 ${Math.round(getCaptureChance(battle.wild) * 100)}%`}
+            title={partyFull ? "파티 6칸이 모두 차서 포획할 수 없습니다. 센터에서 파티를 정리하세요." : "HP를 낮추면 포획 확률이 높아집니다. 실패하면 상대가 공격합니다."}>
+            <svg className={styles.ballIcon} viewBox="0 0 40 40" aria-hidden="true">
+              <circle cx="20" cy="20" r="17" fill="#fff9e9" />
+              <path d="M3 20a17 17 0 0 1 34 0Z" fill="#e65f4e" />
+              <circle cx="20" cy="20" r="17" fill="none" stroke="currentColor" strokeWidth="3" />
+              <path d="M3 20h34" stroke="currentColor" strokeWidth="3" />
+              <circle cx="20" cy="20" r="6" fill="#fff9e9" stroke="currentColor" strokeWidth="3" />
+            </svg>
+            <strong>포켓볼 던지기</strong>
+            <small>{partyFull ? "파티 가득 참" : `성공률 ${Math.round(getCaptureChance(battle.wild) * 100)}%`}</small>
+          </button>
+        )}
         </div>
       )}
     </section>

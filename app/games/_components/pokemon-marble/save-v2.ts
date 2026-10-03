@@ -1,9 +1,21 @@
 import { getStats } from "./battle";
 import { BOARD_SIZE, BOARD_TILES } from "./board";
 import { speciesById, movesById, isStarter } from "./pokemon-data";
-import type { GameState, Pokemon } from "./types";
-import { XP_PER_LEVEL } from "./progression";
-import { validateV2Save } from "./save-v2";
+import type { Battle, GameState as CurrentGameState, Player, Pokemon as CurrentPokemon } from "./types";
+
+// Frozen v2 contract: validate the original data before migrating any fields.
+type Pokemon = Omit<CurrentPokemon, "xp">;
+type LegacyPlayer = Omit<Player, "party" | "box"> & { party: Pokemon[]; box: Pokemon[] };
+export type LegacyGameState = Omit<CurrentGameState, "version" | "players" | "roads" | "battle"> & {
+  version: 2;
+  players: LegacyPlayer[];
+  roads: ({ ownerId: number; pokemon: Pokemon } | null)[];
+  battle: (Omit<Battle, "outcome" | "wild"> & {
+    winner: "attacker" | "defender" | null;
+    wild: Pokemon | null;
+  }) | null;
+};
+type GameState = LegacyGameState;
 
 const phases = new Set([
   "roll",
@@ -60,7 +72,7 @@ function matchesEvolution(
 }
 
 /** Validate references and phase invariants before resuming any stored state. */
-export function validateSave(value: unknown): value is GameState {
+export function validateV2Save(value: unknown): value is GameState {
   try {
     return validate(value);
   } catch {
@@ -71,7 +83,7 @@ export function validateSave(value: unknown): value is GameState {
 function validate(value: unknown): value is GameState {
   if (
     !record(value) ||
-    value.version !== 3 ||
+    value.version !== 2 ||
     !integer(value.revision) ||
     !integer(value.rng, 1, 0xffffffff) ||
     !integer(value.nextPokemonId, 1) ||
@@ -81,7 +93,7 @@ function validate(value: unknown): value is GameState {
     return false;
   if (
     !Array.isArray(value.players) ||
-    value.players.length < 1 ||
+    value.players.length < 2 ||
     value.players.length > 4 ||
     !integer(value.activePlayer, 0, value.players.length - 1) ||
     !Array.isArray(value.roads) ||
@@ -119,7 +131,6 @@ function validate(value: unknown): value is GameState {
       !integer(candidate.speciesId, 1, 1025) ||
       !speciesById[candidate.speciesId] ||
       !integer(candidate.level, 1, 100) ||
-      !integer(candidate.xp, 0, candidate.level === 100 ? 0 : XP_PER_LEVEL - 1) ||
       !integer(candidate.hp, 0)
     )
       return false;
@@ -279,14 +290,14 @@ function validate(value: unknown): value is GameState {
   )
     return false;
 
-  // All rewards were committed before this queue; only evolution remains.
+  // Older v2 saves have no lapGrowth field. A live queue exists only while a
+  // party member's branching evolution interrupts the completed lap.
   if (state.lapGrowth !== undefined && state.lapGrowth !== null) {
     const growth = state.lapGrowth;
     const evolution = state.evolution;
     if (
       !record(growth) ||
       !Array.isArray(growth.remainingPokemonIds) ||
-      (growth.legacyPartyOnly !== undefined && growth.legacyPartyOnly !== true) ||
       state.phase !== "evolution" ||
       state.battle !== null ||
       active.position !== 0 ||
@@ -295,20 +306,15 @@ function validate(value: unknown): value is GameState {
       !record(evolution)
     )
       return false;
-    const recipients = growth.legacyPartyOnly
-      ? active.party
-      : [...active.party, ...state.roads.flatMap((guardian) =>
-          guardian?.ownerId === active.id ? [guardian.pokemon] : [],
-        )];
-    const currentIndex = recipients.findIndex(
+    const currentIndex = active.party.findIndex(
       (pokemon) => pokemon.id === evolution.pokemonId,
     );
     if (
       currentIndex < 0 ||
-      !matchesEvolution(evolution, recipients[currentIndex], active.id)
+      !matchesEvolution(evolution, active.party[currentIndex], active.id)
     )
       return false;
-    const remaining = recipients.slice(currentIndex + 1);
+    const remaining = active.party.slice(currentIndex + 1);
     return (
       remaining.length === growth.remainingPokemonIds.length &&
       remaining.every(
@@ -328,20 +334,11 @@ function validate(value: unknown): value is GameState {
     !record(battle) ||
     !["trainer", "wild", "road"].includes(battle.kind) ||
     !["defender", "attacker"].includes(battle.turn) ||
+    (battle.winner !== null &&
+      !["attacker", "defender"].includes(battle.winner)) ||
     !state.movement
   )
     return false;
-  const outcome = battle.outcome;
-  if (outcome !== null) {
-    if (!record(outcome) || !["knockout", "capture"].includes(outcome.kind)) return false;
-    if (outcome.kind === "knockout") {
-      if (!["attacker", "defender"].includes(outcome.winner)) return false;
-      if (outcome.legacyCapturePending !== undefined &&
-        (outcome.legacyCapturePending !== true || battle.kind !== "wild" || outcome.winner !== "attacker"))
-        return false;
-    } else if (battle.kind !== "wild" || "winner" in outcome || "legacyCapturePending" in outcome) return false;
-  }
-  const knockoutWinner = outcome?.kind === "knockout" ? outcome.winner : null;
   if (battle.kind === "wild") {
     if (
       battle.defenderOwner !== null ||
@@ -397,7 +394,7 @@ function validate(value: unknown): value is GameState {
   )
     return false;
   if (battle.kind === "road" && defender) {
-    if (knockoutWinner === "attacker") {
+    if (battle.winner === "attacker") {
       if (defender.location !== "box" || state.roads[active.position] !== null)
         return false;
     } else if (
@@ -427,28 +424,21 @@ function validate(value: unknown): value is GameState {
   )
     return false;
   if (["choose-defender", "choose-attacker", "attack"].includes(state.phase)) {
-    if (outcome !== null || state.evolution !== null) return false;
+    if (battle.winner !== null || state.evolution !== null) return false;
     if (
       state.phase === "attack" &&
       (attacker!.pokemon.hp <= 0 || defender!.pokemon.hp <= 0)
     )
       return false;
-  } else if (outcome?.kind === "capture") {
-    if (
-      state.phase !== "evolution" || battle.turn !== "attacker" ||
-      attacker!.pokemon.hp <= 0 || defender!.pokemon.hp <= 0 ||
-      active.party.length >= 6 || pendingRecovery.length > 0 ||
-      !matchesEvolution(state.evolution, attacker!.pokemon, active.id)
-    ) return false;
   } else {
     if (
-      knockoutWinner === null ||
-      battle.turn !== knockoutWinner ||
+      battle.winner === null ||
+      battle.turn !== battle.winner ||
       battle.lastAttack === null
     )
       return false;
-    const winner = knockoutWinner === "attacker" ? attacker! : defender!;
-    const loser = knockoutWinner === "attacker" ? defender! : attacker!;
+    const winner = battle.winner === "attacker" ? attacker! : defender!;
+    const loser = battle.winner === "attacker" ? defender! : attacker!;
     if (winner.pokemon.hp <= 0 || loser.pokemon.hp !== 0) return false;
     if (
       pendingRecovery.length > 1 ||
@@ -460,8 +450,7 @@ function validate(value: unknown): value is GameState {
     if (
       state.phase === "capture" &&
       (battle.kind !== "wild" ||
-        knockoutWinner !== "attacker" ||
-        outcome?.kind !== "knockout" || !outcome.legacyCapturePending ||
+        battle.winner !== "attacker" ||
         state.evolution !== null)
     )
       return false;
@@ -488,39 +477,3 @@ function validate(value: unknown): value is GameState {
   return true;
 }
 
-export function parseGameSave(value: unknown): GameState | null {
-  if (validateSave(value)) return structuredClone(value);
-  if (!validateV2Save(value)) return null;
-  const legacy = structuredClone(value);
-  const withExperience = (pokemon: Omit<Pokemon, "xp">): Pokemon => ({ ...pokemon, xp: 0 });
-  const battle = legacy.battle;
-  const migrated: GameState = {
-    ...legacy,
-    version: 3,
-    players: legacy.players.map((player) => ({
-      ...player,
-      party: player.party.map(withExperience),
-      box: player.box.map(withExperience),
-    })),
-    roads: legacy.roads.map((guardian) => guardian
-      ? { ...guardian, pokemon: withExperience(guardian.pokemon) } : null),
-    lapGrowth: legacy.lapGrowth
-      ? { ...legacy.lapGrowth, legacyPartyOnly: true } : null,
-    battle: battle ? {
-      kind: battle.kind,
-      defenderOwner: battle.defenderOwner,
-      defenderPokemonId: battle.defenderPokemonId,
-      attackerPokemonId: battle.attackerPokemonId,
-      wild: battle.wild ? withExperience(battle.wild) : null,
-      turn: battle.turn,
-      lastAttack: battle.lastAttack,
-      outcome: battle.winner === null ? null : {
-        kind: "knockout",
-        winner: battle.winner,
-        ...(battle.kind === "wild" && battle.winner === "attacker"
-          ? { legacyCapturePending: true as const } : {}),
-      },
-    } : null,
-  };
-  return validateSave(migrated) ? migrated : null;
-}

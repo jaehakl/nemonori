@@ -14,6 +14,7 @@ const player = (id = 0, additions = {}) => ({
   color: ["#ef6559", "#3988e5", "#e8b840", "#9b6ad9"][id],
   position: 2,
   starterSpeciesId: [25, 4, 7, 1][id],
+  leaderSpeciesId: [25, 4, 7, 1][id],
   restTurnsRemaining: 0,
   ...additions,
 });
@@ -60,6 +61,13 @@ test("the crisp SVG board contains all 40 selectable canonical cells with fixed 
   assert.doesNotMatch(html, /<canvas|linearGradient|radialGradient|filter=/);
 });
 
+test("the board portrait follows the party leader independently of the original starter", () => {
+  const html = render({ tokens: [player(0, { leaderSpeciesId: 6 })] });
+  assert.match(html, /data-starter="25" data-leader="6"/);
+  assert.match(html, /href="\/pokemon-marble\/sprites\/6.png"/);
+  assert.doesNotMatch(html, /href="\/pokemon-marble\/sprites\/25.png"/);
+});
+
 test("tile pointer and keyboard selection share the same action and pause disables both", () => {
   const selected = [];
   const tree = Board2D(props({ onTileSelect: (tile) => selected.push(tile) }));
@@ -80,7 +88,7 @@ test("tile pointer and keyboard selection share the same action and pause disabl
 test("a lone starter uses a large normalized portrait, player border and an unobscuring P label", () => {
   const html = render({ tokens: [player(0, { restTurnsRemaining: 3 })] });
   assert.deepEqual(tokenFrames(html), [{ x: 50, y: 845, id: 0, size: 76 }]);
-  assert.match(html, /data-starter="25" data-active="true"/);
+  assert.match(html, /data-starter="25" data-leader="25" data-active="true"/);
   assert.match(html, /<circle r="38" fill="#fff" stroke="#ef6559"/);
   assert.match(html, /stroke-dasharray="5 3"/);
   assert.match(html, /\/pokemon-marble\/sprites\/25.png/);

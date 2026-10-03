@@ -12,7 +12,7 @@ export type GameAudio = {
   setScene(scene: AudioScene): void;
   setPaused(paused: boolean): void;
   setReducedMotion(reduced: boolean): void;
-  playCue(kind: string, moveType?: number | null): void;
+  playCue(kind: string, moveType?: number | null, captureSuccess?: boolean): void;
   dispose(): void;
 };
 
@@ -723,7 +723,7 @@ export function createGameAudio(): GameAudio {
       reducedMotion = next;
       if (next && diceVoice) release(diceVoice);
     },
-    playCue(kind, moveType) {
+    playCue(kind, moveType, captureSuccess) {
       if (!context || !canPlay() || preferences.effectsVolume === 0) return;
       try {
         const now = context.currentTime + 0.005;
@@ -769,6 +769,27 @@ export function createGameAudio(): GameAudio {
             break;
           case "capture":
             notes([67, 72, 76, 79, 84], 0.1, 0.28);
+            break;
+          case "capture-throw":
+            tone("effects", 340, now, 0.22, 0.11, "triangle", 1300);
+            tone("effects", 920, now + 0.24, 0.12, 0.1, "sine", 260);
+            break;
+          case "capture-shake":
+            // Two brief, dry taps track a single visible left/right wobble.
+            tone("effects", 170, now, 0.055, 0.12, "triangle", 65);
+            tone("effects", 240, now + 0.14, 0.055, 0.1, "triangle", 90);
+            break;
+          case "capture-result":
+            if (captureSuccess) {
+              tone("effects", 1568, now, 0.12, 0.1, "sine", 2093);
+              notes([72, 76, 79, 84], 0.1, 0.26);
+            } else {
+              tone("effects", 900, now, 0.14, 0.11, "triangle", 180);
+              notes([67, 60], 0.12, 0.12, "triangle");
+            }
+            break;
+          case "experience-gain":
+            notes([72, 79], 0.055, 0.15, "sine");
             break;
           case "lap":
           case "level-up":

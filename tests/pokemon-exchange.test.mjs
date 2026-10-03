@@ -12,7 +12,7 @@ const { default: GuardianPopup } = loadGameSource(`${root}GuardianPopup.tsx`);
 const { guardianPopupPosition } = loadGameSource(`${root}guardian-popup-position.ts`);
 
 function pokemon(state, hp) {
-  const pokemon = { id: `p${state.nextPokemonId++}`, speciesId: 7, level: 3, hp: 1 };
+  const pokemon = { id: `p${state.nextPokemonId++}`, speciesId: 7, level: 3, xp: 0, hp: 1 };
   pokemon.hp = hp ?? getStats(pokemon).hp;
   return pokemon;
 }

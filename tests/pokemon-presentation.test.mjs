@@ -139,3 +139,43 @@ test("reduced dice motion reveals the result promptly and plays its cue only onc
   assert.equal(h.player.busy, false);
   assert.deepEqual(h.cues, ["roll", "move"]);
 });
+
+test("capture shakes have separate cues, pause in place, and reveal the result only after all shakes", () => {
+  const h = harness();
+  h.player.enqueue([
+    event("capture-throw"),
+    ...[1, 2, 3].map((shake) => ({ ...event("capture-shake", shake), capture: { success: true, shake } })),
+    { ...event("capture-result", 4), capture: { success: true } },
+  ]);
+  h.advance(500);
+  assert.equal(h.frames.at(-1).event.kind, "capture-shake");
+  h.advance(100);
+  h.player.setPaused(true);
+  const paused = h.frames.at(-1);
+  h.advance(2000);
+  assert.equal(h.frames.at(-1), paused);
+  assert.deepEqual(h.cues, ["capture-throw", "capture-shake"]);
+  h.player.setPaused(false);
+  h.advance(1250);
+  assert.equal(h.frames.at(-1).event.kind, "capture-result");
+  assert.deepEqual(h.cues, ["capture-throw", "capture-shake", "capture-shake", "capture-shake"]);
+  h.advance(700);
+  assert.deepEqual(h.cues, ["capture-throw", "capture-shake", "capture-shake", "capture-shake", "capture-result"]);
+  assert.equal(h.player.busy, false);
+});
+
+test("skipping capture does not play later shakes or success and reduced motion preserves cue order", () => {
+  const h = harness();
+  const capture = [event("capture-throw"), event("capture-shake", 1), event("capture-result", 2)];
+  h.player.enqueue(capture);
+  h.advance(100);
+  h.player.skip();
+  h.advance(3000);
+  assert.deepEqual(h.cues, ["capture-throw"]);
+  assert.equal(h.player.busy, false);
+  h.player.setReducedMotion(true);
+  h.player.enqueue(capture);
+  h.advance(600);
+  assert.deepEqual(h.cues.slice(1), ["capture-throw", "capture-shake", "capture-result"]);
+  assert.equal(h.player.busy, false);
+});

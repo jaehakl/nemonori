@@ -39,7 +39,7 @@ export const gameCatalog = defineGameCatalog([
     slug: "pokemon-marble",
     title: "포켓몬 마블",
     summary: "40칸 탑뷰 보드에서 포켓몬과 함께 모험하세요. 센터에서 쉬며 파티를 회복하고, 도로 27칸을 모두 차지하면 승리합니다.",
-    tags: ["보드게임", "포켓몬", "2–4인", "전략"],
+    tags: ["보드게임", "포켓몬", "1–4인", "전략"],
     difficulty: "Normal",
     estPlayMinutes: 40,
     accent: "#0f8b76",

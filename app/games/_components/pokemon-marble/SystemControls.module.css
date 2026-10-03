@@ -10,10 +10,11 @@
   min-height: 48px;
   max-width: 48px;
   padding: 0;
-  border: 1px solid #cfddc6;
+  border: 2px solid #d7b46a;
   border-radius: 12px;
-  background: #fff;
-  color: #3c6253;
+  background: linear-gradient(#fff8e6, #edd8a5);
+  color: #243a31;
+  box-shadow: 0 3px 0 #513629, inset 0 1px 0 #fff;
   cursor: pointer;
   user-select: none;
   touch-action: manipulation;
@@ -28,8 +29,13 @@
 
 .iconButton:hover:not(:disabled),
 .iconButton[aria-pressed="true"] {
-  border-color: #98b88a;
-  background: #edf5e8;
+  border-color: #f3d58e;
+  background: #fff3d6;
+}
+
+.iconButton:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #513629;
 }
 
 .iconButton:disabled {

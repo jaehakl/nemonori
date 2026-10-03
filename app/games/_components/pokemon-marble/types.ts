@@ -2,6 +2,8 @@ export interface Pokemon {
   id: string;
   speciesId: number;
   level: number;
+  /** Progress toward the next level; 1,000 XP advances one level. */
+  xp: number;
   hp: number;
 }
 
@@ -32,7 +34,10 @@ export interface Battle {
   attackerPokemonId: string | null;
   wild: Pokemon | null;
   turn: BattleSide;
-  winner: BattleSide | null;
+  outcome:
+    | { kind: "knockout"; winner: BattleSide; legacyCapturePending?: true }
+    | { kind: "capture" }
+    | null;
   lastAttack: {
     side: BattleSide;
     moveId: number;
@@ -49,6 +54,8 @@ export interface PendingEvolution {
 
 export interface PendingLapGrowth {
   remainingPokemonIds: string[];
+  /** A migrated version-2 reward had already grown only the party. */
+  legacyPartyOnly?: true;
 }
 
 export type GamePhase =
@@ -65,7 +72,7 @@ export type GamePhase =
   | "finished";
 
 export interface GameState {
-  version: 2;
+  version: 3;
   revision: number;
   rng: number;
   nextPokemonId: number;
@@ -91,6 +98,7 @@ export type GameAction =
   | { type: "CHOOSE_POKEMON"; pokemonId: string }
   | { type: "ATTACK"; moveId: number }
   | { type: "WILD_ATTACK" }
+  | { type: "THROW_BALL" }
   | { type: "CHOOSE_EVOLUTION"; speciesId: number }
   | { type: "CAPTURE"; capture: boolean }
   | { type: "DEPLOY"; pokemonId: string }

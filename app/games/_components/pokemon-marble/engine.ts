@@ -1,5 +1,7 @@
 import { BOARD_SIZE, BOARD_TILES, getDefaultSeatSides } from "./board";
 import { getDamagePreview, getStats } from "./battle";
+import { getPartyLeader } from "./party";
+import { getCaptureChance, getExperienceGrowth, getVictoryExperience } from "./progression";
 import {
   speciesById as byId,
   getAvailableMoves,
@@ -55,6 +57,7 @@ function makePokemon(
     id: `p${state.nextPokemonId++}`,
     speciesId,
     level,
+    xp: 0,
     hp: 0,
   };
   pokemon.hp = getStats(pokemon).hp;
@@ -68,11 +71,11 @@ export function createGame(
   seatSides: SeatSide[] = getDefaultSeatSides(starters.length),
 ): GameState {
   if (
-    starters.length < 2 ||
+    starters.length < 1 ||
     starters.length > 4 ||
     starters.some((id) => !byId[id] || !isStarter(byId[id]))
   ) {
-    throw new Error("2~4명의 플레이어가 진화 전 일반 포켓몬을 골라야 합니다.");
+    throw new Error("1~4명의 플레이어가 진화 전 일반 포켓몬을 골라야 합니다.");
   }
   if (
     seatSides.length !== starters.length ||
@@ -80,7 +83,7 @@ export function createGame(
   )
     throw new Error("각 플레이어의 자리 방향을 골라 주세요.");
   const state: GameState = {
-    version: 2,
+    version: 3,
     revision: 0,
     rng: seed >>> 0 || 0x9e3779b9,
     nextPokemonId: 1,
@@ -151,11 +154,12 @@ export function snapshotForPresentation(
   const battle = state.battle;
   return {
     players: state.players.map(
-      ({ id, name, position, starterSpeciesId, restTurnsRemaining, seatSide }) => ({
+      ({ id, name, position, party, starterSpeciesId, restTurnsRemaining, seatSide }) => ({
         id,
         name,
         position,
         starterSpeciesId,
+        leaderSpeciesId: getPartyLeader(party)?.speciesId ?? starterSpeciesId,
         restTurnsRemaining,
         seatSide,
       }),
@@ -185,6 +189,7 @@ export function snapshotForPresentation(
               ? "야생 포켓몬"
               : state.players[battle.defenderOwner].name,
           turn: battle.turn,
+          outcome: battle.outcome ? { ...battle.outcome } : null,
         }
       : null,
   };
@@ -212,7 +217,7 @@ function startBattle(
     attackerPokemonId: null,
     wild: kind === "wild" ? pokemon : null,
     turn: "defender",
-    winner: null,
+    outcome: null,
     lastAttack: null,
   };
   state.phase = kind === "trainer" ? "choose-defender" : "choose-attacker";
@@ -234,7 +239,7 @@ function startBattle(
   });
 }
 
-// Exclusive encounter pools: rare status, high stats/final form, middle form, basic.
+// Only base species appear; stronger and legendary base species remain rare.
 const wildPools = [
   speciesList.filter(
     (species) =>
@@ -247,18 +252,10 @@ const wildPools = [
     (species) =>
       !species.legendary &&
       !species.mythical &&
-      Object.values(species.stats).reduce((a, b) => a + b, 0) < 500 &&
-      species.evolvesFrom !== null &&
-      species.evolutions.length > 0,
+      Object.values(species.stats).reduce((a, b) => a + b, 0) >= 500 &&
+      species.evolvesFrom === null,
   ),
-  speciesList.filter(
-    (species) =>
-      !species.legendary &&
-      !species.mythical &&
-      (Object.values(species.stats).reduce((a, b) => a + b, 0) >= 500 ||
-        (species.evolvesFrom !== null && species.evolutions.length === 0)),
-  ),
-  speciesList.filter((species) => species.legendary || species.mythical),
+  speciesList.filter((species) => species.evolvesFrom === null && (species.legendary || species.mythical)),
 ];
 
 function healPlayer(player: Player) {
@@ -279,7 +276,7 @@ function arrive(state: GameState, events?: EventSink) {
     });
   } else if (tile === "grass") {
     const roll = random(state, 100);
-    const pool = wildPools[roll < 70 ? 0 : roll < 90 ? 1 : roll < 99 ? 2 : 3];
+    const pool = wildPools[roll < 90 ? 0 : roll < 99 ? 1 : 2];
     const species = pool[random(state, pool.length)];
     const level = random(state, 3) + 1;
     startBattle(
@@ -370,10 +367,18 @@ function rescueDefeatedPlayers(state: GameState, events?: EventSink) {
 function finishBattle(state: GameState, events?: EventSink) {
   const battle = state.battle!;
   state.evolution = null;
+  if (battle.outcome?.kind === "capture") {
+    const player = state.players[state.activePlayer];
+    player.party.push(battle.wild!);
+    state.battle = null;
+    state.phase = "turn-end";
+    return;
+  }
+  const knockout = battle.outcome?.kind === "knockout" ? battle.outcome : null;
   if (battle.kind === "road") {
     const defender = getBattlePokemon(state, "defender")!;
     defender.hp = getStats(defender).hp;
-    const message = battle.winner === "defender"
+    const message = knockout?.winner === "defender"
       ? `${byId[defender.speciesId].name}, 수비에 성공하고 체력을 모두 회복했습니다!`
       : `${byId[defender.speciesId].name}, 박스로 돌아가 체력을 모두 회복했습니다.`;
     addLog(state, message);
@@ -393,7 +398,7 @@ function finishBattle(state: GameState, events?: EventSink) {
     state.movement = null;
     return;
   }
-  if (battle.kind === "wild" && battle.winner === "attacker") {
+  if (battle.kind === "wild" && knockout?.winner === "attacker" && knockout.legacyCapturePending) {
     state.battle = battle;
     state.phase = "capture";
     return;
@@ -401,7 +406,7 @@ function finishBattle(state: GameState, events?: EventSink) {
   if (battle.kind === "trainer") continueMovement(state, events);
   else
     state.phase =
-      battle.kind === "road" && battle.winner === "attacker"
+      battle.kind === "road" && knockout?.winner === "attacker"
         ? "road"
         : "turn-end";
 }
@@ -448,32 +453,67 @@ function findOwnedPokemon(
   );
 }
 
-function awardVictory(
+function continueEvolution(
+  state: GameState,
+  pokemon: Pokemon,
+  ownerId: number,
+  events?: EventSink,
+) {
+  state.evolution = null;
+  while (true) {
+    const options = byId[pokemon.speciesId].evolutions
+      .filter((evolution) => pokemon.level >= evolution.level)
+      .map((evolution) => evolution.speciesId);
+    if (options.length === 0) return;
+    if (options.length > 1) {
+      state.evolution = { ownerId, pokemonId: pokemon.id, options };
+      state.phase = "evolution";
+      return;
+    }
+    evolve(state, pokemon, options[0], ownerId, events);
+  }
+}
+
+function grantExperience(
   state: GameState,
   pokemon: Pokemon,
   ownerId: number | null,
+  opponentLevel: number,
   events?: EventSink,
 ) {
-  // Wild opponents can also gain a level, but they leave the board after battle.
   const previousLevel = pokemon.level;
-  pokemon.level = Math.min(100, pokemon.level + 1);
-  addLog(state, `${byId[pokemon.speciesId].name} 승리! 레벨 ${pokemon.level}`);
+  const previousXp = pokemon.xp;
+  const amount = getVictoryExperience(previousLevel, opponentLevel);
+  Object.assign(pokemon, getExperienceGrowth(pokemon, amount));
+  if (amount > 0) {
+    const message = `${byId[pokemon.speciesId].name}, 경험치 +${amount}!`;
+    addLog(state, message);
+    events?.(state, {
+      kind: "experience-gain",
+      playerId: ownerId,
+      pokemon: pokemonView(pokemon),
+      experience: { amount, previousLevel, previousXp },
+      message,
+    });
+  }
   if (pokemon.level > previousLevel)
     events?.(state, {
       kind: "level-up",
       playerId: ownerId,
       pokemon: pokemonView(pokemon),
-      message: `${byId[pokemon.speciesId].name} 승리! 레벨 ${pokemon.level}`,
+      message: `${byId[pokemon.speciesId].name}, 레벨 ${pokemon.level}!`,
     });
-  if (ownerId === null) return;
-  const options = byId[pokemon.speciesId].evolutions
-    .filter((evolution) => pokemon.level >= evolution.level)
-    .map((evolution) => evolution.speciesId);
-  if (options.length === 1) evolve(state, pokemon, options[0], ownerId, events);
-  else if (options.length > 1) {
-    state.evolution = { ownerId, pokemonId: pokemon.id, options };
-    state.phase = "evolution";
-  }
+}
+
+function awardVictory(
+  state: GameState,
+  pokemon: Pokemon,
+  ownerId: number | null,
+  opponentLevel: number,
+  events?: EventSink,
+) {
+  grantExperience(state, pokemon, ownerId, opponentLevel, events);
+  if (ownerId !== null) continueEvolution(state, pokemon, ownerId, events);
 }
 
 function continueLapGrowth(state: GameState, events?: EventSink) {
@@ -482,17 +522,9 @@ function continueLapGrowth(state: GameState, events?: EventSink) {
   state.evolution = null;
   while (remaining.length > 0) {
     const pokemonId = remaining.shift()!;
-    const pokemon = player.party.find((entry) => entry.id === pokemonId)!;
-    const options = byId[pokemon.speciesId].evolutions
-      .filter((evolution) => pokemon.level >= evolution.level)
-      .map((evolution) => evolution.speciesId);
-    if (options.length === 1) {
-      evolve(state, pokemon, options[0], player.id, events);
-    } else if (options.length > 1) {
-      state.evolution = { ownerId: player.id, pokemonId, options };
-      state.phase = "evolution";
-      return;
-    }
+    const pokemon = findOwnedPokemon(state, player.id, pokemonId)!;
+    continueEvolution(state, pokemon, player.id, events);
+    if (state.evolution) return;
   }
   state.lapGrowth = null;
   continueMovement(state, events);
@@ -500,24 +532,16 @@ function continueLapGrowth(state: GameState, events?: EventSink) {
 
 function awardLapGrowth(state: GameState, events?: EventSink) {
   const player = state.players[state.activePlayer];
-  const message = `${player.name}, 한 바퀴 완주! 파티 포켓몬이 모두 1레벨 성장합니다.`;
+  const message = `${player.name}, 한 바퀴 완주! 파티와 수비 포켓몬이 경험치를 얻습니다.`;
   addLog(state, message);
   events?.(state, { kind: "lap", message });
-  state.lapGrowth = { remainingPokemonIds: player.party.map((pokemon) => pokemon.id) };
-  for (const pokemon of player.party) {
-    const previousLevel = pokemon.level;
-    pokemon.level = Math.min(100, pokemon.level + 1);
-    if (pokemon.level > previousLevel) {
-      const leveled = `${byId[pokemon.speciesId].name}, 완주 보상으로 레벨 ${pokemon.level}!`;
-      addLog(state, leveled);
-      events?.(state, {
-        kind: "level-up",
-        playerId: player.id,
-        pokemon: pokemonView(pokemon),
-        message: leveled,
-      });
-    }
-  }
+  const participants = [
+    ...player.party,
+    ...state.roads.flatMap((guardian) => guardian?.ownerId === player.id ? [guardian.pokemon] : []),
+  ];
+  state.lapGrowth = { remainingPokemonIds: participants.map((pokemon) => pokemon.id) };
+  for (const pokemon of participants)
+    grantExperience(state, pokemon, player.id, pokemon.level, events);
   continueLapGrowth(state, events);
 }
 
@@ -568,7 +592,7 @@ function attack(state: GameState, moveId: number, events?: EventSink): boolean {
     battle.turn = side === "attacker" ? "defender" : "attacker";
     return true;
   }
-  battle.winner = side;
+  battle.outcome = { kind: "knockout", winner: side };
   events?.(state, {
     kind: "faint",
     playerId: side === "attacker" ? battle.defenderOwner : state.activePlayer,
@@ -582,7 +606,7 @@ function attack(state: GameState, moveId: number, events?: EventSink): boolean {
   }
   const winnerOwner =
     side === "attacker" ? state.activePlayer : battle.defenderOwner;
-  awardVictory(state, attacker, winnerOwner, events);
+  awardVictory(state, attacker, winnerOwner, defender.level, events);
   if (!state.evolution) finishBattle(state, events);
   return true;
 }
@@ -757,6 +781,51 @@ function applyTransition(
       attack(state, options[random(state, options.length)].id, events);
       break;
     }
+    case "THROW_BALL": {
+      const battle = state.battle;
+      if (
+        state.phase !== "attack" ||
+        battle?.kind !== "wild" ||
+        battle.turn !== "attacker" ||
+        battle.outcome !== null ||
+        !battle.wild || battle.wild.hp <= 0 ||
+        player.party.length >= 6
+      ) return previous;
+      const attacker = getBattlePokemon(state, "attacker");
+      if (!attacker || attacker.hp <= 0) return previous;
+      const wild = battle.wild;
+      const success = random(state, 1000000) < Math.round(getCaptureChance(wild) * 1000000);
+      events?.(state, {
+        kind: "capture-throw",
+        pokemon: pokemonView(wild),
+        capture: { success },
+        message: "가라, 몬스터볼!",
+      });
+      for (const shake of [1, 2, 3])
+        events?.(state, {
+          kind: "capture-shake",
+          pokemon: pokemonView(wild),
+          capture: { success, shake },
+          message: "몬스터볼이 흔들립니다…",
+        });
+      if (success) battle.outcome = { kind: "capture" };
+      else battle.turn = "defender";
+      const message = success
+        ? `${byId[wild.speciesId].name}을(를) 포획했습니다!`
+        : `${byId[wild.speciesId].name}이(가) 몬스터볼에서 빠져나왔습니다!`;
+      addLog(state, message);
+      events?.(state, {
+        kind: "capture-result",
+        pokemon: pokemonView(wild),
+        capture: { success },
+        message,
+      });
+      if (success) {
+        awardVictory(state, attacker, player.id, wild.level, events);
+        if (!state.evolution) finishBattle(state, events);
+      }
+      break;
+    }
     case "CHOOSE_EVOLUTION": {
       if (
         state.phase !== "evolution" ||
@@ -769,13 +838,20 @@ function applyTransition(
         state.evolution.pokemonId,
       );
       if (!pokemon) return previous;
-      evolve(state, pokemon, action.speciesId, state.evolution.ownerId, events);
+      const ownerId = state.evolution.ownerId;
+      evolve(state, pokemon, action.speciesId, ownerId, events);
+      continueEvolution(state, pokemon, ownerId, events);
+      if (state.evolution) break;
       if (state.lapGrowth) continueLapGrowth(state, events);
       else finishBattle(state, events);
       break;
     }
     case "CAPTURE": {
-      if (state.phase !== "capture" || typeof action.capture !== "boolean")
+      if (
+        state.phase !== "capture" || typeof action.capture !== "boolean" ||
+        state.battle?.outcome?.kind !== "knockout" ||
+        !state.battle.outcome.legacyCapturePending
+      )
         return previous;
       if (action.capture) {
         if (player.party.length >= 6) return previous;

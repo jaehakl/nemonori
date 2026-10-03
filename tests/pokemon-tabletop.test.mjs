@@ -59,6 +59,7 @@ test("the board preserves accessible tile controls without a separate tile list"
       color: "#ef6559",
       position: 39,
       starterSpeciesId: 1,
+      leaderSpeciesId: 1,
       restTurnsRemaining: 0,
     },
     {
@@ -67,6 +68,7 @@ test("the board preserves accessible tile controls without a separate tile list"
       color: "#3988e5",
       position: 0,
       starterSpeciesId: 4,
+      leaderSpeciesId: 4,
       restTurnsRemaining: 3,
     },
   ];
@@ -122,8 +124,8 @@ test("movement does not change the tabletop structure or resize its control pane
 test("compact battle HP groups identify each trainer and reflect damage only at impact", () => {
   const battle = {
     kind: "trainer",
-    attacker: { id: "a", speciesId: 1, level: 5, hp: 30, maxHp: 30 },
-    defender: { id: "d", speciesId: 4, level: 5, hp: 0, maxHp: 20 },
+    attacker: { id: "a", speciesId: 1, level: 5, xp: 250, hp: 30, maxHp: 30 },
+    defender: { id: "d", speciesId: 4, level: 5, xp: 500, hp: 0, maxHp: 20 },
     attackerName: "민준",
     defenderName: "지우",
     turn: "attacker",
@@ -147,7 +149,14 @@ test("compact battle HP groups identify each trainer and reflect damage only at 
   const after = render(0.8);
   assert.match(after, /aria-label="지우 · 파이리 · HP 0 \/ 20 · 행동불능"/);
   assert.match(after, /aria-valuenow="0"/);
-  assert.equal((after.match(/role="meter"/g) ?? []).length, 2);
+  assert.equal((after.match(/role="meter"/g) ?? []).length, 4);
+  assert.match(after, /aria-label="이상해씨 타입"/);
+  assert.match(after, /aria-label="파이리 타입"/);
+  assert.match(after, />풀<\/span>/);
+  assert.match(after, />독<\/span>/);
+  assert.match(after, />불꽃<\/span>/);
+  assert.match(after, /aria-valuetext="25%"/);
+  assert.match(after, /aria-valuetext="50%"/);
 });
 
 test("the normal board renders SVG immediately without a canvas or graphics initialization", () => {

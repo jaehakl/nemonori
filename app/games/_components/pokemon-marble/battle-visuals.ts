@@ -25,13 +25,15 @@ export function getBattlePose(
   const eventSide = event?.side ??
     (battle.defender?.id === event?.pokemon?.id ? "defender" : "attacker");
   const fainting = event?.kind === "faint" && (event.side ?? "defender") === side;
-  const capturing = event?.kind === "capture" && side === "defender";
+  const captureEvent = event?.kind === "capture" || event?.kind.startsWith("capture-");
+  const capturing = captureEvent && side === "defender";
+  const captured = battle.outcome?.kind === "capture" && side === "defender";
   const finalHit = event?.kind === "attack" && event.attack?.side !== side &&
     Boolean(event.attack?.beforeHp);
   const pose = {
     ...BATTLE_ANCHORS[side],
     speciesId: pokemon?.speciesId ?? null,
-    visible: Boolean(pokemon && (pokemon.hp > 0 || fainting || capturing || finalHit)),
+    visible: Boolean(pokemon && (!captured || capturing) && (pokemon.hp > 0 || fainting || capturing || finalHit)),
     opacity: 1,
     scale: 1,
     hit: false,
@@ -57,12 +59,26 @@ export function getBattlePose(
     if (p < 0.5) pose.speciesId = event.previousSpeciesId ?? pose.speciesId;
     pose.glow = Math.sin(p * Math.PI);
     if (!reducedMotion) pose.scale = 1 + pose.glow * 0.1;
-  } else if (capturing) {
+  } else if (capturing && event.kind === "capture-throw") {
+    const t = clampProgress((p - 0.5) / 0.4);
+    const shrink = t * t * (3 - 2 * t);
+    pose.scale = reducedMotion ? 1 : 1 - shrink;
+    pose.opacity = 1 - shrink;
+    pose.glow = Math.sin(t * Math.PI);
+  } else if (capturing && event.kind === "capture-shake") {
+    pose.visible = false;
+  } else if (capturing && event.kind === "capture-result") {
+    const release = clampProgress((p - 0.1) / 0.4);
+    pose.visible = !event.capture?.success && release > 0;
+    pose.opacity = release;
+    pose.scale = reducedMotion ? 1 : 0.3 + release * 0.7;
+    pose.glow = event.capture?.success ? 0 : Math.sin(release * Math.PI);
+  } else if (capturing && event.kind === "capture") {
     const t = clampProgress((p - 0.15) / 0.4);
     const shrink = t * t * (3 - 2 * t);
     pose.scale = reducedMotion ? 1 : 1 - shrink;
     pose.opacity = (pokemon?.hp === 0 ? 0.35 : 1) * (1 - shrink);
-  } else if (["heal", "level-up"].includes(event.kind) && eventSide === side) {
+  } else if (["heal", "level-up", "experience-gain"].includes(event.kind) && eventSide === side) {
     pose.glow = Math.sin(p * Math.PI);
   }
   return pose;

@@ -13,9 +13,10 @@ const { createGame, transitionWithEvents, getActingPlayer, getStats, snapshotFor
 const { parseGameSave } = loadGameSource(`${path}save.ts`);
 const battle = {
   kind: "trainer",
-  attacker: { id: "a", speciesId: 1, level: 3, hp: 15, maxHp: 20 },
-  defender: { id: "d", speciesId: 4, level: 3, hp: 0, maxHp: 20 },
+  attacker: { id: "a", speciesId: 1, level: 3, xp: 0, hp: 15, maxHp: 20 },
+  defender: { id: "d", speciesId: 4, level: 3, xp: 0, hp: 0, maxHp: 20 },
   attackerName: "민지", defenderName: "준", turn: "attacker",
+  outcome: null,
 };
 const presentation = (kind, progress, extra = {}) => ({
   progress, event: { kind, revision: 1, sequence: 0, ...extra },
@@ -80,6 +81,37 @@ test("all 18 types render vector effects; reduced motion removes travel and pres
   assert.ok(shapes.size >= 12, "types differ by geometry, not only color");
 });
 
+test("capture throws, shakes, lights green on success and releases on failure", () => {
+  const wild = { ...battle, kind: "wild", defender: { ...battle.defender, hp: 8 } };
+  const frame = (kind, progress, success = true, shake) => presentation(kind, progress, { capture: { success, shake } });
+  const throwing = frame("capture-throw", 0.25);
+  assert.equal(getBattlePose(wild, "defender", throwing, false).opacity, 1);
+  assert.equal(getBattlePose(wild, "defender", frame("capture-throw", 0.95), false).opacity, 0);
+  const throwHtml = render({ battle: wild, presentation: throwing });
+  assert.match(throwHtml, /data-capture-stage="capture-throw"/);
+  for (const shake of [1, 2, 3]) {
+    const shaking = frame("capture-shake", .25, true, shake);
+    assert.equal(getBattlePose(wild, "defender", shaking, false).visible, false);
+    assert.match(render({ battle: wild, presentation: shaking }), new RegExp(`data-capture-shake="${shake}"`));
+  }
+  const caught = { ...wild, outcome: { kind: "capture" } };
+  const success = render({ battle: caught, presentation: frame("capture-result", .5) });
+  assert.match(success, /data-capture-light="green"/);
+  assert.match(success, /data-capture-success="true"/);
+  assert.equal(getBattlePose(caught, "defender", frame("capture-result", .5), false).visible, false);
+  assert.equal(getBattlePose(caught, "defender", presentation("experience-gain", .5), false).visible, false);
+  assert.equal(getBattlePose(caught, "defender", null, false).visible, false);
+  const failure = frame("capture-result", .6, false);
+  assert.equal(getBattlePose(wild, "defender", failure, false).visible, true);
+  assert.equal(getBattlePose(wild, "defender", failure, false).scale, 1);
+  const failureHtml = render({ battle: wild, presentation: failure });
+  assert.match(failureHtml, /data-capture-release="true"/);
+  assert.doesNotMatch(failureHtml, /data-capture-light=/);
+  const reduced = render({ battle: caught, presentation: frame("capture-result", .5), reducedMotion: true });
+  assert.match(reduced, /data-capture-light="green"/);
+  assert.match(reduced, /translate\(735 390\) rotate\(0\)/);
+});
+
 test("paused frames are stable and clearing the presentation clears every transient effect", () => {
   const frame = presentation("attack", 0.5, { attack: attack() });
   const html = render({ presentation: frame });
@@ -113,7 +145,7 @@ test("normalized PNG bounds are shared with the board and stay in the portrait c
   assert.match(html, /<rect x="-160" y="-160" width="320" height="320"/);
 });
 
-test("21 mixed battles render, return to the board and resume version-2 saves without GPU access", () => {
+test("21 mixed battles render, return to the board and resume version-3 saves without GPU access", () => {
   const kinds = new Set();
   let savedBattles = 0;
   for (let round = 0; round < 21; round++) {
@@ -123,7 +155,7 @@ test("21 mixed battles render, return to the board and resume version-2 saves wi
     state.players[0].position = tile - 1;
     state.players[1].position = kind === "trainer" ? tile : 20;
     if (kind === "road") {
-      const guardian = { id: `p${state.nextPokemonId++}`, speciesId: 7, level: 1, hp: 0 };
+      const guardian = { id: `p${state.nextPokemonId++}`, speciesId: 7, level: 1, xp: 0, hp: 0 };
       guardian.hp = getStats(guardian).hp;
       state.roads[tile] = { ownerId: 1, pokemon: guardian };
     }
@@ -198,13 +230,15 @@ test("battle HUD names the current attacker, follows the animation, and hides in
   for (const side of ["attacker", "defender"]) {
     const name = side === "attacker" ? "민지" : "준";
     const pokemon = side === "attacker" ? "이상해씨" : "파이리";
-    assert.match(hud({ ...active, turn: side }), new RegExp(`${name} · ${pokemon} 공격 차례`));
+    assert.match(hud({ ...active, turn: side }), new RegExp(`activeFighter[^>]*aria-label="${name} · ${pokemon}`));
+    assert.match(hud({ ...active, turn: side }), /role="status">공격 차례/);
     const frame = presentation("attack", 0.5, { attack: attack(side) });
     const html = hud({ ...active, turn: side === "attacker" ? "defender" : "attacker" }, frame);
-    assert.match(html, new RegExp(`${name} · ${pokemon} 공격 중`));
+    assert.match(html, new RegExp(`activeFighter[^>]*aria-label="${name} · ${pokemon}`));
+    assert.match(html, /role="status">공격 중/);
     assert.doesNotMatch(html, /공격 차례/);
   }
-  assert.match(hud({ ...active, kind: "wild", defenderName: "야생 포켓몬", turn: "defender" }), /야생 포켓몬 · 파이리 공격 차례/);
+  assert.match(hud({ ...active, kind: "wild", defenderName: "야생 포켓몬", turn: "defender" }), /activeFighter[^>]*aria-label="야생 포켓몬 · 파이리/);
   for (const phase of ["choose-defender", "choose-attacker", "evolution", "capture", "turn-end", "finished"]) {
     assert.doesNotMatch(hud({ ...active, phase }), /공격 차례|공격 중/);
   }

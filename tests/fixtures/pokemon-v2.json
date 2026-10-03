@@ -1,0 +1,998 @@
+{
+  "roll": {
+    "version": 2,
+    "revision": 0,
+    "rng": 9182,
+    "nextPokemonId": 3,
+    "turn": 1,
+    "activePlayer": 0,
+    "players": [
+      {
+        "id": 0,
+        "name": "이전 트레이너",
+        "position": 0,
+        "party": [
+          {
+            "id": "p1",
+            "speciesId": 1,
+            "level": 3,
+            "hp": 15
+          }
+        ],
+        "box": [],
+        "starterSpeciesId": 1,
+        "restTurnsRemaining": 0,
+        "seatSide": "bottom"
+      },
+      {
+        "id": 1,
+        "name": "친구",
+        "position": 0,
+        "party": [
+          {
+            "id": "p2",
+            "speciesId": 4,
+            "level": 3,
+            "hp": 15
+          }
+        ],
+        "box": [],
+        "starterSpeciesId": 4,
+        "restTurnsRemaining": 0,
+        "seatSide": "top"
+      }
+    ],
+    "roads": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "phase": "roll",
+    "dice": null,
+    "movement": null,
+    "battle": null,
+    "evolution": null,
+    "lapGrowth": null,
+    "winner": null,
+    "log": [
+      "모험을 시작합니다. 주사위를 굴려 주세요!"
+    ]
+  },
+  "moving": {
+    "version": 2,
+    "revision": 1,
+    "rng": 1715945176,
+    "nextPokemonId": 3,
+    "turn": 1,
+    "activePlayer": 0,
+    "players": [
+      {
+        "id": 0,
+        "name": "이전 트레이너",
+        "position": 0,
+        "party": [
+          {
+            "id": "p1",
+            "speciesId": 1,
+            "level": 3,
+            "hp": 15
+          }
+        ],
+        "box": [],
+        "starterSpeciesId": 1,
+        "restTurnsRemaining": 0,
+        "seatSide": "bottom"
+      },
+      {
+        "id": 1,
+        "name": "친구",
+        "position": 0,
+        "party": [
+          {
+            "id": "p2",
+            "speciesId": 4,
+            "level": 3,
+            "hp": 15
+          }
+        ],
+        "box": [],
+        "starterSpeciesId": 4,
+        "restTurnsRemaining": 0,
+        "seatSide": "top"
+      }
+    ],
+    "roads": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "phase": "moving",
+    "dice": [
+      4,
+      3
+    ],
+    "movement": {
+      "remaining": 7,
+      "encounters": []
+    },
+    "battle": null,
+    "evolution": null,
+    "lapGrowth": null,
+    "winner": null,
+    "log": [
+      "모험을 시작합니다. 주사위를 굴려 주세요!",
+      "이전 트레이너: 주사위 4 + 3"
+    ]
+  },
+  "roadEvolution": {
+    "version": 2,
+    "revision": 4,
+    "rng": 9182,
+    "nextPokemonId": 5,
+    "turn": 1,
+    "activePlayer": 0,
+    "players": [
+      {
+        "id": 0,
+        "name": "플레이어 1",
+        "position": 2,
+        "party": [
+          {
+            "id": "p3",
+            "speciesId": 133,
+            "level": 20,
+            "hp": 47
+          }
+        ],
+        "box": [],
+        "starterSpeciesId": 133,
+        "restTurnsRemaining": 0,
+        "seatSide": "bottom"
+      },
+      {
+        "id": 1,
+        "name": "플레이어 2",
+        "position": 0,
+        "party": [
+          {
+            "id": "p2",
+            "speciesId": 4,
+            "level": 3,
+            "hp": 15
+          }
+        ],
+        "box": [
+          {
+            "id": "p4",
+            "speciesId": 7,
+            "level": 1,
+            "hp": 0
+          }
+        ],
+        "starterSpeciesId": 4,
+        "restTurnsRemaining": 0,
+        "seatSide": "top"
+      }
+    ],
+    "roads": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "phase": "evolution",
+    "dice": [
+      6,
+      6
+    ],
+    "movement": {
+      "remaining": 0,
+      "encounters": []
+    },
+    "battle": {
+      "kind": "road",
+      "defenderOwner": 1,
+      "defenderPokemonId": "p4",
+      "attackerPokemonId": "p3",
+      "wild": null,
+      "turn": "attacker",
+      "winner": "attacker",
+      "lastAttack": {
+        "side": "attacker",
+        "moveId": 0,
+        "damage": 32,
+        "effectiveness": 1
+      }
+    },
+    "evolution": {
+      "ownerId": 0,
+      "pokemonId": "p3",
+      "options": [
+        134,
+        135,
+        136,
+        196,
+        197,
+        470,
+        471,
+        700
+      ]
+    },
+    "lapGrowth": null,
+    "winner": null,
+    "log": [
+      "모험을 시작합니다. 주사위를 굴려 주세요!",
+      "플레이어 2의 도로 수비와 배틀! 상대가 선공합니다.",
+      "꼬부기의 기본 공격! 2 피해",
+      "이브이의 기본 공격! 32 피해",
+      "이브이 승리! 레벨 20"
+    ]
+  },
+  "wildEvolution": {
+    "version": 2,
+    "revision": 4,
+    "rng": 1957354578,
+    "nextPokemonId": 5,
+    "turn": 1,
+    "activePlayer": 0,
+    "players": [
+      {
+        "id": 0,
+        "name": "플레이어 1",
+        "position": 1,
+        "party": [
+          {
+            "id": "p3",
+            "speciesId": 133,
+            "level": 20,
+            "hp": 47
+          }
+        ],
+        "box": [],
+        "starterSpeciesId": 133,
+        "restTurnsRemaining": 0,
+        "seatSide": "bottom"
+      },
+      {
+        "id": 1,
+        "name": "플레이어 2",
+        "position": 0,
+        "party": [
+          {
+            "id": "p2",
+            "speciesId": 4,
+            "level": 3,
+            "hp": 15
+          }
+        ],
+        "box": [],
+        "starterSpeciesId": 4,
+        "restTurnsRemaining": 0,
+        "seatSide": "top"
+      }
+    ],
+    "roads": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "phase": "evolution",
+    "dice": [
+      6,
+      6
+    ],
+    "movement": {
+      "remaining": 0,
+      "encounters": []
+    },
+    "battle": {
+      "kind": "wild",
+      "defenderOwner": null,
+      "defenderPokemonId": "p4",
+      "attackerPokemonId": "p3",
+      "wild": {
+        "id": "p4",
+        "speciesId": 363,
+        "level": 3,
+        "hp": 0
+      },
+      "turn": "attacker",
+      "winner": "attacker",
+      "lastAttack": {
+        "side": "attacker",
+        "moveId": 0,
+        "damage": 24,
+        "effectiveness": 1
+      }
+    },
+    "evolution": {
+      "ownerId": 0,
+      "pokemonId": "p3",
+      "options": [
+        134,
+        135,
+        136,
+        196,
+        197,
+        470,
+        471,
+        700
+      ]
+    },
+    "lapGrowth": null,
+    "winner": null,
+    "log": [
+      "모험을 시작합니다. 주사위를 굴려 주세요!",
+      "야생 대굴레오와 배틀! 상대가 선공합니다.",
+      "대굴레오의 구르기! 2 피해",
+      "이브이의 기본 공격! 24 피해",
+      "이브이 승리! 레벨 20"
+    ]
+  },
+  "capture": {
+    "version": 2,
+    "revision": 5,
+    "rng": 1957354578,
+    "nextPokemonId": 5,
+    "turn": 1,
+    "activePlayer": 0,
+    "players": [
+      {
+        "id": 0,
+        "name": "플레이어 1",
+        "position": 1,
+        "party": [
+          {
+            "id": "p3",
+            "speciesId": 134,
+            "level": 20,
+            "hp": 47
+          }
+        ],
+        "box": [],
+        "starterSpeciesId": 133,
+        "restTurnsRemaining": 0,
+        "seatSide": "bottom"
+      },
+      {
+        "id": 1,
+        "name": "플레이어 2",
+        "position": 0,
+        "party": [
+          {
+            "id": "p2",
+            "speciesId": 4,
+            "level": 3,
+            "hp": 15
+          }
+        ],
+        "box": [],
+        "starterSpeciesId": 4,
+        "restTurnsRemaining": 0,
+        "seatSide": "top"
+      }
+    ],
+    "roads": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "phase": "capture",
+    "dice": [
+      6,
+      6
+    ],
+    "movement": {
+      "remaining": 0,
+      "encounters": []
+    },
+    "battle": {
+      "kind": "wild",
+      "defenderOwner": null,
+      "defenderPokemonId": "p4",
+      "attackerPokemonId": "p3",
+      "wild": {
+        "id": "p4",
+        "speciesId": 363,
+        "level": 3,
+        "hp": 0
+      },
+      "turn": "attacker",
+      "winner": "attacker",
+      "lastAttack": {
+        "side": "attacker",
+        "moveId": 0,
+        "damage": 24,
+        "effectiveness": 1
+      }
+    },
+    "evolution": null,
+    "lapGrowth": null,
+    "winner": null,
+    "log": [
+      "모험을 시작합니다. 주사위를 굴려 주세요!",
+      "야생 대굴레오와 배틀! 상대가 선공합니다.",
+      "대굴레오의 구르기! 2 피해",
+      "이브이의 기본 공격! 24 피해",
+      "이브이 승리! 레벨 20",
+      "이브이이(가) 샤미드(으)로 진화했습니다!"
+    ]
+  },
+  "trainerEvolution": {
+    "version": 2,
+    "revision": 4,
+    "rng": 9182,
+    "nextPokemonId": 4,
+    "turn": 1,
+    "activePlayer": 0,
+    "players": [
+      {
+        "id": 0,
+        "name": "플레이어 1",
+        "position": 2,
+        "party": [
+          {
+            "id": "p1",
+            "speciesId": 1,
+            "level": 3,
+            "hp": 0
+          }
+        ],
+        "box": [],
+        "starterSpeciesId": 1,
+        "restTurnsRemaining": 0,
+        "seatSide": "bottom"
+      },
+      {
+        "id": 1,
+        "name": "플레이어 2",
+        "position": 2,
+        "party": [
+          {
+            "id": "p3",
+            "speciesId": 133,
+            "level": 20,
+            "hp": 49
+          }
+        ],
+        "box": [],
+        "starterSpeciesId": 133,
+        "restTurnsRemaining": 0,
+        "seatSide": "top"
+      }
+    ],
+    "roads": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "phase": "evolution",
+    "dice": [
+      6,
+      6
+    ],
+    "movement": {
+      "remaining": 0,
+      "encounters": []
+    },
+    "battle": {
+      "kind": "trainer",
+      "defenderOwner": 1,
+      "defenderPokemonId": "p3",
+      "attackerPokemonId": "p1",
+      "wild": null,
+      "turn": "defender",
+      "winner": "defender",
+      "lastAttack": {
+        "side": "defender",
+        "moveId": 0,
+        "damage": 27,
+        "effectiveness": 1
+      }
+    },
+    "evolution": {
+      "ownerId": 1,
+      "pokemonId": "p3",
+      "options": [
+        134,
+        135,
+        136,
+        196,
+        197,
+        470,
+        471,
+        700
+      ]
+    },
+    "lapGrowth": null,
+    "winner": null,
+    "log": [
+      "모험을 시작합니다. 주사위를 굴려 주세요!",
+      "플레이어 2와 배틀! 상대가 선공합니다.",
+      "이브이의 기본 공격! 27 피해",
+      "이브이 승리! 레벨 20"
+    ]
+  },
+  "lapEvolution": {
+    "version": 2,
+    "revision": 1,
+    "rng": 9182,
+    "nextPokemonId": 7,
+    "turn": 1,
+    "activePlayer": 0,
+    "players": [
+      {
+        "id": 0,
+        "name": "플레이어 1",
+        "position": 0,
+        "party": [
+          {
+            "id": "p3",
+            "speciesId": 133,
+            "level": 20,
+            "hp": 10
+          },
+          {
+            "id": "p4",
+            "speciesId": 133,
+            "level": 20,
+            "hp": 0
+          },
+          {
+            "id": "p5",
+            "speciesId": 1,
+            "level": 16,
+            "hp": 10
+          }
+        ],
+        "box": [],
+        "starterSpeciesId": 133,
+        "restTurnsRemaining": 0,
+        "seatSide": "bottom"
+      },
+      {
+        "id": 1,
+        "name": "플레이어 2",
+        "position": 10,
+        "party": [
+          {
+            "id": "p2",
+            "speciesId": 4,
+            "level": 3,
+            "hp": 15
+          }
+        ],
+        "box": [],
+        "starterSpeciesId": 4,
+        "restTurnsRemaining": 0,
+        "seatSide": "top"
+      }
+    ],
+    "roads": [
+      null,
+      null,
+      {
+        "ownerId": 0,
+        "pokemon": {
+          "id": "p6",
+          "speciesId": 133,
+          "level": 19,
+          "hp": 49
+        }
+      },
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "phase": "evolution",
+    "dice": [
+      6,
+      6
+    ],
+    "movement": {
+      "remaining": 3,
+      "encounters": []
+    },
+    "battle": null,
+    "evolution": {
+      "ownerId": 0,
+      "pokemonId": "p3",
+      "options": [
+        134,
+        135,
+        136,
+        196,
+        197,
+        470,
+        471,
+        700
+      ]
+    },
+    "lapGrowth": {
+      "remainingPokemonIds": [
+        "p4",
+        "p5"
+      ]
+    },
+    "winner": null,
+    "log": [
+      "모험을 시작합니다. 주사위를 굴려 주세요!",
+      "플레이어 1, 한 바퀴 완주! 파티 포켓몬이 모두 1레벨 성장합니다.",
+      "이브이, 완주 보상으로 레벨 20!",
+      "이브이, 완주 보상으로 레벨 20!",
+      "이상해씨, 완주 보상으로 레벨 16!"
+    ]
+  },
+  "evolvedWild": {
+    "version": 2,
+    "revision": 1,
+    "rng": 2987637974,
+    "nextPokemonId": 4,
+    "turn": 1,
+    "activePlayer": 0,
+    "players": [
+      {
+        "id": 0,
+        "name": "플레이어 1",
+        "position": 1,
+        "party": [
+          {
+            "id": "p1",
+            "speciesId": 1,
+            "level": 3,
+            "hp": 15
+          }
+        ],
+        "box": [],
+        "starterSpeciesId": 1,
+        "restTurnsRemaining": 0,
+        "seatSide": "bottom"
+      },
+      {
+        "id": 1,
+        "name": "플레이어 2",
+        "position": 0,
+        "party": [
+          {
+            "id": "p2",
+            "speciesId": 4,
+            "level": 3,
+            "hp": 15
+          }
+        ],
+        "box": [],
+        "starterSpeciesId": 4,
+        "restTurnsRemaining": 0,
+        "seatSide": "top"
+      }
+    ],
+    "roads": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    "phase": "choose-attacker",
+    "dice": [
+      6,
+      6
+    ],
+    "movement": {
+      "remaining": 0,
+      "encounters": []
+    },
+    "battle": {
+      "kind": "wild",
+      "defenderOwner": null,
+      "defenderPokemonId": "p3",
+      "attackerPokemonId": null,
+      "wild": {
+        "id": "p3",
+        "speciesId": 6,
+        "level": 3,
+        "hp": 17
+      },
+      "turn": "defender",
+      "winner": null,
+      "lastAttack": null
+    },
+    "evolution": null,
+    "lapGrowth": null,
+    "winner": null,
+    "log": [
+      "모험을 시작합니다. 주사위를 굴려 주세요!",
+      "야생 대굴레오와 배틀! 상대가 선공합니다."
+    ]
+  }
+}

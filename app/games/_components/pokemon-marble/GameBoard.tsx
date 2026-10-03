@@ -5,7 +5,7 @@ import { TILE_NAMES, type BoardGuardian, type BoardToken } from "./board-view";
 import styles from "./GameBoard.module.css";
 import Battle2D from "./Battle2D";
 import type { BattleView, PresentationEvent } from "./presentation-events";
-import { HealthBar, TypeBadge } from "./PokemonSprite";
+import { ExperienceBar, HealthBar, TypeBadge } from "./PokemonSprite";
 import { movesById, speciesById } from "./pokemon-data";
 import Board2D from "./Board2D";
 
@@ -38,16 +38,9 @@ export function BattleHud({
 }) {
   const attacking = presentation?.event.kind === "attack" ? presentation.event.attack?.side : null;
   const activeSide = presentation ? attacking : battle.phase === "attack" ? battle.turn : null;
-  const activePokemon = activeSide ? battle[activeSide] : null;
-  const activeName = activeSide === "attacker" ? battle.attackerName : battle.defenderName;
   const turnLabel = attacking ? "공격 중" : "공격 차례";
   return (
     <div className={`${styles.battleHud} ${inline ? styles.inlineHud : ""}`}>
-      {activePokemon && (
-        <p className={styles.attackTurn} role="status">
-          {activeName} · {speciesById[activePokemon.speciesId].name} {turnLabel}
-        </p>
-      )}
       {(["attacker", "defender"] as const).map((side) => {
         const pokemon = battle[side];
         const attack = presentation?.event.attack;
@@ -68,15 +61,19 @@ export function BattleHud({
             role="group"
             aria-label={`${trainerName} · ${healthDescription}`}
           >
-            {activeSide === side && <span className={styles.attackBadge}>{turnLabel}</span>}
             <small>
-              {trainerName} · {side === "attacker" ? "후공" : "선공"}
+              <span>{trainerName} · {side === "attacker" ? "후공" : "선공"}</span>
+              {activeSide === side && <span className={styles.attackBadge} role="status">{turnLabel}</span>}
             </small>
             <strong>
               {pokemon ? speciesById[pokemon.speciesId].name : "파트너 선택 중"}
               {pokemon && <span>Lv. {pokemon.level}</span>}
             </strong>
+            <div className={styles.fighterTypes} aria-label={`${pokemon ? speciesById[pokemon.speciesId].name : trainerName} 타입`}>
+              {pokemon && speciesById[pokemon.speciesId].types.map((type) => <TypeBadge key={type} type={type} />)}
+            </div>
             {pokemon && <HealthBar hp={hp!} max={pokemon.maxHp} />}
+            {pokemon && <ExperienceBar xp={pokemon.xp} level={pokemon.level} />}
             {receiving && presentation!.progress >= 0.45 && (
               <span
                 className={styles.damage}

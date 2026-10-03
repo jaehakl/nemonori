@@ -2,6 +2,7 @@ import Image from "next/image";
 import { useState } from "react";
 import { speciesById, spriteUrl, typeColors, typeNames } from "./pokemon-data";
 import { useSpriteArtwork } from "./sprite-artwork";
+import { XP_PER_LEVEL } from "./progression";
 import styles from "./PokemonMarble.module.css";
 
 export function PokemonSprite({
@@ -95,6 +96,23 @@ export function HealthBar({ hp, max }: { hp: number; max: number }) {
         />
       </div>
       <small>{hp === 0 ? "행동불능" : `${hp} / ${max}`}</small>
+    </div>
+  );
+}
+
+export function ExperienceBar({ xp, level }: { xp: number; level: number }) {
+  const complete = level >= 100;
+  const progress = complete ? XP_PER_LEVEL : xp;
+  const percentage = Math.floor(xp / XP_PER_LEVEL * 100);
+  return (
+    <div className={styles.experienceBar}>
+      <span>EXP</span>
+      <div className={styles.experienceTrack} role="meter" aria-label="경험치"
+        aria-valuemin={0} aria-valuemax={XP_PER_LEVEL} aria-valuenow={progress}
+        aria-valuetext={complete ? "최고 레벨" : `${percentage}%`}>
+        <span style={{ width: `${Math.max(0, Math.min(100, progress / XP_PER_LEVEL * 100))}%` }} />
+      </div>
+      <small>{complete ? "MAX" : `${percentage}%`}</small>
     </div>
   );
 }

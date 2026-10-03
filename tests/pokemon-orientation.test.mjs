@@ -56,6 +56,7 @@ test("branch evolution faces its owner, then recovery returns controls to the tu
   const defender = initial.players[1].party[0];
   defender.speciesId = 133;
   defender.level = 19;
+  defender.xp = 900;
   defender.hp = getStats(defender).hp;
   let state = choose(choose(enter(initial, 2), 1), 0);
   state = transition(state, { type: "ATTACK", moveId: 0 });

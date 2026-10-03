@@ -16,6 +16,7 @@ const { BOARD_SIZE, BOARD_TILES, getTilePosition, getDefaultSeatSides } = loadGa
 const { speciesById, getAvailableMoves, movesById, typeEffectiveness } =
   loadGameSource(`${path}pokemon-data.ts`);
 const { validateSave } = loadGameSource(`${path}save.ts`);
+const { getVictoryExperience } = loadGameSource(`${path}progression.ts`);
 
 function game(count = 3) {
   return createGame(
@@ -25,7 +26,7 @@ function game(count = 3) {
   );
 }
 function pokemon(state, speciesId = 1, level = 1, hp) {
-  const result = { id: `p${state.nextPokemonId++}`, speciesId, level, hp: 0 };
+  const result = { id: `p${state.nextPokemonId++}`, speciesId, level, xp: 0, hp: 0 };
   result.hp = hp ?? getStats(result).hp;
   return result;
 }
@@ -85,7 +86,7 @@ test("40 clockwise tiles contain four centers and a 3:1 road-to-grass ratio", ()
 });
 
 test("creation restricts player counts and starters, permits duplicates and normal single-stage species", () => {
-  for (const count of [2, 3, 4]) {
+  for (const count of [1, 2, 3, 4]) {
     const state = game(count);
     assert.equal(state.players.length, count);
     assert.ok(validateSave(state));
@@ -100,6 +101,7 @@ test("creation restricts player counts and starters, permits duplicates and norm
   }
   assert.doesNotThrow(() => createGame([1, 1], [], 0));
   assert.doesNotThrow(() => createGame([131, 128], [], 1));
+  assert.deepEqual(getDefaultSeatSides(1), ["bottom"]);
   assert.deepEqual(getDefaultSeatSides(2), ["bottom", "top"]);
   assert.deepEqual(getDefaultSeatSides(3), ["bottom", "left", "right"]);
   assert.deepEqual(getDefaultSeatSides(4), ["bottom", "left", "top", "right"]);
@@ -112,7 +114,7 @@ test("creation restricts player counts and starters, permits duplicates and norm
   assert.throws(() => createGame([1, 4], [], 1, ["top"]));
   assert.throws(() => createGame([1, 4], [], 1, ["front", "top"]));
   for (const starters of [
-    [1],
+    [],
     [1, 4, 7, 25, 133],
     [2, 1],
     [150, 1],
@@ -271,31 +273,26 @@ test("a lost single battle permits continued movement when another party member 
   assert.equal(state.movement.remaining, 1);
 });
 
-test("wild capture needs a free party slot and never sends a catch straight to the box", () => {
+test("throwing a ball needs an attacker turn and free party slot, and catches preserve HP", () => {
   for (const full of [false, true]) {
     const initial = game();
     initial.players[0].party[0] = pokemon(initial, 1, 40);
     while (full && initial.players[0].party.length < 6)
       initial.players[0].party.push(pokemon(initial, 7));
-    let state = winAsActive(enter(initial, 1));
-    assert.equal(state.phase, "capture");
+    let state = selectBoth(enter(initial, 1));
+    assert.equal(transition(state, { type: "THROW_BALL" }), state);
+    state = transition(state, { type: "WILD_ATTACK" });
+    state.rng = 1;
+    state.battle.wild.hp = 1;
     const wildId = state.battle.wild.id;
-    const declined = transition(state, { type: "CAPTURE", capture: false });
-    assert.equal(
-      [...declined.players[0].party, ...declined.players[0].box].some(
-        (p) => p.id === wildId,
-      ),
-      false,
-    );
-    const captured = transition(state, { type: "CAPTURE", capture: true });
+    const captured = transition(state, { type: "THROW_BALL" });
     if (full) {
       assert.equal(captured, state);
-      assert.equal(captured.phase, "capture");
+      assert.equal(captured.phase, "attack");
       assert.equal(captured.players[0].box.length, 0);
-      assert.equal(declined.phase, "turn-end");
     } else {
       state = captured;
-      assert.equal(state.players[0].party.find((entry) => entry.id === wildId).hp, 0);
+      assert.equal(state.players[0].party.find((entry) => entry.id === wildId).hp, 1);
       assert.equal(state.phase, "turn-end");
     }
     assert.ok(validateSave(state));
@@ -401,19 +398,22 @@ test("illegal, immune and unavailable attacks preserve state and RNG", () => {
   assert.equal(transition(state, { type: "STEP" }), state);
 });
 
-test("victory grants one level and one evolution without healing; max level remains 100", () => {
+test("victory grants level-scaled XP and every available evolution without healing", () => {
   for (const level of [14, 15, 99, 100]) {
     const initial = game();
     initial.players[0].party[0] = pokemon(initial, 1, level);
     initial.players[1].position = 2;
+    initial.players[1].party[0] = pokemon(initial, 128, level);
     initial.players[1].party.push(pokemon(initial, 7));
     let state = selectBoth(enter(initial, 2));
     state.players[1].party[0].hp = 1;
     state = transition(state, { type: "ATTACK", moveId: 0 });
     const hp = state.players[0].party[0].hp;
     state = transition(state, { type: "ATTACK", moveId: 0 });
-    assert.equal(state.players[0].party[0].level, Math.min(100, level + 1));
-    assert.equal(state.players[0].party[0].speciesId, level >= 15 ? 2 : 1);
+    const reward = getVictoryExperience(level, level);
+    assert.equal(state.players[0].party[0].level, Math.min(100, level + Math.floor(reward / 1000)));
+    assert.equal(state.players[0].party[0].xp, level === 100 ? 0 : reward % 1000);
+    assert.equal(state.players[0].party[0].speciesId, level >= 99 ? 3 : 2);
     assert.equal(state.players[0].party[0].hp, hp);
   }
 });
@@ -422,6 +422,7 @@ test("special evolutions unlock at level 20 and branch ownership is explicit", (
   const initial = game();
   initial.players[1].position = 2;
   initial.players[1].party[0] = pokemon(initial, 133, 19);
+  initial.players[1].party[0].xp = 900;
   initial.players[0].party.push(pokemon(initial, 7));
   initial.players[0].party[0].hp = 1;
   let state = selectBoth(enter(initial, 2));
@@ -529,6 +530,7 @@ test("resting trainers do not trigger contact battles and their guardians do not
   assert.equal(passed.battle, null);
   assert.ok(validateSave(passed));
   initial.roads[2] = { ownerId: 1, pokemon: pokemon(initial, 133, 19) };
+  initial.roads[2].pokemon.xp = 900;
   initial.players[0].party[0].hp = 1;
   let state = transition(selectBoth(enter(initial, 2)), { type: "ATTACK", moveId: 0 });
   assert.equal(state.phase, "evolution");
@@ -576,12 +578,12 @@ test("only one player occupying every road wins immediately on the last deployme
     assert.equal(state.phase, otherRoad === "owned" ? "finished" : "road");
     assert.equal(state.winner, otherRoad === "owned" ? 0 : null);
     assert.ok(validateSave(state));
-    assert.equal(state.players[0].starterSpeciesId, 1, "Deploying the starter never changes the token identity");
+    assert.equal(state.players[0].starterSpeciesId, 1, "The initial starter remains save metadata");
     if (state.winner !== null) assert.equal(transition(state, { type: "END_TURN" }), state);
   }
 });
 
-test("a completed lap grows only the moving player's party and queues every branch once", () => {
+test("a completed lap grows the moving player's party and guardians, queuing every branch once", () => {
   const initial = game();
   initial.players[1].position = 5;
   initial.players[2].position = 6;
@@ -601,23 +603,28 @@ test("a completed lap grows only the moving player's party and queues every bran
   assert.equal(state.phase, "evolution");
   assert.equal(state.evolution.pokemonId, firstBranchId);
   assert.equal(state.battle, null);
-  assert.deepEqual(state.players[0].party.map((entry) => entry.level), [16, 20, 20, 6, 100]);
+  assert.deepEqual(state.players[0].party.map((entry) => entry.level), [17, 20, 20, 9, 100]);
   assert.equal(state.players[0].party[0].speciesId, 2);
   assert.deepEqual(state.players[0].party.map((entry) => entry.hp), [3, 4, 5, 0, 6]);
   assert.equal(state.players[0].box[0].level, 19);
-  assert.equal(state.roads[2].pokemon.level, 19);
+  assert.equal(state.roads[2].pokemon.level, 20);
   assert.equal(state.players[1].party[0].level, 3);
   assert.equal(state.players[2].party[0].level, 3);
-  assert.deepEqual(state.lapGrowth.remainingPokemonIds, player.party.slice(2).map((entry) => entry.id));
+  assert.deepEqual(state.lapGrowth.remainingPokemonIds, [...player.party.slice(2).map((entry) => entry.id), initial.roads[2].pokemon.id]);
   state = transition(state, { type: "CHOOSE_EVOLUTION", speciesId: 134 });
   assert.equal(state.phase, "evolution");
   assert.equal(state.evolution.pokemonId, secondBranchId);
   state = transition(state, { type: "CHOOSE_EVOLUTION", speciesId: 135 });
+  assert.equal(state.phase, "evolution");
+  assert.equal(state.evolution.pokemonId, initial.roads[2].pokemon.id);
+  assert.ok(validateSave(state));
+  state = transition(state, { type: "CHOOSE_EVOLUTION", speciesId: 136 });
+  assert.equal(state.roads[2].pokemon.speciesId, 136);
   assert.equal(state.phase, "moving");
   assert.equal(state.lapGrowth, null);
   assert.equal(state.evolution, null);
   assert.deepEqual(state.movement, { remaining: 1, encounters: [] });
-  assert.deepEqual(state.players[0].party.map((entry) => entry.level), [16, 20, 20, 6, 100]);
+  assert.deepEqual(state.players[0].party.map((entry) => entry.level), [17, 20, 20, 9, 100]);
   assert.equal(transition(state, { type: "CHOOSE_EVOLUTION", speciesId: 136 }), state);
 });
 
@@ -650,14 +657,14 @@ test("rescue teleports and starting at the center do not award lap levels", () =
   assert.equal(game(2).players[0].party[0].level, 3);
 });
 
-test("a victorious guardian gains exactly one level and heals to its evolved maximum", () => {
+test("a victorious guardian gains XP and heals to its evolved maximum", () => {
   for (const [speciesId, level, evolvedSpecies] of [[1, 15, 2], [128, 100, 128]]) {
     const initial = game(2);
-    initial.players[0].party[0].hp = 1;
+    initial.players[0].party[0] = pokemon(initial, 128, level, 1);
     initial.roads[2] = { ownerId: 1, pokemon: pokemon(initial, speciesId, level, 1) };
     const state = transition(selectBoth(enter(initial, 2)), { type: "ATTACK", moveId: 0 });
     const guard = state.roads[2].pokemon;
-    assert.equal(guard.level, Math.min(100, level + 1));
+    assert.equal(guard.level, Math.min(100, level + Math.floor(getVictoryExperience(level, level) / 1000)));
     assert.equal(guard.speciesId, evolvedSpecies);
     assert.equal(guard.hp, getStats(guard).hp);
   }

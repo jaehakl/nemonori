@@ -6,6 +6,7 @@ export type BoardToken = {
   color: string;
   position: number;
   starterSpeciesId: number;
+  leaderSpeciesId: number;
   restTurnsRemaining: number;
 };
 

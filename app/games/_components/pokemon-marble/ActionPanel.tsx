@@ -5,9 +5,38 @@ import { PokemonSprite, TypeBadge } from "./PokemonSprite";
 import BattlePanel from "./BattlePanel";
 import type { GameAction, GameState } from "./types";
 import PokemonCard from "./PokemonCard";
+import { getPartyLeader, sortPartyByLevel } from "./party";
 import styles from "./PokemonMarble.module.css";
 
 const dieFaces = ["", "⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];
+
+function TurnHeading({ state }: { state: GameState }) {
+  const player = state.players[state.activePlayer];
+  const roads = state.roads.filter((guardian) => guardian?.ownerId === player.id).length;
+  return (
+    <div className={styles.journeyHeading}>
+      <span className={styles.playerDot} style={{ "--player-color": PLAYER_COLORS[player.id] } as React.CSSProperties}>{player.id + 1}</span>
+      <div><small>{state.players.length === 1 ? "나만의 모험" : "이번 차례"}</small><h3>{player.name}</h3></div>
+      <div className={styles.journeyStats}><strong>TURN {state.turn}</strong><span>도로 {roads}/27</span></div>
+    </div>
+  );
+}
+
+function DiceCradle({ dice, rolling = false }: { dice: [number, number] | null; rolling?: boolean }) {
+  const pipPositions: [number, number][] = [[18, 18], [42, 42], [42, 18], [18, 42], [18, 30], [42, 30]];
+  return (
+    <div className={styles.diceCradle} aria-hidden="true">
+      {rolling ? <span className={styles.rollingLabel}>결과를 기다려요</span> : (dice ?? [3, 5]).map((face, index) => (
+        <svg key={index} viewBox="0 0 60 60" className={styles.cradleDie}>
+          <rect x="3" y="3" width="54" height="54" rx="12" fill="#fff5d9" stroke="#d7b46a" strokeWidth="2" />
+          <rect x="7" y="7" width="46" height="46" rx="9" fill="none" stroke="#fffdf1" strokeWidth="2" />
+          {face % 2 === 1 && <circle cx="30" cy="30" r="3.7" fill="#b24f42" />}
+          {pipPositions.slice(0, face - (face % 2)).map(([x, y], pip) => <circle key={pip} cx={x} cy={y} r="3.7" fill="#173f35" />)}
+        </svg>
+      ))}
+    </div>
+  );
+}
 
 export default function ActionPanel({
   state,
@@ -110,52 +139,46 @@ export default function ActionPanel({
     );
   }
 
-  if (state.phase === "capture" && state.battle?.wild) {
+  // A save imported from version 2 can have an already-earned capture choice.
+  if (state.phase === "capture" && state.battle?.wild &&
+    state.battle.outcome?.kind === "knockout" && state.battle.outcome.legacyCapturePending) {
     const wild = state.battle.wild;
-    const species = speciesById[wild.speciesId];
     return (
       <section className={styles.actionPanel}>
-        <span className={styles.eyebrow}>A NEW FRIEND</span>
         <div className={styles.captureHero}>
-          <PokemonSprite speciesId={wild.speciesId} size={120} />
-          <h3>{species.name}</h3>
-          <div className={styles.typeRow}>
-            {species.types.map((type) => (
-              <TypeBadge type={type} key={type} />
-            ))}
-          </div>
-          <span className={styles.subtle}>
-            Lv. {wild.level} · HP 0 · 행동불능
-          </span>
+          <PokemonSprite speciesId={wild.speciesId} size={72} />
+          <h3>{speciesById[wild.speciesId].name}</h3>
         </div>
-        <p className={styles.actionCopy}>
-          {player.party.length >= 6
-            ? "파티 6칸이 모두 차서 포획할 수 없습니다. 포켓몬센터에서 파티를 정리하세요."
-            : "포획하면 파티에 합류합니다. 포켓몬센터에서 회복해야 배틀할 수 있습니다."}
-        </p>
+        <p className={styles.legacyCaptureNote}>이전 모험에서 남겨 둔 포획을 마무리하세요. 이 포켓몬은 당시 규칙대로 HP 0으로 합류합니다.</p>
         <div className={styles.buttonRow}>
-          <button
-            className={styles.primaryButton}
-            disabled={player.party.length >= 6}
-            onClick={() => dispatch({ type: "CAPTURE", capture: true })}
-          >
-            포획하기
-          </button>
-          <button
-            className={styles.secondaryButton}
-            onClick={() => dispatch({ type: "CAPTURE", capture: false })}
-          >
-            놓아주기
-          </button>
+          <button className={styles.primaryButton} disabled={player.party.length >= 6}
+            onClick={() => dispatch({ type: "CAPTURE", capture: true })}>포획하기</button>
+          <button className={styles.secondaryButton}
+            onClick={() => dispatch({ type: "CAPTURE", capture: false })}>놓아주기</button>
         </div>
+      </section>
+    );
+  }
+
+  if (state.phase === "roll") {
+    return (
+      <section className={`${styles.actionPanel} ${styles.journeyPanel}`} aria-label="이번 차례">
+        <TurnHeading state={state} />
+        <div className={styles.journeyCenter}>
+          <DiceCradle dice={null} />
+          <p className={styles.journeyHint}>두 개의 주사위, 새로운 만남.</p>
+        </div>
+        <button className={`${styles.primaryButton} ${styles.journeyButton}`} onClick={() => dispatch({ type: "ROLL" })}>
+          주사위 굴리기 <span aria-hidden="true">→</span>
+        </button>
       </section>
     );
   }
 
   return (
     <section className={styles.actionPanel}>
-      {(state.phase === "roll" ||
-        state.phase === "moving" ||
+      <TurnHeading state={state} />
+      {(state.phase === "moving" ||
         state.phase === "turn-end") && (
         <>
           <div
@@ -175,14 +198,7 @@ export default function ActionPanel({
           {state.phase === "turn-end" && player.restTurnsRemaining > 0 && (
             <p role="status">남은 휴식 {player.restTurnsRemaining}턴</p>
           )}
-          {state.phase === "roll" ? (
-            <button
-              className={`${styles.primaryButton} ${styles.fullWidth}`}
-              onClick={() => dispatch({ type: "ROLL" })}
-            >
-              주사위 굴리기 <span>⚄</span>
-            </button>
-          ) : state.phase === "turn-end" ? (
+          {state.phase === "turn-end" ? (
             !canStartExchange && endButton
           ) : (
             <button
@@ -236,21 +252,19 @@ export function MovementPanel({
   notice?: string;
   onSkip: () => void;
 }) {
-  const player = state.players[state.activePlayer];
   const total = state.dice ? state.dice[0] + state.dice[1] : 0;
   const remaining = state.movement?.remaining ?? 0;
   return (
-    <section className={`${styles.actionPanel} ${styles.movementPanel}`} aria-label="주사위와 이동">
-      <div className={styles.turnHeading}>
-        <h3>{player.name}</h3>
-        <span className={styles.turnBadge}>TURN {state.turn}</span>
+    <section className={`${styles.actionPanel} ${styles.movementPanel} ${styles.journeyPanel}`} aria-label="주사위와 이동">
+      <TurnHeading state={state} />
+      <div className={styles.journeyCenter}>
+        <DiceCradle dice={state.dice} rolling={rolling} />
+        <p className={styles.journeyHint} role="status">
+          {notice ?? (rolling ? "주사위를 굴리고 있어요!" : `${total}칸 이동 · 앞으로 ${remaining}칸${hasExtraRoll(state) ? " · 더블!" : ""}`)}
+        </p>
+        <progress aria-label="이동 진행" max={total || 1} value={rolling ? 0 : total - remaining} />
       </div>
-      <p className={styles.actionCopy} role="status">
-        {notice ?? (rolling ? "주사위를 굴리고 있어요!" : `${total}칸 이동 · 앞으로 ${remaining}칸`)}
-      </p>
-      {!rolling && hasExtraRoll(state) && <p className={styles.actionCopy}>더블! 도착 칸의 행동을 마치면 한 번 더 굴립니다.</p>}
-      <progress aria-label="이동 진행" max={total || 1} value={rolling ? 0 : total - remaining} />
-      <button className={`${styles.secondaryButton} ${styles.fullWidth}`} disabled={!busy} onClick={onSkip}>
+      <button className={`${styles.secondaryButton} ${styles.journeyButton}`} disabled={!busy} onClick={onSkip}>
         연출 건너뛰기 →
       </button>
     </section>
@@ -259,6 +273,7 @@ export function MovementPanel({
 
 export function PartySummary({ state, dispatch, blocked = false }: { state: GameState; dispatch?: (action: GameAction) => void; blocked?: boolean }) {
   const player = state.players[state.activePlayer];
+  const leader = getPartyLeader(player.party);
   const ownedRoads = state.roads.filter((guardian) => guardian?.ownerId === player.id).length;
   const roadCount = BOARD_TILES.filter((tile) => tile === "road").length;
   return (
@@ -270,16 +285,17 @@ export function PartySummary({ state, dispatch, blocked = false }: { state: Game
       <div className={styles.playerCardHeader}>
         <span className={styles.playerDot}>{player.id + 1}</span>
         <strong>{player.name}의 파티 · {player.party.length}/6</strong>
-        <small>도로 {ownedRoads}/{roadCount}</small>
+        <small>{state.players.length === 1 ? "혼자 모험 · " : ""}도로 {ownedRoads}/{roadCount}</small>
         {player.restTurnsRemaining > 0 && <small>휴식 {player.restTurnsRemaining}턴</small>}
       </div>
       <div className={styles.partyCards} tabIndex={0} aria-label="파티 카드 목록">
-        {player.party.map((pokemon) => {
+        {sortPartyByLevel(player.party).map((pokemon) => {
           const action: GameAction = state.phase === "center"
             ? { type: "CENTER_TRANSFER", pokemonId: pokemon.id, to: "box" }
             : { type: "DEPLOY", pokemonId: pokemon.id };
           const canMove = !blocked && state.exchangeActive && dispatch && transition(state, action) !== state;
           return <PokemonCard key={pokemon.id} pokemon={pokemon}
+            leader={pokemon.id === leader?.id}
             destination={state.phase === "center" ? "박스로 이동" : "수비로 배치"}
             onClick={canMove ? () => dispatch(action) : undefined} />;
         })}

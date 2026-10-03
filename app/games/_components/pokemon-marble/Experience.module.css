@@ -23,12 +23,16 @@
   top: calc(100% + 10px);
   width: 260px;
   padding: 20px;
-  background: #fffef6;
-  border: 1px solid #ccdcc6;
+  background: linear-gradient(135deg, #fff8e6, #f5e6bd);
+  border: 2px solid #d7b46a;
   border-radius: 20px;
-  box-shadow: 0 18px 50px #264a3933;
+  box-shadow: 0 0 0 3px #513629, 0 18px 50px #264a3966;
   display: grid;
   gap: 12px;
+}
+:global([data-control-seat="top"][data-battle="true"]) .settingsPopover {
+  top: auto;
+  bottom: calc(100% + 10px);
 }
 .settingsPopover button {
   min-height: 48px;

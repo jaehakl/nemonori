@@ -160,6 +160,35 @@ export default function PokemonMarble() {
     setSelection(null);
   }
 
+  const systemControls = (
+    <header className={styles.topbar}>
+      <div className={`${styles.topActions} ${styles.systemLeft}`}>
+        <FullscreenToggle targetRef={gameRoot} onChange={onFullscreenChange} />
+        <ExperienceControls
+          preferences={experience.preferences}
+          onPreferences={experience.updatePreferences}
+          reducedMotion={experience.reducedMotion}
+          onReducedMotion={experience.updateReducedMotion}
+          onUnlock={experience.unlockAudio}
+          displayMode={displayPreferences.mode}
+          onDisplayMode={updateDisplayMode}
+        />
+      </div>
+      <div className={styles.topActions}>
+        <button className={systemStyles.iconButton} aria-label="모험 가이드"
+          title="모험 가이드" onClick={() => setRulesOpen(true)}>
+          <SystemIcon name="guide" />
+        </button>
+        {game && (
+          <button className={systemStyles.iconButton} aria-label="새 게임"
+            title="새 게임" onClick={() => setRestartOpen(true)}>
+            <SystemIcon name="restart" />
+          </button>
+        )}
+      </div>
+    </header>
+  );
+
   return (
     <>
       <div
@@ -168,46 +197,14 @@ export default function PokemonMarble() {
         data-reduced-motion={experience.reducedMotion}
         data-playing={playing}
         data-battle={battleVisible}
+        data-control-seat={controlLayout.mode === "fixed" ? "bottom" : controlLayout.seatSide}
         onClickCapture={(event) => {
           if ((event.target as HTMLElement).closest("button"))
             experience.click();
         }}
       >
         <div className={styles.gameContent} inert={experience.portrait}>
-          <header className={styles.topbar}>
-            <div className={`${styles.topActions} ${styles.systemLeft}`}>
-              <FullscreenToggle targetRef={gameRoot} onChange={onFullscreenChange} />
-              <ExperienceControls
-                preferences={experience.preferences}
-                onPreferences={experience.updatePreferences}
-                reducedMotion={experience.reducedMotion}
-                onReducedMotion={experience.updateReducedMotion}
-                onUnlock={experience.unlockAudio}
-                displayMode={displayPreferences.mode}
-                onDisplayMode={updateDisplayMode}
-              />
-            </div>
-            <div className={styles.topActions}>
-              <button
-                className={systemStyles.iconButton}
-                aria-label="모험 가이드"
-                title="모험 가이드"
-                onClick={() => setRulesOpen(true)}
-              >
-                <SystemIcon name="guide" />
-              </button>
-              {game && (
-                <button
-                  className={systemStyles.iconButton}
-                  aria-label="새 게임"
-                  title="새 게임"
-                  onClick={() => setRestartOpen(true)}
-                >
-                  <SystemIcon name="restart" />
-                </button>
-              )}
-            </div>
-          </header>
+          {!battleVisible && systemControls}
           {saveError && (
             <div className={styles.notice} role="alert">
               <span>
@@ -255,6 +252,7 @@ export default function PokemonMarble() {
                 battle={battleVisible}
                 seatSide={controlLayout.seatSide}
                 mode={controlLayout.mode}
+                systemControls={battleVisible ? systemControls : undefined}
                 board={
                   <GameBoard
                     tabletop
@@ -266,6 +264,7 @@ export default function PokemonMarble() {
                       color: PLAYER_COLORS[player.id],
                       position: player.position,
                       starterSpeciesId: player.starterSpeciesId,
+                      leaderSpeciesId: player.leaderSpeciesId,
                       restTurnsRemaining: player.restTurnsRemaining,
                     }))}
                     guardians={view!.guardians}

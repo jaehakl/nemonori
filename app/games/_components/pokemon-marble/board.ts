@@ -17,6 +17,7 @@ export const BOARD_TILES: TileKind[] = Array.from(
 export const PLAYER_COLORS = ["#ef6559", "#3988e5", "#e8b840", "#9b6ad9"];
 
 export function getDefaultSeatSides(playerCount: number): SeatSide[] {
+  if (playerCount === 1) return ["bottom"];
   if (playerCount === 2) return ["bottom", "top"];
   if (playerCount === 3) return ["bottom", "left", "right"];
   return ["bottom", "left", "top", "right"];

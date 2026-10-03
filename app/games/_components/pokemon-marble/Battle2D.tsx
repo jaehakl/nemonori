@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import type { BattleView } from "./presentation-events";
 import { speciesById, typeNames } from "./pokemon-data";
 import SvgPokemon from "./SvgPokemon";
@@ -67,17 +68,56 @@ function AttackEffect({ presentation, reducedMotion }: {
   );
 }
 
-function CaptureBall({ progress, reducedMotion }: { progress: number; reducedMotion: boolean }) {
-  const p = clampProgress(progress);
-  const x = BATTLE_ANCHORS.defender.x;
-  const y = reducedMotion ? 390 : 390 - Math.sin(p * Math.PI) * 95;
-  const rotation = reducedMotion ? 0 : Math.sin(p * 28) * (1 - p) * 22;
+function CaptureBall({ presentation, reducedMotion }: {
+  presentation: NonNullable<BattlePresentation>;
+  reducedMotion: boolean;
+}) {
+  const { event } = presentation;
+  const p = clampProgress(presentation.progress);
+  const throwing = event.kind === "capture-throw";
+  const shaking = event.kind === "capture-shake" || event.kind === "capture";
+  const result = event.kind === "capture-result";
+  const success = result && event.capture?.success === true;
+  const failed = result && !event.capture?.success;
+  const travel = throwing ? clampProgress(p / 0.6) : 1;
+  const x = reducedMotion ? BATTLE_ANCHORS.defender.x
+    : BATTLE_ANCHORS.attacker.x + (BATTLE_ANCHORS.defender.x - BATTLE_ANCHORS.attacker.x) * travel;
+  const y = throwing && !reducedMotion
+    ? 390 - Math.sin(travel * Math.PI) * 210 - (1 - clampProgress((p - 0.6) / 0.4)) * travel * 95
+    : 390;
+  const rotation = reducedMotion ? 0 : throwing ? travel * 360
+    : shaking ? Math.sin(p * Math.PI * 4) * Math.sin(p * Math.PI) * 19 : 0;
+  const opening = failed ? clampProgress(p / 0.5) : 0;
   return (
-    <g data-capture-ball="true" transform={`translate(${x} ${y}) rotate(${rotation})`}>
-      <circle r="27" fill="#fffdf5" stroke="#304b47" strokeWidth="4" />
-      <path d="M-25 0a25 25 0 0 1 50 0Z" fill="#ed625b" />
-      <path d="M-25 0h50" stroke="#304b47" strokeWidth="5" />
-      <circle r="8" fill="#fffdf5" stroke="#304b47" strokeWidth="4" />
+    <g data-capture-ball="true" data-capture-stage={event.kind} data-capture-success={result ? success : undefined}
+      data-capture-shake={event.capture?.shake} transform={`translate(${x} ${y}) rotate(${rotation})`}>
+      <ellipse cy="33" rx="31" ry="8" fill="#071C15" opacity=".24" />
+      {success && (
+        <g data-capture-light="green">
+          <circle r={reducedMotion ? 47 : 38 + p * 32} fill="none" stroke="#A6FCA4" strokeWidth="3" opacity={1 - p * .7} />
+          <circle r="37" fill="#73EB88" opacity=".2" />
+          {[-1, 1].map((direction) => (
+            <path key={direction} d="m0-8 2.4 5.6L8 0 2.4 2.4 0 8-2.4 2.4-8 0-2.4-2.4Z"
+              transform={`translate(${direction * (reducedMotion ? 48 : 38 + p * 20)} ${-28 - (reducedMotion ? 0 : p * 16)})`}
+              fill="#EBDD94" opacity={1 - p * .6} />
+          ))}
+        </g>
+      )}
+      {failed && <circle data-capture-release="true" r={reducedMotion ? 42 : 25 + p * 90} fill="#FFF3D6" opacity={(1 - p) * .8} />}
+      <g opacity={failed ? 1 - opening : 1}>
+        <g transform={`translate(0 ${reducedMotion ? 0 : -opening * 30})`}>
+          <path d="M-28 0a28 28 0 0 1 56 0Z" fill="#D95746" stroke="#243A31" strokeWidth="4" />
+          <path d="M-18-12a21 21 0 0 1 27-7" fill="none" stroke="#FFA99A" strokeWidth="4" strokeLinecap="round" />
+        </g>
+        <g transform={`translate(0 ${reducedMotion ? 0 : opening * 22})`}>
+          <path d="M-28 0a28 28 0 0 0 56 0Z" fill="#FFF3D6" stroke="#243A31" strokeWidth="4" />
+          <path d="M-21 13a24 24 0 0 0 41-2" fill="none" stroke="#D8CBB2" strokeWidth="3" />
+        </g>
+        <path d="M-28 0h56" stroke="#243A31" strokeWidth="6" />
+        <circle r="10" fill="#243A31" stroke="#D7B46A" strokeWidth="2" />
+        <circle r="6" fill={success ? "#8CF58A" : "#FFF9EC"} />
+        {success && <circle r="3" fill="#E9FFE8" />}
+      </g>
     </g>
   );
 }
@@ -88,24 +128,45 @@ export default function Battle2D({ battle, presentation = null, reducedMotion = 
   presentation?: BattlePresentation;
   reducedMotion?: boolean;
 }) {
+  const artId = useId().replace(/:/g, "");
   const p = clampProgress(presentation?.progress ?? 1);
   return (
     <svg className={styles.stage} viewBox="0 0 1000 560" preserveAspectRatio="xMidYMid meet"
       role="img" aria-label="포켓몬 2D 배틀 무대. 체력과 기술은 배틀 정보에서 확인할 수 있습니다."
       data-battle-kind={battle.kind}>
       <title>{`${battle.attackerName} 대 ${battle.defenderName}`}</title>
-      <ellipse cx="500" cy="421" rx="466" ry="113" fill="#82b49c" />
-      <ellipse cx="500" cy="407" rx="466" ry="113" fill="#e7efd2" stroke="#55836d" strokeWidth="3" />
-      <ellipse cx="500" cy="407" rx="430" ry="91" fill="none" stroke="#fffdf0" strokeWidth="5" />
-      <path d="M500 316v182" stroke="#fffdf0" strokeWidth="4" />
-      <ellipse cx="500" cy="407" rx="55" ry="30" fill="none" stroke="#fffdf0" strokeWidth="4" />
+      <defs>
+        <radialGradient id={`${artId}-light`} cx="50%" cy="44%" r="72%">
+          <stop offset="0" stopColor="#497B5D" /><stop offset="1" stopColor="#102D25" />
+        </radialGradient>
+        <linearGradient id={`${artId}-rim`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#F7DC99" /><stop offset=".6" stopColor="#A07739" /><stop offset="1" stopColor="#D7B46A" />
+        </linearGradient>
+        <linearGradient id={`${artId}-arena`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#E9E4BD" /><stop offset="1" stopColor="#BEC995" />
+        </linearGradient>
+        <pattern id={`${artId}-grain`} width="8" height="8" patternUnits="userSpaceOnUse">
+          <path d="M0 0h2M4 4h2" stroke="#FFF3D6" strokeWidth=".7" opacity=".07" />
+        </pattern>
+      </defs>
+      <path d="M0 0h1000v560H0Z" fill={`url(#${artId}-light)`} />
+      <path d="M0 0h1000v560H0Z" fill={`url(#${artId}-grain)`} />
+      <path d="M28 90V28h90m764 0h90v62M28 470v62h90m764 0h90v-62" fill="none" stroke="#D7B46A" strokeWidth="2" opacity=".45" />
+      <ellipse cx="500" cy="435" rx="470" ry="112" fill="#071D16" opacity=".45" />
+      <ellipse cx="500" cy="423" rx="466" ry="113" fill="#513629" stroke="#8B643A" strokeWidth="4" />
+      <ellipse cx="500" cy="407" rx="466" ry="113" fill={`url(#${artId}-arena)`} stroke={`url(#${artId}-rim)`} strokeWidth="8" />
+      <ellipse cx="500" cy="407" rx="430" ry="91" fill="none" stroke="#FFF3D6" strokeWidth="3" opacity=".8" />
+      <path d="M500 316v182" stroke="#FFF3D6" strokeWidth="3" opacity=".8" />
+      <ellipse cx="500" cy="407" rx="55" ry="30" fill="#D6D9AF" stroke="#FFF3D6" strokeWidth="3" />
       {(["attacker", "defender"] as const).map((side) => {
         const pose = getBattlePose(battle, side, presentation, reducedMotion);
-        const color = side === "attacker" ? "#c46f43" : "#378b92";
+        const color = side === "attacker" ? "#AF7846" : "#497D65";
         const anchor = BATTLE_ANCHORS[side];
         return (
           <g key={side} data-fighter={side} data-species={pose.speciesId} data-visible={pose.visible}>
-            <ellipse cx={anchor.x} cy="422" rx="166" ry="46" fill={side === "attacker" ? "#f6e4ba" : "#c7e6d7"} stroke={color} strokeWidth="3" />
+            <ellipse cx={anchor.x} cy="428" rx="166" ry="46" fill="#243A31" opacity=".25" />
+            <ellipse cx={anchor.x} cy="422" rx="166" ry="46" fill={side === "attacker" ? "#FFF3D6" : "#DAE8C9"} stroke={color} strokeWidth="3" />
+            <ellipse cx={anchor.x} cy="422" rx="153" ry="38" fill="none" stroke="#D7B46A" strokeWidth="1.5" opacity=".7" />
             {pose.visible && pose.speciesId !== null ? (
               <>
                 <ellipse cx={anchor.x} cy="426" rx={90 * pose.scale} ry="19" fill="#304f42" opacity={0.16 * pose.opacity} />
@@ -116,7 +177,7 @@ export default function Battle2D({ battle, presentation = null, reducedMotion = 
                 </g>
               </>
             ) : !battle[side] ? (
-              <text x={anchor.x} y="310" textAnchor="middle" fill={color} fontSize="23">파트너 선택 중</text>
+              <text x={anchor.x} y="310" textAnchor="middle" fill="#FFF3D6" fontSize="23">파트너 선택 중</text>
             ) : null}
             {battle[side] && (
               <text x={anchor.x} y="495" textAnchor="middle" fill="#365749" fontSize="21" fontWeight="700">
@@ -127,9 +188,11 @@ export default function Battle2D({ battle, presentation = null, reducedMotion = 
         );
       })}
       <AttackEffect presentation={presentation} reducedMotion={reducedMotion} />
-      {presentation?.event.kind === "capture" && <CaptureBall progress={p} reducedMotion={reducedMotion} />}
+      {presentation && (presentation.event.kind === "capture" || presentation.event.kind.startsWith("capture-")) && (
+        <CaptureBall presentation={presentation} reducedMotion={reducedMotion} />
+      )}
       {presentation?.event.attack && p >= 0.45 && p <= 0.85 && (
-        <text x="500" y="72" textAnchor="middle" fill="#365749" fontSize="20" fontWeight="700">
+        <text x="500" y="72" textAnchor="middle" fill="#FFF3D6" fontSize="20" fontWeight="700">
           {typeNames[presentation.event.attack.moveType ?? 0] ?? "무상성"} · 명중
         </text>
       )}

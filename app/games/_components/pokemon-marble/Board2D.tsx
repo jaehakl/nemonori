@@ -21,7 +21,7 @@ type Props = {
 };
 
 const TILE_NAMES = { center: "포켓몬센터", grass: "풀숲", road: "도로" };
-const TILE_FILLS = { center: "#fff0ed", grass: "#d7edc6", road: "#fffdf5" };
+const TILE_FILLS = { center: "#f5d9ca", grass: "#b9d09b", road: "#fff3d6" };
 
 function tileCenter(tile: number) {
   const { x, z } = getTilePosition(tile);
@@ -106,7 +106,8 @@ function Die({
         />
       )}
       <g transform={`rotate(${angle}) scale(${scale})`}>
-        <rect x="-30" y="-30" width="60" height="60" rx="10" fill="#fff" stroke="#344639" strokeWidth="2.5" />
+        <rect x="-30" y="-30" width="60" height="60" rx="10" fill="#fff3d6" stroke="#d7b46a" strokeWidth="2.5" />
+        <rect x="-25" y="-25" width="50" height="50" rx="7" fill="none" stroke="#fffdf2" strokeWidth="2" />
         {pips.map(([px, py], pip) => (
           <circle key={pip} cx={px} cy={py} r="4.3" fill={face === 1 ? "#cf534c" : "#26382b"} />
         ))}
@@ -139,7 +140,10 @@ export default function Board2D({
       aria-label="포켓몬 마블 40칸 게임판"
       preserveAspectRatio="xMidYMid meet"
     >
-      <rect x="100" y="100" width="900" height="900" fill="#f5f7ee" />
+      <rect width="1100" height="1100" rx="12" fill="#513629" />
+      <rect x="100" y="100" width="900" height="900" fill="#173f35" />
+      <rect x="108" y="108" width="884" height="884" rx="12" fill="none" stroke="#d7b46a" strokeWidth="2" opacity="0.6" />
+      <path d="M119 151v-32h32M949 119h32v32M981 949v32h-32M151 981h-32v-32" fill="none" stroke="#d7b46a" strokeWidth="5" />
       {BOARD_TILES.map((kind, tile) => {
         const center = tileCenter(tile);
         const guardian = guardians.find((entry) => entry.tile === tile);
@@ -174,7 +178,7 @@ export default function Board2D({
               className={styles.tileFace}
               x="1.5" y="1.5" width="97" height="97" rx="5"
               fill={TILE_FILLS[kind]}
-              stroke={selectedTile === tile ? "#142e27" : "#889989"}
+              stroke={selectedTile === tile ? "#f7c65e" : "#927044"}
               strokeWidth={selectedTile === tile ? 4 : 2}
             />
             {guardian && (
@@ -238,6 +242,7 @@ export default function Board2D({
               data-token={token.id}
               data-token-size={size}
               data-starter={token.starterSpeciesId}
+              data-leader={token.leaderSpeciesId}
               data-active={token.id === activePlayerId}
             >
               <circle
@@ -247,7 +252,7 @@ export default function Board2D({
                 strokeWidth={size <= 32 ? (token.id === activePlayerId ? 4 : 2) : (token.id === activePlayerId ? 5 : 3)}
                 strokeDasharray={resting ? "5 3" : undefined}
               />
-              <SvgPokemon speciesId={token.starterSpeciesId} x={0} y={-size * 0.08} size={size * 0.8} color={token.color} />
+              <SvgPokemon speciesId={token.leaderSpeciesId} x={0} y={-size * 0.08} size={size * 0.8} color={token.color} />
               <rect x={tagX} y={tagY} width={tagWidth} height={tagHeight} rx={tagHeight / 3} fill={token.color} />
               <text
                 x={tagX + tagWidth / 2}

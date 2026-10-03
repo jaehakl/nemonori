@@ -37,7 +37,7 @@ export function useExperience() {
     sound.setPreferences(preferencesRef.current);
     audio.current = sound;
     const timeline = createPresentationPlayer(setFrame, (event) => {
-      sound.playCue(event.kind, event.attack?.moveType);
+      sound.playCue(event.kind, event.attack?.moveType, event.capture?.success);
     });
     player.current = timeline;
     const orientation = window.matchMedia("(orientation: portrait)");

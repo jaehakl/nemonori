@@ -4,6 +4,65 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { loadGameSource } from "./game-test-helpers.mjs";
 
+test("party cards sort by level without mutating storage and identify the highest-level leader", () => {
+  const { PartySummary } = loadGameSource("app/games/_components/pokemon-marble/ActionPanel.tsx");
+  const { createGame } = loadGameSource("app/games/_components/pokemon-marble/engine.ts");
+  const game = createGame([1], ["혼자"], 1);
+  const low = game.players[0].party[0];
+  game.players[0].party.push(
+    { ...low, id: "high", speciesId: 4, level: 30, xp: 600, hp: 0 },
+    { ...low, id: "tied", speciesId: 7, level: 30, xp: 300 },
+  );
+  const before = structuredClone(game.players[0].party);
+  const html = renderToStaticMarkup(React.createElement(PartySummary, { state: game }));
+  assert.ok(html.indexOf("파이리,") < html.indexOf("꼬부기,"));
+  assert.ok(html.indexOf("꼬부기,") < html.indexOf("이상해씨,"));
+  assert.equal((html.match(/class="leaderBadge"/g) ?? []).length, 1);
+  assert.match(html, /혼자 모험 · 도로 0\/27/);
+  assert.match(html, /aria-valuetext="60%"/);
+  assert.deepEqual(game.players[0].party, before);
+});
+
+test("maximum-level XP meter communicates completion", () => {
+  const { ExperienceBar } = loadGameSource("app/games/_components/pokemon-marble/PokemonSprite.tsx");
+  const html = renderToStaticMarkup(React.createElement(ExperienceBar, { level: 100, xp: 0 }));
+  assert.match(html, /aria-valuetext="최고 레벨"/);
+  assert.match(html, /width:100%/);
+  assert.match(html, />MAX<\/small>/);
+  const nearlyLeveled = renderToStaticMarkup(React.createElement(ExperienceBar, { level: 50, xp: 999 }));
+  assert.match(nearlyLeveled, /aria-valuetext="99%"/);
+  assert.doesNotMatch(nearlyLeveled, />100%<\/small>/);
+});
+
+test("idle turn panel identifies the player and objective beside the prominent roll action", () => {
+  const { default: ActionPanel } = loadGameSource("app/games/_components/pokemon-marble/ActionPanel.tsx");
+  const { createGame } = loadGameSource("app/games/_components/pokemon-marble/engine.ts");
+  const state = createGame([1], ["민지"], 1);
+  const html = renderToStaticMarkup(React.createElement(ActionPanel, { state, dispatch() {}, onRestart() {} }));
+  assert.match(html, /aria-label="이번 차례"/);
+  assert.match(html, /<h3>민지<\/h3>/);
+  assert.match(html, /TURN 1/);
+  assert.match(html, /도로 0\/27/);
+  assert.match(html, /class="diceCradle" aria-hidden="true"/);
+  assert.match(html, /class="primaryButton journeyButton"/);
+});
+
+test("legacy pending captures retain a playable continuation choice", () => {
+  const { default: ActionPanel } = loadGameSource("app/games/_components/pokemon-marble/ActionPanel.tsx");
+  const { createGame } = loadGameSource("app/games/_components/pokemon-marble/engine.ts");
+  const state = createGame([1], [], 1);
+  state.phase = "capture";
+  state.battle = {
+    kind: "wild", defenderOwner: null, defenderPokemonId: "wild",
+    attackerPokemonId: state.players[0].party[0].id,
+    wild: { id: "wild", speciesId: 7, level: 2, xp: 0, hp: 0 },
+    turn: "attacker", outcome: { kind: "knockout", winner: "attacker", legacyCapturePending: true }, lastAttack: null,
+  };
+  const html = renderToStaticMarkup(React.createElement(ActionPanel, { state, dispatch() {}, onRestart() {} }));
+  assert.match(html, /이전 모험에서 남겨 둔 포획/);
+  assert.match(html, />포획하기<\/button>/);
+  assert.match(html, />놓아주기<\/button>/);
+});
 const { default: Setup, filterStarters } = loadGameSource(
   "app/games/_components/pokemon-marble/Setup.tsx",
 );
@@ -23,10 +82,10 @@ const renderSetup = (props = {}) =>
     }),
   );
 
-test("setup offers 2–4 local players, accessible search filters and blocks incomplete starts", () => {
+test("setup offers 1–4 local players, accessible search filters and blocks incomplete starts", () => {
   const html = renderSetup();
   assert.match(html, /aria-label="플레이어 수"/);
-  for (const count of [2, 3, 4])
+  for (const count of [1, 2, 3, 4])
     assert.match(html, new RegExp(`>${count}인</button>`));
   assert.match(html, /aria-label="1번 트레이너 이름"/);
   assert.match(html, /aria-label="2번 트레이너 이름"/);
@@ -93,7 +152,10 @@ test("movement feedback stays present between step animations and counts remaini
   const render = (rolling, busy) => renderToStaticMarkup(React.createElement(MovementPanel, {
     state: moving, rolling, busy, onSkip: () => {},
   }));
-  assert.match(render(true, true), /주사위를 굴리고 있어요/);
+  const rolling = render(true, true);
+  assert.match(rolling, /주사위를 굴리고 있어요/);
+  assert.match(rolling, /결과를 기다려요/);
+  assert.doesNotMatch(rolling, /class="cradleDie"/);
   const betweenSteps = render(false, false);
   assert.match(betweenSteps, /aria-label="주사위와 이동"/);
   assert.match(betweenSteps, new RegExp(`앞으로 ${moving.movement.remaining}칸`));
@@ -101,16 +163,16 @@ test("movement feedback stays present between step animations and counts remaini
   assert.doesNotMatch(render(false, true), /disabled=""/);
 });
 
-test("a full party cannot capture and is directed to the Pokemon Center", () => {
+test("wild battle offers HP-based capture odds only on the player's turn with party space", () => {
   const { default: ActionPanel } = loadGameSource("app/games/_components/pokemon-marble/ActionPanel.tsx");
   const { createGame } = loadGameSource("app/games/_components/pokemon-marble/engine.ts");
   const state = createGame([1, 4], [], 12);
-  state.phase = "capture";
+  state.phase = "attack";
   state.battle = {
     kind: "wild", defenderOwner: null, defenderPokemonId: "wild",
     attackerPokemonId: state.players[0].party[0].id,
-    wild: { id: "wild", speciesId: 7, level: 2, hp: 0 },
-    turn: "attacker", winner: "attacker", lastAttack: null,
+    wild: { id: "wild", speciesId: 7, level: 2, xp: 0, hp: 1 },
+    turn: "attacker", outcome: null, lastAttack: null,
   };
   while (state.players[0].party.length < 6) {
     state.players[0].party.push({ ...state.players[0].party[0], id: `extra-${state.players[0].party.length}` });
@@ -118,12 +180,14 @@ test("a full party cannot capture and is directed to the Pokemon Center", () => 
   const render = () => renderToStaticMarkup(React.createElement(ActionPanel, {
     state, dispatch: () => {}, onRestart: () => {},
   }));
-  assert.match(render(), /파티 6칸이 모두 차서 포획할 수 없습니다/);
-  assert.match(render(), /<button[^>]*disabled=""[^>]*>포획하기<\/button>/);
-  assert.match(render(), /<button[^>]*>놓아주기<\/button>/);
+  assert.match(render(), /파티가 가득 차 포획할 수 없습니다/);
+  assert.match(render(), /<button class="captureButton" disabled=""/);
+  assert.match(render(), /파티 가득 참/);
   state.players[0].party.pop();
-  assert.doesNotMatch(render(), /<button[^>]*disabled=""[^>]*>포획하기<\/button>/);
-  assert.match(render(), /포획하면 파티에 합류/);
+  assert.doesNotMatch(render(), /<button class="captureButton" disabled=""/);
+  assert.match(render(), /포켓볼 던지기, 성공률 \d+%/);
+  state.battle.turn = "defender";
+  assert.match(render(), /<button class="captureButton" disabled=""/);
 });
 
 test("the initial setup page contains only the first 24 eligible starter cards", () => {
@@ -191,7 +255,7 @@ test("the in-game guide explains capture HP, defeat and battle priority", () => 
     React.createElement(RulesDialog, { onClose: () => {} }),
   );
   assert.match(html, /<dialog[^>]*aria-labelledby="dialog-title"/);
-  assert.match(html, /HP 0으로 합류/);
+  assert.match(html, /남은 HP 그대로/);
   assert.match(html, /파티가 6마리면 포획할 수 없습니다/);
   assert.match(html, /박스는 센터에서만 이용/);
   assert.match(html, /스타팅 포켓몬은 레벨 3/);
@@ -204,6 +268,9 @@ test("the in-game guide explains capture HP, defeat and battle priority", () => 
   assert.match(html, /40칸 탑뷰/);
   assert.doesNotMatch(html, /즉시 탈락|마지막 생존자/);
   assert.match(html, /레벨업과 진화는 HP를 회복하지 않습니다/);
+  assert.match(html, /미진화형 야생 포켓몬/);
+  assert.match(html, /AI 상대가 없습니다/);
+  assert.match(html, /파티와 도로 수비 포켓몬 모두/);
   assert.match(html, /aria-label="닫기"/);
 });
 
@@ -218,7 +285,7 @@ test("battle stage HP changes on impact and retains the finishing attack snapsho
     "app/games/_components/pokemon-marble/pokemon-data.ts",
   );
   const game = createGame([1, 4], ["민지", "준"], 15);
-  const target = { id: "wild", speciesId: 7, level: 1, hp: 0 };
+  const target = { id: "wild", speciesId: 7, level: 1, xp: 0, hp: 0 };
   game.battle = {
     kind: "wild",
     defenderOwner: null,
@@ -226,7 +293,7 @@ test("battle stage HP changes on impact and retains the finishing attack snapsho
     attackerPokemonId: game.players[0].party[0].id,
     wild: target,
     turn: "attacker",
-    winner: "attacker",
+    outcome: { kind: "knockout", winner: "attacker" },
     lastAttack: null,
   };
   const snapshot = snapshotForPresentation(game);

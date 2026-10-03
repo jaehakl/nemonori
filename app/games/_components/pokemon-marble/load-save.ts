@@ -1,5 +1,5 @@
 import { loadGameSave, type GameSaveEnvelope, type SaveResult } from "@/app/lib/save-protocol";
-import { validateSave } from "./save";
+import { parseGameSave } from "./save";
 import type { GameState } from "./types";
 
 /** Inspect the version without modifying an older save in browser storage. */
@@ -17,8 +17,9 @@ export function loadPokemonSave(): SaveResult<GameSaveEnvelope<GameState> | null
       },
     };
   }
-  if (!validateSave(data)) {
+  const parsed = parseGameSave(data);
+  if (!parsed) {
     return { ok: false, error: { code: "invalid-data", message: "세이브 데이터가 이 게임의 형식과 일치하지 않습니다." } };
   }
-  return { ok: true, value: { ...result.value, data } };
+  return { ok: true, value: { ...result.value, data: parsed } };
 }

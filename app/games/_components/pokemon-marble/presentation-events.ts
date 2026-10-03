@@ -13,13 +13,14 @@ export interface BattleView {
   attackerName: string;
   defenderName: string;
   turn: BattleSide;
+  outcome: Battle["outcome"];
 }
 
 export interface PresentationSnapshot {
-  players: Pick<
+  players: (Pick<
     Player,
     "id" | "name" | "position" | "starterSpeciesId" | "restTurnsRemaining" | "seatSide"
-  >[];
+  > & { leaderSpeciesId: number })[];
   guardians: { tile: number; ownerId: number; speciesId: number }[];
   activePlayerId: number;
   dice: [number, number] | null;
@@ -34,10 +35,14 @@ export type PresentationEventKind =
   | "send-out"
   | "attack"
   | "faint"
+  | "experience-gain"
   | "level-up"
   | "evolution"
   | "heal"
   | "capture"
+  | "capture-throw"
+  | "capture-shake"
+  | "capture-result"
   | "deploy"
   | "retrieve"
   | "rescue"
@@ -68,4 +73,6 @@ export interface PresentationEvent {
   previousSpeciesId?: number;
   side?: BattleSide;
   fromTile?: number;
+  capture?: { success: boolean; shake?: number };
+  experience?: { amount: number; previousLevel: number; previousXp: number };
 }

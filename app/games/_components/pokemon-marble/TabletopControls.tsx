@@ -11,6 +11,7 @@ type Props = {
   seatSide: SeatSide;
   mode: DisplayMode;
   board: ReactNode;
+  systemControls?: ReactNode;
   children: ReactNode;
   compact?: boolean;
 };
@@ -21,6 +22,7 @@ export default function TabletopControls({
   seatSide,
   mode,
   board,
+  systemControls,
   children,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -60,6 +62,7 @@ export default function TabletopControls({
     >
       <div className={styles.stage} style={layout.stage}>
         {board}
+        {systemControls}
       </div>
       <div
         className={styles.panelBounds}

@@ -91,7 +91,7 @@ export default function Setup({ onStart, onResume, loading, displayMode = "fixed
           </p>
           <div className={styles.featurePills}>
             <span>◈ 40칸 탑뷰 보드</span>
-            <span>2–4인 함께 플레이</span>
+            <span>1–4인 모험</span>
             <span>1,025종 도감</span>
           </div>
         </div>
@@ -113,7 +113,7 @@ export default function Setup({ onStart, onResume, loading, displayMode = "fixed
             <h3 id="trainer-heading">함께할 트레이너</h3>
           </div>
           <div className={styles.segmented} aria-label="플레이어 수">
-            {[2, 3, 4].map((value) => (
+            {[1, 2, 3, 4].map((value) => (
               <button
                 key={value}
                 aria-pressed={count === value}
@@ -134,9 +134,9 @@ export default function Setup({ onStart, onResume, loading, displayMode = "fixed
             <option value="fixed">고정 방향</option>
             <option value="auto">조작자 방향으로 자동 회전</option>
           </select>
-          <small>아이패드를 가로로 눕히고, 앉는 위치를 골라주세요.</small>
+          <small>{count === 1 ? "혼자서 포켓몬을 키우고 도로 27칸에 도전하세요." : "아이패드를 가로로 눕히고, 앉는 위치를 골라주세요."}</small>
         </label>
-        <div className={styles.trainerSlots}>
+        <div className={styles.trainerSlots} data-solo={count === 1}>
           {Array.from({ length: count }, (_, index) => (
             <div
               className={`${styles.trainerSlot} ${active === index ? styles.selectedSlot : ""}`}
@@ -314,7 +314,7 @@ export default function Setup({ onStart, onResume, loading, displayMode = "fixed
               ? "모험을 시작할 준비가 됐어요!"
               : "각 트레이너의 첫 파트너를 골라주세요."}
           </strong>
-          <p>한 화면에서 차례대로 조작합니다. 진행 상황은 자동 저장됩니다.</p>
+          <p>{count === 1 ? "AI 상대 없이 즐기는 나만의 모험." : "한 화면에서 차례대로 조작합니다."} 진행 상황은 자동 저장됩니다.</p>
         </div>
         <div className={styles.buttonRow}>
           {onResume && (

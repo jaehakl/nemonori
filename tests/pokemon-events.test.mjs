@@ -19,8 +19,8 @@ function game(count = 3, seed = 9182) {
   return createGame([1, 4, 7, 172].slice(0, count), [], seed);
 }
 
-function pokemon(state, speciesId = 128, level = 40, hp) {
-  const value = { id: `p${state.nextPokemonId++}`, speciesId, level, hp: 0 };
+function pokemon(state, speciesId = 128, level = 40, hp, xp = 0) {
+  const value = { id: `p${state.nextPokemonId++}`, speciesId, level, xp, hp: 0 };
   value.hp = hp ?? getStats(value).hp;
   return value;
 }
@@ -132,7 +132,7 @@ test("the finishing attack survives battle cleanup with detached HP snapshots", 
   initial.players[1].position = 2;
   const previous = readyForFinishingHit(enter(initial, 2));
   const result = assertTransition(previous, { type: "ATTACK", moveId: 0 });
-  assert.deepEqual(kinds(result), ["attack", "faint", "level-up", "rescue"]);
+  assert.deepEqual(kinds(result), ["attack", "faint", "experience-gain", "rescue"]);
   assert.equal(result.state.battle, null);
   assert.equal(result.state.phase, "road");
   const hit = result.events[0];
@@ -142,7 +142,9 @@ test("the finishing attack survives battle cleanup with detached HP snapshots", 
   assert.equal(hit.attack.category, "physical");
   assert.equal(hit.snapshot.battle.defender.hp, 0);
   assert.equal(hit.snapshot.battle.attacker.level, 40);
-  assert.equal(result.events[2].snapshot.battle.attacker.level, 41);
+  assert.equal(result.events[2].snapshot.battle.attacker.level, 40);
+  assert.ok(result.events[2].snapshot.battle.attacker.xp > 0);
+  assert.deepEqual(result.events[2].experience, { amount: 75, previousLevel: 40, previousXp: 0 });
   assert.equal(result.events[1].side, "defender");
   assert.equal(
     result.events[1].pokemon.maxHp,
@@ -168,7 +170,7 @@ test("one finishing attack can queue the next trainer without replacing its hist
   assert.deepEqual(kinds(first), [
     "attack",
     "faint",
-    "level-up",
+    "experience-gain",
     "rescue",
     "encounter",
   ]);
@@ -199,13 +201,14 @@ test("one finishing attack can queue the next trainer without replacing its hist
 
 test("automatic evolution follows level gain without rewriting the attack species", () => {
   const initial = game();
-  initial.players[0].party[0] = pokemon(initial, 1, 15);
+  initial.players[0].party[0] = pokemon(initial, 1, 15, undefined, 999);
   initial.players[1].position = 2;
   const previous = readyForFinishingHit(enter(initial, 2));
   const result = assertTransition(previous, { type: "ATTACK", moveId: 0 });
   assert.deepEqual(kinds(result), [
     "attack",
     "faint",
+    "experience-gain",
     "level-up",
     "evolution",
     "rescue",
@@ -223,7 +226,7 @@ test("automatic evolution follows level gain without rewriting the attack specie
 test("branch evolution emits only on selection and preserves the defender owner", () => {
   const initial = game();
   initial.players[1].position = 2;
-  initial.players[1].party[0] = pokemon(initial, 133, 19);
+  initial.players[1].party[0] = pokemon(initial, 133, 19, undefined, 999);
   initial.players[0].party.push(pokemon(initial, 128, 1));
   initial.players[0].party[0].hp = 1;
   const result = assertTransition(selectBoth(enter(initial, 2)), {
@@ -231,7 +234,7 @@ test("branch evolution emits only on selection and preserves the defender owner"
     moveId: 0,
   });
   assert.equal(result.state.phase, "evolution");
-  assert.deepEqual(kinds(result), ["attack", "faint", "level-up"]);
+  assert.deepEqual(kinds(result), ["attack", "faint", "experience-gain", "level-up"]);
   const evolved = assertTransition(result.state, {
     type: "CHOOSE_EVOLUTION",
     speciesId: 134,
@@ -249,7 +252,7 @@ test("road guardian snapshots survive removal from the board into its owner's bo
   initial.roads[2] = { ownerId: 1, pokemon: pokemon(initial, 4, 1) };
   const previous = readyForFinishingHit(enter(initial, 2));
   const result = assertTransition(previous, { type: "ATTACK", moveId: 0 });
-  assert.deepEqual(kinds(result), ["attack", "faint", "level-up", "heal"]);
+  assert.deepEqual(kinds(result), ["attack", "faint", "experience-gain", "heal"]);
   assert.equal(result.events[1].snapshot.guardians.length, 1);
   assert.equal(result.events[2].snapshot.guardians.length, 0);
   assert.equal(
@@ -270,15 +273,15 @@ test("a defending guardian gains a level and evolves before the full healing cue
   const initial = game();
   initial.players[0].party[0].hp = 1;
   initial.players[0].party.push(pokemon(initial, 128, 3));
-  initial.roads[2] = { ownerId: 1, pokemon: pokemon(initial, 1, 15, 7) };
+  initial.roads[2] = { ownerId: 1, pokemon: pokemon(initial, 1, 15, 7, 999) };
   const previous = selectBoth(enter(initial, 2));
   const result = assertTransition(previous, { type: "ATTACK", moveId: 0 });
-  assert.deepEqual(kinds(result), ["attack", "faint", "level-up", "evolution", "heal"]);
+  assert.deepEqual(kinds(result), ["attack", "faint", "experience-gain", "level-up", "evolution", "heal"]);
   assert.equal(result.events[0].snapshot.battle.defender.level, 15);
   assert.equal(result.events[2].pokemon.level, 16);
   assert.equal(result.events[2].pokemon.hp, 7);
-  assert.equal(result.events[3].pokemon.speciesId, 2);
-  assert.equal(result.events[3].pokemon.hp, 7);
+  assert.equal(result.events[4].pokemon.speciesId, 2);
+  assert.equal(result.events[4].pokemon.hp, 7);
   const heal = result.events.at(-1);
   assert.equal(heal.side, "defender");
   assert.equal(heal.playerId, 1);
@@ -293,9 +296,9 @@ test("guardian healing waits for a branch choice and never rewrites its winning 
   const initial = game();
   initial.players[0].party[0].hp = 1;
   initial.players[0].party.push(pokemon(initial, 128, 3));
-  initial.roads[2] = { ownerId: 1, pokemon: pokemon(initial, 133, 19, 5) };
+  initial.roads[2] = { ownerId: 1, pokemon: pokemon(initial, 133, 19, 5, 999) };
   const won = assertTransition(selectBoth(enter(initial, 2)), { type: "ATTACK", moveId: 0 });
-  assert.deepEqual(kinds(won), ["attack", "faint", "level-up"]);
+  assert.deepEqual(kinds(won), ["attack", "faint", "experience-gain", "level-up"]);
   assert.equal(won.state.phase, "evolution");
   assert.equal(won.state.roads[2].pokemon.hp, 5);
   assert.equal(won.events[0].snapshot.battle.attacker.hp, 0);
@@ -310,11 +313,11 @@ test("guardian healing waits for a branch choice and never rewrites its winning 
 
 test("a defeated guardian stays fainted throughout the attacker's branch evolution before box healing", () => {
   const initial = game();
-  initial.players[0].party[0] = pokemon(initial, 133, 19);
+  initial.players[0].party[0] = pokemon(initial, 133, 19, undefined, 999);
   initial.roads[2] = { ownerId: 1, pokemon: pokemon(initial, 4, 1) };
   const won = assertTransition(readyForFinishingHit(enter(initial, 2)), { type: "ATTACK", moveId: 0 });
   assert.equal(won.state.phase, "evolution");
-  assert.deepEqual(kinds(won), ["attack", "faint", "level-up"]);
+  assert.deepEqual(kinds(won), ["attack", "faint", "experience-gain", "level-up"]);
   for (const event of won.events) assert.equal(event.snapshot.battle.defender.hp, 0);
   const evolved = assertTransition(won.state, { type: "CHOOSE_EVOLUTION", speciesId: 134 });
   assert.deepEqual(kinds(evolved), ["evolution", "heal"]);
@@ -326,7 +329,7 @@ test("a defeated guardian stays fainted throughout the attacker's branch evoluti
   assert.equal(won.events.at(-1).snapshot.battle.defender.hp, 0);
 });
 
-test("a lap grows only the party once, queues all branch choices and resumes the remaining movement", () => {
+test("a lap awards party and guardians once, queues all branch choices and resumes remaining movement", () => {
   const initial = game();
   initial.players[1].position = 10;
   initial.players[2].position = 20;
@@ -341,15 +344,15 @@ test("a lap grows only the party once, queues all branch choices and resumes the
   initial.roads[2] = { ownerId: 0, pokemon: pokemon(initial, 4, 12) };
   const partyIds = initial.players[0].party.map((entry) => entry.id);
   const crossed = assertTransition(beforeEntry(initial, 0, 3), { type: "STEP" });
-  assert.deepEqual(kinds(crossed), ["move", "lap", "level-up", "level-up", "level-up", "level-up", "evolution"]);
+  assert.deepEqual(kinds(crossed), ["move", "lap", ...Array.from({ length: 5 }, () => ["experience-gain", "level-up"]).flat(), "evolution"]);
   assert.equal(crossed.events[0].fromTile, 39);
   assert.equal(crossed.events[1].tile, 0);
-  assert.deepEqual(crossed.events.filter((event) => event.kind === "level-up").map((event) => event.pokemon.id), [partyIds[0], partyIds[1], partyIds[3], partyIds[4]]);
+  assert.deepEqual(crossed.events.filter((event) => event.kind === "level-up").map((event) => event.pokemon.id), [partyIds[0], partyIds[1], partyIds[3], partyIds[4], initial.roads[2].pokemon.id]);
   assert.ok(crossed.events.every((event) => event.snapshot.battle === null), "lap rewards never replace the 2D board with a battle");
-  assert.deepEqual(crossed.state.players[0].party.map((entry) => entry.level), [16, 20, 100, 20, 6]);
+  assert.deepEqual(crossed.state.players[0].party.map((entry) => entry.level), [17, 20, 100, 20, 9]);
   assert.equal(crossed.state.players[0].party[4].hp, 0);
   assert.equal(crossed.state.players[0].box[0].level, 12);
-  assert.equal(crossed.state.roads[2].pokemon.level, 12);
+  assert.equal(crossed.state.roads[2].pokemon.level, 14);
   assert.equal(crossed.state.evolution.pokemonId, partyIds[1]);
   assert.equal(crossed.state.evolution.ownerId, 0);
   assert.equal(crossed.state.movement.remaining, 2);
@@ -366,7 +369,7 @@ test("a lap grows only the party once, queues all branch choices and resumes the
   assert.equal(lastChoice.state.lapGrowth, null);
   assert.equal(lastChoice.state.battle, null);
   assert.equal(lastChoice.state.movement.remaining, 2);
-  assert.deepEqual(lastChoice.state.players[0].party.map((entry) => entry.level), [16, 20, 100, 20, 6]);
+  assert.deepEqual(lastChoice.state.players[0].party.map((entry) => entry.level), [17, 20, 100, 20, 9]);
   const continued = assertTransition(lastChoice.state, { type: "STEP" });
   assert.deepEqual(kinds(continued), ["move"]);
   assert.equal(continued.state.players[0].position, 1);
@@ -379,8 +382,8 @@ test("landing on the start center shows lap growth before healing, while a rescu
   initial.players[2].position = 20;
   initial.players[0].party[0].hp = 2;
   const landed = assertTransition(beforeEntry(initial, 0), { type: "STEP" });
-  assert.deepEqual(kinds(landed), ["move", "lap", "level-up", "heal"]);
-  assert.equal(landed.events[2].pokemon.level, 4);
+  assert.deepEqual(kinds(landed), ["move", "lap", "experience-gain", "level-up", "heal"]);
+  assert.equal(landed.events[2].pokemon.level, 7);
   assert.equal(landed.events[2].pokemon.hp, 2);
   assert.equal(landed.state.players[0].party[0].hp, getStats(landed.state.players[0].party[0]).hp);
   assert.equal(landed.state.phase, "center");
@@ -416,13 +419,11 @@ test("center box transfers and swaps fully heal without redundant cues or automa
   const full = game();
   full.players[0].party = Array.from({ length: 6 }, () => pokemon(full));
   const ready = readyForFinishingHit(enter(full, 1));
-  const defeated = assertTransition(ready, { type: "ATTACK", moveId: 0 });
-  const blocked = assertTransition(defeated.state, { type: "CAPTURE", capture: true });
-  assert.equal(blocked.state, defeated.state);
+  const blocked = assertTransition(ready, { type: "THROW_BALL" });
+  assert.equal(blocked.state, ready);
   assert.deepEqual(blocked.events, []);
   assert.equal(blocked.state.players[0].box.length, 0);
-  const declined = assertTransition(blocked.state, { type: "CAPTURE", capture: false });
-  assert.equal(declined.state.phase, "turn-end");
+  assert.equal(blocked.state.phase, "attack");
 });
 
 test("center healing follows movement or a finished encounter, without healing guardians", () => {
@@ -453,23 +454,78 @@ test("center healing follows movement or a finished encounter, without healing g
   assert.equal(result.events.at(-1).snapshot.battle, null);
 });
 
-test("successful capture carries the fainted wild Pokemon while declining emits no success", () => {
+test("successful capture presents throw, three shakes and green result before awarding XP", () => {
   const initial = game();
   initial.players[0].party[0] = pokemon(initial);
   const previous = readyForFinishingHit(enter(initial, 1));
-  const defeated = assertTransition(previous, { type: "ATTACK", moveId: 0 });
-  assert.equal(defeated.state.phase, "capture");
-  const wildId = defeated.state.battle.wild.id;
-  const accepted = assertTransition(defeated.state, {
-    type: "CAPTURE",
-    capture: true,
-  });
+  previous.rng = 1;
+  const wildId = previous.battle.wild.id;
+  const accepted = assertTransition(previous, { type: "THROW_BALL" });
+  assert.deepEqual(kinds(accepted), ["capture-throw", "capture-shake", "capture-shake", "capture-shake", "capture-result", "experience-gain"]);
+  assert.equal(accepted.events[0].pokemon.id, wildId);
+  assert.equal(accepted.events[0].pokemon.hp, 1);
+  assert.equal(accepted.events[0].snapshot.battle.defender.id, wildId);
+  assert.deepEqual(accepted.events.slice(1, 4).map((event) => event.capture.shake), [1, 2, 3]);
+  assert.equal(accepted.events[4].capture.success, true);
+  assert.deepEqual(accepted.events[4].snapshot.battle.outcome, { kind: "capture" });
+  assert.equal(accepted.events[0].snapshot.battle.outcome, null);
+  assert.equal(accepted.state.players[0].party.find((entry) => entry.id === wildId).hp, 1);
+  assert.equal(accepted.state.battle, null);
+  assert.equal(accepted.state.phase, "turn-end");
+  assert.ok(validateSave(accepted.state));
+  assert.deepEqual(assertTransition(accepted.state, { type: "THROW_BALL" }).events, []);
+});
+
+test("failed capture retains the living wild snapshot and schedules its next turn without XP", () => {
+  const initial = game();
+  initial.players[0].party[0] = pokemon(initial);
+  const previous = readyForFinishingHit(enter(initial, 1));
+  previous.rng = 15000; // Next seeded roll is above even the lowest-HP capture chance.
+  const failed = assertTransition(previous, { type: "THROW_BALL" });
+  assert.equal(failed.events[4].capture.success, false);
+  assert.deepEqual(kinds(failed), ["capture-throw", "capture-shake", "capture-shake", "capture-shake", "capture-result"]);
+  assert.equal(failed.events[4].snapshot.battle.defender.hp, 1);
+  assert.equal(failed.events[4].snapshot.battle.outcome, null);
+  assert.equal(failed.events[4].snapshot.battle.turn, "defender");
+  assert.equal(failed.state.players[0].party.length, 1);
+  assert.ok(validateSave(failed.state));
+});
+
+test("capture XP can pause for a branch choice without granting the wild Pokemon twice", () => {
+  const initial = game();
+  initial.players[0].party[0] = pokemon(initial, 133, 19, undefined, 999);
+  const previous = readyForFinishingHit(enter(initial, 1));
+  previous.rng = 1;
+  const accepted = assertTransition(previous, { type: "THROW_BALL" });
+  const wildId = previous.battle.wild.id;
+  assert.equal(accepted.state.phase, "evolution");
+  assert.deepEqual(kinds(accepted).slice(-2), ["experience-gain", "level-up"]);
+  assert.equal(accepted.state.players[0].party.length, 1);
+  assert.equal(accepted.state.battle.wild.id, wildId);
+  assert.ok(validateSave(accepted.state));
+  const evolved = assertTransition(accepted.state, { type: "CHOOSE_EVOLUTION", speciesId: 134 });
+  assert.deepEqual(kinds(evolved), ["evolution"]);
+  assert.equal(evolved.events[0].snapshot.battle.outcome.kind, "capture");
+  assert.equal(evolved.state.players[0].party.filter((entry) => entry.id === wildId).length, 1);
+  assert.equal(evolved.state.battle, null);
+  assert.ok(validateSave(evolved.state));
+});
+
+test("legacy pending capture retains its old zero-HP acceptance without another reward", () => {
+  const initial = game();
+  initial.players[0].party[0] = pokemon(initial);
+  const previous = readyForFinishingHit(enter(initial, 1));
+  previous.phase = "capture";
+  previous.battle.wild.hp = 0;
+  previous.battle.outcome = { kind: "knockout", winner: "attacker", legacyCapturePending: true };
+  previous.battle.lastAttack = { side: "attacker", moveId: 0, damage: 1, effectiveness: 1 };
+  const wildId = previous.battle.wild.id;
+  const accepted = assertTransition(previous, { type: "CAPTURE", capture: true });
   assert.deepEqual(kinds(accepted), ["capture"]);
   assert.equal(accepted.events[0].pokemon.id, wildId);
   assert.equal(accepted.events[0].pokemon.hp, 0);
-  assert.equal(accepted.events[0].snapshot.battle.defender.id, wildId);
   assert.equal(accepted.state.battle, null);
-  const declined = assertTransition(defeated.state, {
+  const declined = assertTransition(previous, {
     type: "CAPTURE",
     capture: false,
   });
@@ -542,12 +598,12 @@ test("rescue waits for the defender's chosen evolution and keeps the original at
   const initial = game(2);
   initial.players[0].party[0].hp = 1;
   initial.players[1].position = 2;
-  initial.players[1].party[0] = pokemon(initial, 133, 19);
+  initial.players[1].party[0] = pokemon(initial, 133, 19, undefined, 999);
   const previous = selectBoth(enter(initial, 2));
   const won = assertTransition(previous, { type: "ATTACK", moveId: 0 });
   assert.equal(won.state.phase, "evolution");
   assert.equal(won.state.winner, null);
-  assert.deepEqual(kinds(won), ["attack", "faint", "level-up"]);
+  assert.deepEqual(kinds(won), ["attack", "faint", "experience-gain", "level-up"]);
   assert.equal(won.events[0].attack.side, "defender");
   assert.equal(won.events[1].side, "attacker");
   assert.ok(validateSave(won.state));

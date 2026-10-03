@@ -406,6 +406,10 @@ test("all presentation cues have sound, the 18 attacks differ, and polyphony sta
     "faint",
     "heal",
     "capture",
+    "capture-throw",
+    "capture-shake",
+    "capture-result",
+    "experience-gain",
     "lap",
     "level-up",
     "evolution",
@@ -434,6 +438,31 @@ test("all presentation cues have sound, the 18 attacks differ, and polyphony sta
   assert.ok(
     [...context.oscillators, ...context.bufferSources].filter((node) => !node.disconnected).length <= 32,
   );
+});
+
+test("capture shake, successful latch and failed escape have distinct cues with normal audio controls", async (t) => {
+  const { audio, contexts } = audioHarness(t);
+  audio.setPreferences({ ...DEFAULT_AUDIO_PREFERENCES, musicVolume: 0 });
+  await audio.unlock();
+  const context = contexts[0];
+  function cue(kind, success) {
+    const before = context.oscillators.length;
+    audio.playCue(kind, undefined, success);
+    return context.oscillators.slice(before);
+  }
+  const shake = cue("capture-shake");
+  assert.equal(shake.length, 2);
+  assert.ok(shake[1].startedAt > shake[0].startedAt);
+  const success = cue("capture-result", true);
+  const failure = cue("capture-result", false);
+  assert.ok(success.length > failure.length);
+  assert.notDeepEqual(success.map((note) => note.frequency.changes), failure.map((note) => note.frequency.changes));
+  audio.setPaused(true);
+  assert.ok([...shake, ...success, ...failure].every((note) => note.stopped));
+  assert.deepEqual(cue("capture-result", true), []);
+  audio.setPreferences({ ...DEFAULT_AUDIO_PREFERENCES, muted: true });
+  audio.setPaused(false);
+  assert.deepEqual(cue("capture-shake"), []);
 });
 
 test("disposal closes and disconnects every audio resource and prevents late restarts", async (t) => {

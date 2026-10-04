@@ -344,10 +344,20 @@ test("a lap awards party and guardians once, queues all branch choices and resum
   initial.roads[2] = { ownerId: 0, pokemon: pokemon(initial, 4, 12) };
   const partyIds = initial.players[0].party.map((entry) => entry.id);
   const crossed = assertTransition(beforeEntry(initial, 0, 3), { type: "STEP" });
-  assert.deepEqual(kinds(crossed), ["move", "lap", ...Array.from({ length: 5 }, () => ["experience-gain", "level-up"]).flat(), "evolution"]);
+  assert.deepEqual(kinds(crossed), ["move", "lap", "evolution"]);
   assert.equal(crossed.events[0].fromTile, 39);
   assert.equal(crossed.events[1].tile, 0);
-  assert.deepEqual(crossed.events.filter((event) => event.kind === "level-up").map((event) => event.pokemon.id), [partyIds[0], partyIds[1], partyIds[3], partyIds[4], initial.roads[2].pokemon.id]);
+  const growth = crossed.events[1].growth;
+  assert.deepEqual(growth.map((entry) => entry.before.id), [...partyIds, initial.roads[2].pokemon.id]);
+  assert.deepEqual(growth.filter((entry) => entry.after.level > entry.before.level).map((entry) => entry.after.id), [partyIds[0], partyIds[1], partyIds[3], partyIds[4], initial.roads[2].pokemon.id]);
+  assert.deepEqual(growth.map((entry) => entry.location), [...partyIds.map(() => ({ kind: "party" })), { kind: "road", tile: 2 }]);
+  assert.equal(growth[0].before.level, 15);
+  assert.equal(growth[0].after.level, 17);
+  assert.equal(growth[0].after.speciesId, 1, "the reward card retains its pre-evolution appearance");
+  assert.equal(crossed.state.players[0].party[0].speciesId, 2);
+  assert.equal(growth[2].amount, 0, "MAX level still has a card");
+  assert.equal(growth[4].after.hp, 0, "fainted party members also grow");
+  assert.notEqual(growth[0].after, crossed.state.players[0].party[0]);
   assert.ok(crossed.events.every((event) => event.snapshot.battle === null), "lap rewards never replace the 2D board with a battle");
   assert.deepEqual(crossed.state.players[0].party.map((entry) => entry.level), [17, 20, 100, 20, 9]);
   assert.equal(crossed.state.players[0].party[4].hp, 0);
@@ -358,7 +368,9 @@ test("a lap awards party and guardians once, queues all branch choices and resum
   assert.equal(crossed.state.movement.remaining, 2);
   assert.ok(validateSave(crossed.state));
 
-  const firstChoice = assertTransition(crossed.state, { type: "CHOOSE_EVOLUTION", speciesId: 134 });
+  const saved = JSON.parse(JSON.stringify(crossed.state));
+  const firstChoice = assertTransition(saved, { type: "CHOOSE_EVOLUTION", speciesId: 134 });
+  assert.deepEqual(firstChoice, transitionWithEvents(crossed.state, { type: "CHOOSE_EVOLUTION", speciesId: 134 }));
   assert.deepEqual(kinds(firstChoice), ["evolution"]);
   assert.equal(firstChoice.state.evolution.pokemonId, partyIds[3]);
   assert.equal(firstChoice.state.phase, "evolution");
@@ -382,9 +394,9 @@ test("landing on the start center shows lap growth before healing, while a rescu
   initial.players[2].position = 20;
   initial.players[0].party[0].hp = 2;
   const landed = assertTransition(beforeEntry(initial, 0), { type: "STEP" });
-  assert.deepEqual(kinds(landed), ["move", "lap", "experience-gain", "level-up", "heal"]);
-  assert.equal(landed.events[2].pokemon.level, 7);
-  assert.equal(landed.events[2].pokemon.hp, 2);
+  assert.deepEqual(kinds(landed), ["move", "lap", "heal"]);
+  assert.equal(landed.events[1].growth[0].after.level, 7);
+  assert.equal(landed.events[1].growth[0].after.hp, 2);
   assert.equal(landed.state.players[0].party[0].hp, getStats(landed.state.players[0].party[0]).hp);
   assert.equal(landed.state.phase, "center");
 
@@ -474,6 +486,18 @@ test("successful capture presents throw, three shakes and green result before aw
   assert.equal(accepted.state.phase, "turn-end");
   assert.ok(validateSave(accepted.state));
   assert.deepEqual(assertTransition(accepted.state, { type: "THROW_BALL" }).events, []);
+});
+
+test("lap evolution preserves each intermediate species before center healing", () => {
+  const initial = game(1);
+  initial.players[0].party = [pokemon(initial, 1, 32, 1), pokemon(initial, 4, 36, 1)];
+  const result = assertTransition(beforeEntry(initial, 0), { type: "STEP" });
+  assert.deepEqual(kinds(result), ["move", "lap", "evolution", "evolution", "evolution", "evolution", "heal"]);
+  assert.deepEqual(result.events.filter((event) => event.kind === "evolution").map((event) => [event.previousSpeciesId, event.pokemon.speciesId]), [[1, 2], [2, 3], [4, 5], [5, 6]]);
+  assert.deepEqual(result.events[1].growth.map((entry) => entry.after.speciesId), [1, 4]);
+  assert.equal(result.events[2].pokemon.speciesId, 2, "later evolution never rewrites an earlier step");
+  assert.equal(result.state.phase, "center");
+  assert.ok(validateSave(result.state));
 });
 
 test("failed capture retains the living wild snapshot and schedules its next turn without XP", () => {

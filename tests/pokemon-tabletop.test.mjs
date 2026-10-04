@@ -124,6 +124,23 @@ test("movement does not change the tabletop structure or resize its control pane
   assert.equal(render(true), render(false));
 });
 
+test("full-area celebrations face their owner and make the underlying board and panel inert", () => {
+  for (const mode of ["auto", "fixed"]) {
+    for (const seatSide of seats) {
+      const html = renderToStaticMarkup(React.createElement(TabletopControls, {
+        battle: true, mode, seatSide: "bottom",
+        board: React.createElement("button", null, "보드"),
+        overlay: { seatSide, render: () => React.createElement("section", null, "진화 연출") },
+      }, React.createElement("button", null, "배틀 행동")));
+      const rotation = mode === "auto" ? SEAT_ROTATION[seatSide] : 0;
+      assert.match(html, /data-overlay="true"/);
+      assert.equal((html.match(/inert="" aria-hidden="true"/g) ?? []).length, 2);
+      assert.ok(html.match(/class="orientedOverlay"[^>]+/)?.[0].includes(`rotate(${rotation}deg)`));
+      assert.match(html, /<section>진화 연출<\/section>/);
+    }
+  }
+});
+
 test("rotated battle contents fill the reserved stage at every seat and tablet size", () => {
   for (const [width, height] of [[1366, 928], [1024, 672], [844, 560], [768, 560], [560, 768]]) {
     for (const seat of seats) {

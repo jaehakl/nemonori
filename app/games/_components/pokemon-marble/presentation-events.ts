@@ -5,6 +5,13 @@ export interface PokemonView extends Pokemon {
   maxHp: number;
 }
 
+export interface LapGrowthView {
+  before: PokemonView;
+  after: PokemonView;
+  amount: number;
+  location: { kind: "party" } | { kind: "road"; tile: number };
+}
+
 export interface BattleView {
   kind: Battle["kind"];
   phase: GamePhase;
@@ -76,4 +83,5 @@ export interface PresentationEvent {
   fromTile?: number;
   capture?: { success: boolean; shake?: number };
   experience?: { amount: number; previousLevel: number; previousXp: number };
+  growth?: LapGrowthView[];
 }

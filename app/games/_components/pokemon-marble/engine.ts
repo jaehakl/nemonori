@@ -18,6 +18,7 @@ import type {
   SeatSide,
 } from "./types";
 import type {
+  LapGrowthView,
   PokemonView,
   PresentationEvent,
   PresentationSnapshot,
@@ -504,6 +505,7 @@ function grantExperience(
       pokemon: pokemonView(pokemon),
       message: `${byId[pokemon.speciesId].name}, 레벨 ${pokemon.level}!`,
     });
+  return amount;
 }
 
 function awardVictory(
@@ -535,14 +537,20 @@ function awardLapGrowth(state: GameState, events?: EventSink) {
   const player = state.players[state.activePlayer];
   const message = `${player.name}, 한 바퀴 완주! 파티와 수비 포켓몬이 경험치를 얻습니다.`;
   addLog(state, message);
-  events?.(state, { kind: "lap", message });
   const participants = [
-    ...player.party,
-    ...state.roads.flatMap((guardian) => guardian?.ownerId === player.id ? [guardian.pokemon] : []),
+    ...player.party.map((pokemon) => ({ pokemon, location: { kind: "party" as const } })),
+    ...state.roads.flatMap((guardian, tile) => guardian?.ownerId === player.id
+      ? [{ pokemon: guardian.pokemon, location: { kind: "road" as const, tile } }]
+      : []),
   ];
-  state.lapGrowth = { remainingPokemonIds: participants.map((pokemon) => pokemon.id) };
-  for (const pokemon of participants)
-    grantExperience(state, pokemon, player.id, pokemon.level, events);
+  state.lapGrowth = { remainingPokemonIds: participants.map(({ pokemon }) => pokemon.id) };
+  const growth: LapGrowthView[] = participants.map(({ pokemon, location }) => {
+    const before = pokemonView(pokemon);
+    // Apply every reward once; a single event presents them together before evolution.
+    const amount = grantExperience(state, pokemon, player.id, pokemon.level);
+    return { before, after: pokemonView(pokemon), amount, location };
+  });
+  events?.(state, { kind: "lap", message, growth });
   continueLapGrowth(state, events);
 }
 

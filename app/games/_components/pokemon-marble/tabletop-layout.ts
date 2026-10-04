@@ -19,6 +19,16 @@ const BATTLE_MODAL_DEPTH = 260;
 const BATTLE_MODAL_WIDTH = 620;
 const MODAL_MARGIN = 16;
 
+/** Full-area celebrations face their owner independently of the frozen battle stage. */
+export function getOverlayLayout(width: number, height: number, seat: SeatSide) {
+  const sideways = seat === "left" || seat === "right";
+  return {
+    rotation: SEAT_ROTATION[seat],
+    width: sideways ? height : width,
+    height: sideways ? width : height,
+  };
+}
+
 /** Keep the normal board fixed; fit the battle stage and controls to the same seat. */
 export function getTabletopLayout(
   width: number,

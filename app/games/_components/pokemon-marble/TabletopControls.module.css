@@ -27,11 +27,24 @@
 }
 
 .orientedStage,
-.orientedPanel {
+.orientedPanel,
+.orientedOverlay {
   position: absolute;
   left: 50%;
   top: 50%;
   transform-origin: center;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  overflow: hidden;
+  background: #071d19b8;
+}
+
+.tabletop[data-overlay="true"] .panelBounds {
+  visibility: hidden;
 }
 
 .orientedPanel {

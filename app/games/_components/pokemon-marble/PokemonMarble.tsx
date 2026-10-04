@@ -22,6 +22,7 @@ import { useExperience } from "./use-experience";
 import { getAudioScene } from "./music-scene";
 import { useAutomaticAction } from "./use-automatic-action";
 import TabletopControls from "./TabletopControls";
+import GrowthPresentation, { hasGrowthPresentation } from "./GrowthPresentation";
 import FullscreenToggle from "./FullscreenToggle";
 import SystemIcon from "./SystemIcon";
 import systemStyles from "./SystemControls.module.css";
@@ -69,6 +70,8 @@ export default function PokemonMarble() {
   const presentation = experience.frame.event
     ? { event: experience.frame.event, progress: experience.frame.progress }
     : null;
+  const growthEvent = hasGrowthPresentation(experience.frame.event) ? experience.frame.event : null;
+  const growthOwner = growthEvent?.snapshot.players.find((player) => player.id === growthEvent.playerId);
   // A committed state can already belong to the next actor while its animations
   // are still playing. Keep the visible controls facing the previous actor.
   const nextControlLayout = resolveControlLayout(game, displayPreferences.mode, controlLayout, experience.busy);
@@ -217,7 +220,7 @@ export default function PokemonMarble() {
         }}
       >
         <div className={styles.gameContent} inert={experience.portrait}>
-          {!battleVisible && systemControls}
+          {!battleVisible && !growthEvent && systemControls}
           {saveError && (
             <div className={styles.notice} role="alert">
               <span>
@@ -266,6 +269,11 @@ export default function PokemonMarble() {
                 seatSide={controlLayout.seatSide}
                 mode={controlLayout.mode}
                 systemControls={battleVisible ? systemControls : undefined}
+                overlay={growthEvent ? {
+                  seatSide: growthOwner?.seatSide ?? controlLayout.seatSide,
+                  render: (size) => <GrowthPresentation event={growthEvent} progress={experience.frame.progress}
+                    reducedMotion={experience.reducedMotion} {...size} />,
+                } : undefined}
                 board={
                   <GameBoard
                     tabletop

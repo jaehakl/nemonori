@@ -1,0 +1,54 @@
+.scene {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 24px;
+  color: #fff3ce;
+  background: radial-gradient(ellipse at 50% 45%, #275640b8, #081f19ed 80%);
+  box-sizing: border-box;
+}
+.heading {
+  flex: 0 0 76px;
+  text-align: center;
+}
+.eyebrow {
+  color: #e2be6d;
+  font-size: 11px;
+  letter-spacing: 3px;
+  font-weight: 800;
+}
+.heading h2 {
+  margin: 6px 0;
+  font-size: clamp(20px, 3vw, 30px);
+  line-height: 1.2;
+  color: #fff3ce;
+}
+.heading p {
+  margin: 0;
+  font-size: 12px;
+  color: #ddd7b4;
+}
+.rewardGrid,
+.evolutionArt {
+  display: block;
+  flex: 1;
+  width: 100%;
+  height: 0;
+  min-height: 0;
+  overflow: visible;
+}
+.evolution {
+  background: radial-gradient(ellipse at 50% 48%, #34644fe8, #071d18fa 80%);
+}
+.ownerDot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1px solid #fff5cf;
+  border-radius: 50%;
+  margin-right: 7px;
+}

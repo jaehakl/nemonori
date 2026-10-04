@@ -65,6 +65,40 @@ test("dice settles before movement and attack impact sounds exactly once", () =>
   assert.equal(h.scheduled.size, 0);
 });
 
+test("one lap cue and 1.2s reward precede sequential 3s evolutions and the next movement", () => {
+  for (const count of [1, 33]) {
+    const h = harness();
+    h.player.enqueue([
+      { ...event("lap"), growth: Array.from({ length: count }, () => ({})) },
+      event("evolution", 1), event("evolution", 2), event("move", 3),
+    ]);
+    h.advance(1000);
+    assert.equal(h.frames.at(-1).event.kind, "lap");
+    assert.equal(h.frames.at(-1).progress, 5 / 6);
+    h.player.setPaused(true);
+    h.advance(5000);
+    assert.equal(h.frames.at(-1).progress, 5 / 6);
+    assert.deepEqual(h.cues, ["lap"]);
+    h.player.setPaused(false);
+    h.advance(200);
+    assert.equal(h.frames.at(-1).event.sequence, 1);
+    h.advance(1500);
+    h.player.setPaused(true);
+    h.advance(5000);
+    assert.equal(h.frames.at(-1).progress, 0.5);
+    h.player.setPaused(false);
+    h.advance(1500);
+    assert.equal(h.frames.at(-1).event.sequence, 2);
+    h.advance(2950);
+    assert.equal(h.frames.at(-1).event.kind, "evolution");
+    h.advance(50);
+    assert.equal(h.frames.at(-1).event.kind, "move");
+    h.advance(300);
+    assert.equal(h.player.busy, false);
+    assert.deepEqual(h.cues, ["lap", "evolution", "evolution", "move"]);
+  }
+});
+
 test("pause preserves elapsed time and does not replay sounds on resume", () => {
   const h = harness();
   h.player.enqueue([event("attack")]);

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { DisplayMode } from "./display-preferences";
-import { getTabletopLayout } from "./tabletop-layout";
+import { getOverlayLayout, getTabletopLayout } from "./tabletop-layout";
 import type { SeatSide } from "./types";
 import styles from "./TabletopControls.module.css";
 
@@ -12,6 +12,10 @@ type Props = {
   mode: DisplayMode;
   board: ReactNode;
   systemControls?: ReactNode;
+  overlay?: {
+    seatSide: SeatSide;
+    render: (size: { width: number; height: number }) => ReactNode;
+  };
   children: ReactNode;
   compact?: boolean;
 };
@@ -23,12 +27,15 @@ export default function TabletopControls({
   mode,
   board,
   systemControls,
+  overlay,
   children,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const seat = mode === "fixed" ? "bottom" : seatSide;
   const layout = getTabletopLayout(size.width, size.height, battle, seat);
+  const overlayLayout = getOverlayLayout(size.width, size.height,
+    mode === "fixed" ? "bottom" : overlay?.seatSide ?? seat);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -58,9 +65,10 @@ export default function TabletopControls({
       data-mode={mode}
       data-seat={seat}
       data-battle={battle}
+      data-overlay={Boolean(overlay)}
       data-ready={size.width > 0 && size.height > 0}
     >
-      <div className={styles.stage} style={layout.stage}>
+      <div className={styles.stage} style={layout.stage} inert={Boolean(overlay)} aria-hidden={overlay ? true : undefined}>
         <div
           className={styles.orientedStage}
           style={{
@@ -76,6 +84,8 @@ export default function TabletopControls({
       <div
         className={styles.panelBounds}
         style={layout.panel}
+        inert={Boolean(overlay)}
+        aria-hidden={overlay ? true : undefined}
         role={battle ? "dialog" : undefined}
         aria-modal={battle ? false : undefined}
         aria-label={battle ? "배틀 행동" : undefined}
@@ -91,6 +101,15 @@ export default function TabletopControls({
           <div className={styles.panelContent}>{children}</div>
         </div>
       </div>
+      {overlay && (
+        <div className={styles.overlay}>
+          <div className={styles.orientedOverlay}
+            style={{ width: overlayLayout.width, height: overlayLayout.height,
+              transform: `translate(-50%, -50%) rotate(${overlayLayout.rotation}deg)` }}>
+            {overlay.render(overlayLayout)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import React from "react";
 import { loadGameSource } from "./game-test-helpers.mjs";
 
 const path = "app/games/_components/pokemon-marble/";
-const { createGame, transition } = loadGameSource(`${path}engine.ts`);
+const { createGame, transition, snapshotForPresentation } = loadGameSource(`${path}engine.ts`);
 const Setup = () => null;
 const ActionPanel = () => null;
 const PartySummary = () => null;
@@ -163,4 +163,55 @@ test("attack presentation keeps its initiating seat, then faces the next attacke
   ui.experience.busy = false;
   ui.experience.frame.event = null;
   assert.equal(findElement(ui.render(), TabletopControls).props.seatSide, "bottom");
+});
+
+test("reward and evolution overlays follow their owner and block input until the queue finishes", (t) => {
+  const state = endedTurn();
+  const ui = controls(t, state);
+  const dispatch = findElement(ui.render(), ActionPanel).props.dispatch;
+  const pokemon = { ...state.players[1].party[0], maxHp: 30 };
+  for (const kind of ["lap", "evolution"]) {
+    const event = {
+      kind, playerId: 1, revision: state.revision, sequence: 0,
+      snapshot: snapshotForPresentation(state), pokemon,
+      previousSpeciesId: 4,
+      growth: [{ before: pokemon, after: pokemon, amount: 0, location: { kind: "party" } }],
+    };
+    ui.experience.busy = true;
+    ui.experience.frame = { event, progress: 0.5, session: 1 };
+    const tabletop = findElement(ui.render(), TabletopControls);
+    assert.equal(tabletop.props.seatSide, "bottom", "the initiating actor is still frozen");
+    assert.equal(tabletop.props.overlay.seatSide, "left", "the celebration belongs to the other player");
+    const presentation = tabletop.props.overlay.render({ width: 672, height: 1024 });
+    assert.equal(presentation.props.event, event);
+    assert.equal(presentation.props.progress, 0.5);
+    assert.equal(presentation.props.width, 672);
+    dispatch({ type: "END_TURN_AND_ROLL" });
+    findElement(ui.render(), PartySummary).props.dispatch({ type: "END_TURN_AND_ROLL" });
+    assert.equal(ui.saves.length, 0);
+  }
+  ui.experience.busy = false;
+  ui.experience.frame.event = null;
+  assert.equal(findElement(ui.render(), TabletopControls).props.overlay, undefined);
+  dispatch({ type: "END_TURN_AND_ROLL" });
+  assert.equal(ui.saves.length, 1);
+});
+
+test("resuming a saved evolution choice does not enqueue old rewards or animations", (t) => {
+  const state = createGame([133], [], 9182);
+  state.players[0].party[0].level = 19;
+  state.players[0].position = 39;
+  state.phase = "moving";
+  state.dice = [1, 2];
+  state.movement = { remaining: 2, encounters: [] };
+  const saved = JSON.parse(JSON.stringify(transition(state, { type: "STEP" })));
+  assert.equal(saved.phase, "evolution");
+  const ui = controls(t, saved);
+  assert.equal(ui.batches.length, 0);
+  assert.equal(ui.saves.length, 0);
+  const choice = findElement(ui.render(), ActionPanel);
+  assert.deepEqual(choice.props.state.evolution, saved.evolution);
+  choice.props.dispatch({ type: "CHOOSE_EVOLUTION", speciesId: 134 });
+  assert.deepEqual(ui.batches[0].map((entry) => entry.kind), ["evolution"]);
+  assert.equal(ui.saves[0].players[0].party[0].xp, saved.players[0].party[0].xp);
 });

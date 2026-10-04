@@ -324,7 +324,7 @@ test("the in-game guide explains capture HP, defeat and battle priority", () => 
   assert.match(html, /남은 HP 그대로/);
   assert.match(html, /파티가 6마리면 포획할 수 없습니다/);
   assert.match(html, /박스는 센터에서만 이용/);
-  assert.match(html, /스타팅 포켓몬은 레벨 3/);
+  assert.match(html, /스타팅 포켓몬은 레벨 5/);
   assert.match(html, /최저 레벨/);
   assert.match(html, /최고 레벨/);
   assert.match(html, /트레이너 배틀은 타일 효과보다 먼저/);

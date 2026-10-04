@@ -115,7 +115,7 @@ export function createGame(
     id,
     name: names[id]?.trim().slice(0, 30) || `플레이어 ${id + 1}`,
     position: 0,
-    party: [makePokemon(state, speciesId, 3)],
+    party: [makePokemon(state, speciesId, 5)],
     box: [],
     starterSpeciesId: speciesId,
     restTurnsRemaining: 0,
@@ -295,8 +295,9 @@ function arrive(state: GameState, events?: EventSink) {
     const pool = wildPools[roll < 90 ? 0 : roll < 99 ? 1 : 2];
     const species = pool[random(state, pool.length)];
     const levels = player.party.filter((pokemon) => pokemon.hp > 0).map((pokemon) => pokemon.level);
-    const minimum = Math.min(...levels);
-    const maximum = Math.max(...levels);
+    const maximum = Math.max(1, Math.max(...levels) - random(state, 3));
+    // A single-level party can still encounter opponents up to two levels below it.
+    const minimum = Math.min(Math.min(...levels), maximum);
     const level = minimum + random(state, maximum - minimum + 1);
     startBattle(
       state,

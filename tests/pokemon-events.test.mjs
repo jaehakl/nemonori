@@ -155,7 +155,7 @@ test("the finishing attack survives battle cleanup with detached HP snapshots", 
   assert.equal(hit.snapshot.battle.attacker.level, 40);
   assert.equal(result.events[2].snapshot.battle.attacker.level, 40);
   assert.ok(result.events[2].snapshot.battle.attacker.xp > 0);
-  assert.deepEqual(result.events[2].experience, { amount: 75, previousLevel: 40, previousXp: 0 });
+  assert.deepEqual(result.events[2].experience, { amount: 94, previousLevel: 40, previousXp: 0 });
   assert.equal(result.events[1].side, "defender");
   assert.equal(
     result.events[1].pokemon.maxHp,
@@ -400,7 +400,7 @@ test("landing on the start center shows lap growth before healing, while a rescu
   initial.players[0].party[0].hp = 2;
   const landed = assertTransition(beforeEntry(initial, 0), { type: "STEP" });
   assert.deepEqual(kinds(landed), ["move", "lap", "heal"]);
-  assert.equal(landed.events[1].growth[0].after.level, 7);
+  assert.equal(landed.events[1].growth[0].after.level, 9);
   assert.equal(landed.events[1].growth[0].after.hp, 2);
   assert.equal(landed.state.players[0].party[0].hp, getStats(landed.state.players[0].party[0]).hp);
   assert.equal(landed.state.phase, "center");
@@ -412,7 +412,7 @@ test("landing on the start center shows lap growth before healing, while a rescu
   const rescued = assertTransition(selectBoth(enter(rescue, 3)), pokemonBattleAction(selectBoth(enter(rescue, 3))));
   assert.ok(kinds(rescued).includes("rescue"));
   assert.ok(!kinds(rescued).includes("lap"));
-  assert.equal(rescued.state.players[0].party[0].level, 3);
+  assert.equal(rescued.state.players[0].party[0].level, 5);
 });
 
 test("center box transfers and swaps fully heal without redundant cues or automatic full-party capture", () => {

@@ -149,7 +149,7 @@ test("exchange actions live in the footer while destinations and party cards hid
   assert.doesNotMatch(render(ActionPanel), /교환 끝내기/);
   assert.match(render(ActionPanel), /파티로 이동/);
   assert.doesNotMatch(render(ActionPanel), /턴 마치기|주사위 굴리기|data-die=/);
-  assert.match(render(PartySummary), /<button[^>]*aria-label="이상해씨, 레벨 3, 박스로 이동"/);
+  assert.match(render(PartySummary), /<button[^>]*aria-label="이상해씨, 레벨 5, 박스로 이동"/);
   assert.doesNotMatch(render(PartySummary, { blocked: true }), /<button/);
   state = transition(state, { type: "CENTER_TRANSFER", pokemonId: state.players[0].box[0].id, to: "party" });
   assert.match(render(ExchangeControls), /disabled=""[^>]*>교환 끝내기/);

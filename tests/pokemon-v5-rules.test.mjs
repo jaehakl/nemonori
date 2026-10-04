@@ -16,6 +16,76 @@ function pokemon(state, level, hp) {
   return pokemon;
 }
 
+function beforeWild(state) {
+  state.players[0].position = 1;
+  state.phase = "moving";
+  state.dice = [1, 2];
+  state.dicePurpose = "movement";
+  state.movement = { remaining: 1, encounters: [] };
+  return state;
+}
+
+test("new starters have level-five HP and moves, and encounter levels three through five", () => {
+  for (const speciesId of [1, 4, 7, 172, 128, 132]) {
+    const state = createGame([speciesId], [], 1);
+    const starter = state.players[0].party[0];
+    assert.equal(starter.level, 5);
+    assert.equal(starter.hp, getStats(starter).hp);
+    assert.equal(starter.xp, 0);
+    assert.deepEqual(starter.moveIds, getAvailableMoves(speciesId, 5).map(move => move.id));
+    assert.ok(validateSave(state));
+  }
+  const levels = new Set();
+  for (let seed = 1; seed <= 150; seed++) {
+    const state = beforeWild(createGame([1], [], Math.imul(seed, 2654435761) >>> 0));
+    const next = transition(state, { type: "STEP" });
+    levels.add(next.battle.wild.level);
+    assert.deepEqual(transition(parseGameSave(state), { type: "STEP" }), next);
+  }
+  assert.deepEqual([...levels].sort(), [3, 4, 5]);
+});
+
+test("mixed parties keep their lower bound under a randomly reduced upper bound", () => {
+  const caps = new Set();
+  const observed = new Set();
+  for (let seed = 1; seed <= 150; seed++) {
+    const state = beforeWild(createGame([1], [], Math.imul(seed, 2654435761) >>> 0));
+    state.players[0].party = [pokemon(state, 5), pokemon(state, 12)];
+    const capOnly = structuredClone(state);
+    capOnly.players[0].party.shift();
+    // The same random reduction sets the singleton's exact level and the mixed party's cap.
+    const capResult = transition(capOnly, { type: "STEP" });
+    const cap = capResult.battle.wild.level;
+    const mixed = transition(state, { type: "STEP" });
+    caps.add(cap);
+    observed.add(mixed.battle.wild.level);
+    assert.ok(mixed.battle.wild.level >= 5 && mixed.battle.wild.level <= cap);
+    assert.equal(mixed.rng, capResult.rng);
+  }
+  assert.deepEqual([...caps].sort((a, b) => a - b), [10, 11, 12]);
+  assert.deepEqual([...observed].sort((a, b) => a - b), [5, 6, 7, 8, 9, 10, 11, 12]);
+});
+
+test("low-level existing saves keep their roster and ongoing encounters unchanged", () => {
+  for (const level of [1, 2, 3]) {
+    for (const seed of [1, 13, 35, 9182, 987654321]) {
+      const saved = beforeWild(createGame([1], [], seed));
+      saved.players[0].party = [pokemon(saved, level)];
+      const original = structuredClone(saved);
+      const restored = parseGameSave(saved);
+      assert.deepEqual(saved, original);
+      assert.deepEqual(restored, original);
+      const encounter = transition(restored, { type: "STEP" });
+      assert.ok(encounter.battle.wild.level >= 1 && encounter.battle.wild.level <= level);
+      assert.deepEqual(parseGameSave(encounter), encounter);
+      // A previously generated opponent can exceed the newly calculated cap.
+      encounter.battle.wild.level = 50;
+      encounter.battle.wild.moveIds = getAvailableMoves(encounter.battle.wild.speciesId, 50).map(move => move.id);
+      assert.deepEqual(parseGameSave(encounter), encounter);
+    }
+  }
+});
+
 test("capture adds exactly one percentage point per positive level and caps at 95%", () => {
   const wild = pokemon(createGame([1], [], 1), 30);
   for (const [level, chance] of [[1, 0.25], [30, 0.25], [35, 0.30], [40, 0.35], [50, 0.45], [100, 0.95]])
@@ -24,7 +94,7 @@ test("capture adds exactly one percentage point per positive level and caps at 9
   assert.equal(getCaptureChance({ ...wild, hp: 1 }, 100), 0.95);
 });
 
-test("grass positions and uniform encounter bounds exclude fainted, boxed and deployed Pokemon", () => {
+test("grass encounter bounds exclude fainted, boxed and deployed Pokemon", () => {
   assert.deepEqual(BOARD_TILES.flatMap((kind, index) => kind === "grass" ? [index + 1] : []), [3, 8, 13, 19, 23, 29, 33, 36, 39]);
   const observed = new Set();
   for (let seed = 1; seed <= 150; seed++) {
@@ -43,7 +113,8 @@ test("grass positions and uniform encounter bounds exclude fainted, boxed and de
     observed.add(level);
     assert.ok(validateSave(next));
     state.players[0].party[3].hp = 0;
-    assert.equal(transition(state, { type: "STEP" }).battle.wild.level, 12);
+    const soloLevel = transition(state, { type: "STEP" }).battle.wild.level;
+    assert.ok(soloLevel >= 10 && soloLevel <= 12);
   }
   assert.deepEqual([...observed].sort((a, b) => a - b), [12, 13, 14, 15]);
 });

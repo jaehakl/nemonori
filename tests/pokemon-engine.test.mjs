@@ -97,7 +97,7 @@ test("creation restricts player counts and starters, permits duplicates and norm
       state.players.every(
         (player) =>
           player.position === 0 &&
-          player.party[0].level === 3 &&
+          player.party[0].level === 5 &&
           player.party[0].hp === getStats(player.party[0]).hp,
       ),
     );
@@ -462,7 +462,7 @@ test("board wraps around and center arrival preserves wounds on deployed Pokemon
   );
 });
 
-test("wild levels match the only healthy party member, ignoring fainted members", () => {
+test("wild levels are at most two below the only healthy member and never below one", () => {
   const encountered = new Set();
   for (const level of [1, 25, 100]) {
     for (const seed of [1, 13, 35, 9182, 987654321]) {
@@ -471,12 +471,13 @@ test("wild levels match the only healthy party member, ignoring fainted members"
       initial.players[0].party.push(pokemon(initial, 7, 100, 0));
       const state = enter(initial, 2);
       const baseline = enter(createGame([1, 4], [], seed), 2);
-      assert.equal(baseline.battle.wild.level, 3);
-      assert.equal(state.battle.wild.level, level);
+      assert.ok(baseline.battle.wild.level >= 3 && baseline.battle.wild.level <= 5);
+      assert.equal(state.battle.wild.level, Math.max(1, level - (5 - baseline.battle.wild.level)));
       encountered.add(state.battle.wild.level);
     }
   }
-  assert.deepEqual([...encountered].sort((a, b) => a - b), [1, 25, 100]);
+  assert.ok(encountered.has(1));
+  assert.ok(encountered.size > 3);
 });
 
 test("the next center is strictly ahead including when currently standing at a center", () => {
@@ -620,8 +621,8 @@ test("a completed lap grows the moving player's party and guardians, queuing eve
   assert.deepEqual(state.players[0].party.map((entry) => entry.hp), [3, 4, 5, 0, 6]);
   assert.equal(state.players[0].box[0].level, 19);
   assert.equal(state.roads[3].pokemon.level, 20);
-  assert.equal(state.players[1].party[0].level, 3);
-  assert.equal(state.players[2].party[0].level, 3);
+  assert.equal(state.players[1].party[0].level, 5);
+  assert.equal(state.players[2].party[0].level, 5);
   assert.deepEqual(state.growth.queue.slice(1).map(entry => entry.pokemonId), [...player.party.slice(2).map((entry) => entry.id), initial.roads[3].pokemon.id]);
   state = transition(state, { type: "CHOOSE_EVOLUTION", speciesId: 134 });
   assert.equal(state.phase, "evolution");
@@ -664,9 +665,9 @@ test("rescue teleports and starting at the center do not award lap levels", () =
   const state = transition(selectBoth(enter(initial, 39)), pokemonBattleAction(selectBoth(enter(initial, 39))));
   assert.equal(state.players[0].position, 0);
   assert.equal(state.players[0].restTurnsRemaining, 3);
-  assert.equal(state.players[0].party[0].level, 3);
+  assert.equal(state.players[0].party[0].level, 5);
   assert.equal(state.growth, null);
-  assert.equal(game(2).players[0].party[0].level, 3);
+  assert.equal(game(2).players[0].party[0].level, 5);
 });
 
 test("a victorious guardian gains XP and heals to its evolved maximum", () => {

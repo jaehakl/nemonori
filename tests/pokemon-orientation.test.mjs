@@ -58,7 +58,7 @@ test("branch evolution faces its owner, then recovery returns controls to the tu
   const defender = initial.players[1].party[0];
   defender.speciesId = 133;
   defender.level = 19;
-  defender.moveIds = getAvailableMoves(133, 19).map(move => move.id);
+  defender.moveIds = [...getAvailableMoves(133, 19).map(move => move.id), 34];
   defender.xp = 900;
   defender.hp = getStats(defender).hp;
   let state = choose(choose(enter(initial, 2), 1), 0);
@@ -139,7 +139,7 @@ test("lap evolution choices keep the moving player's seat through the queue and 
   const first = initial.players[2].party[0];
   first.speciesId = 133;
   first.level = 19;
-  first.moveIds = getAvailableMoves(133, 19).map(move => move.id);
+  first.moveIds = [...getAvailableMoves(133, 19).map(move => move.id), 34];
   first.hp = getStats(first).hp;
   initial.players[2].party.push({ ...first, id: `p${initial.nextPokemonId++}` });
   initial.players[2].position = 39;

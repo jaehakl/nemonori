@@ -1065,13 +1065,18 @@ function applyTransition(
       continueGrowth(state, events);
       break;
     }
+    case "LEARN_MOVE":
     case "CHOOSE_MOVE": {
       if (state.phase !== "learn-move" || !state.growth) return previous;
       const current = state.growth.queue[0];
       const pokemon = findOwnedPokemon(state, current.ownerId, current.pokemonId);
       const moveId = current.pendingMoveIds[0];
-      if (!pokemon || !moveId || pokemon.moveIds.length !== MOVE_SLOT_LIMIT) return previous;
-      if (action.replaceMoveId !== null) {
+      if (!pokemon || !moveId || pokemon.moveIds.includes(moveId)) return previous;
+      if (action.type === "LEARN_MOVE") {
+        if (pokemon.moveIds.length >= MOVE_SLOT_LIMIT) return previous;
+        pokemon.moveIds.push(moveId);
+        addLog(state, `${byId[pokemon.speciesId].name}, ${movesById[moveId].name}을(를) 배웠습니다!`);
+      } else if (action.replaceMoveId !== null) {
         const index = pokemon.moveIds.indexOf(action.replaceMoveId);
         if (index < 0) return previous;
         pokemon.moveIds[index] = moveId;

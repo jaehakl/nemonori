@@ -22,12 +22,12 @@ function* elements(node) {
   for (const child of React.Children.toArray(node.props.children)) yield* elements(child);
 }
 
-test("learning shows the new move beside all three existing moves and dispatches replacement or skip", (t) => {
+test("learning shows the new move beside all four existing moves and dispatches replacement or skip", (t) => {
   t.mock.method(React, "useRef", () => ({ current: null }));
   t.mock.method(React, "useEffect", () => {});
   const state = createGame([4], ["민지"], 1);
   const pokemon = state.players[0].party[0];
-  pokemon.moveIds = [52, 53, 877];
+  pokemon.moveIds = [52, 53, 877, 33];
   state.phase = "learn-move";
   state.growth = { resume: "movement", queue: [{ ownerId: 0, pokemonId: pokemon.id,
     pendingMoveIds: [894], consideredMoveIds: [] }] };
@@ -35,16 +35,16 @@ test("learning shows the new move beside all three existing moves and dispatches
   const props = { state, dispatch: (action) => actions.push(action) };
   const original = structuredClone(state);
   const html = renderToStaticMarkup(React.createElement(MoveLearningPanel, props));
-  for (const id of [52, 53, 877, 894]) assert.ok(html.includes(movesById[id].name));
-  for (const label of ["타입", "분류", "위력", "명중률", "효과", "새 기술", "현재 기술 3"])
+  for (const id of [52, 53, 877, 33, 894]) assert.ok(html.includes(movesById[id].name));
+  for (const label of ["타입", "분류", "위력", "명중률", "효과", "새 기술", "현재 기술 4"])
     assert.ok(html.includes(label));
   assert.match(html, /고정 피해 · 상대 현재 HP의 절반/);
   assert.match(html, /고정 피해 · 직전에 받은 피해 × 1.5/);
   assert.match(html, /10% 확률로 상대에게 화상/);
   const buttons = [...elements(React.createElement(MoveLearningPanel, props))].filter((node) => node.type === "button");
-  assert.equal(buttons.length, 4);
+  assert.equal(buttons.length, 5);
   for (const button of buttons) button.props.onClick();
-  assert.deepEqual(actions, [52, 53, 877, null].map((replaceMoveId) => ({ type: "CHOOSE_MOVE", replaceMoveId })));
+  assert.deepEqual(actions, [52, 53, 877, 33, null].map((replaceMoveId) => ({ type: "CHOOSE_MOVE", replaceMoveId })));
   assert.deepEqual(state, original);
 });
 
@@ -57,6 +57,25 @@ test("move descriptions expose variable power, guaranteed accuracy and material 
   assert.match(getMoveEffectSummary(movesById[36]).join(" "), /반동/);
   assert.match(getMoveEffectSummary(movesById[206]).join(" "), /HP를 최소 1/);
   assert.deepEqual(getMoveEffectSummary(movesById[33]), ["추가 효과 없음"]);
+});
+
+test("an old three-slot choice offers adding into the empty slot alongside replacement and decline", (t) => {
+  t.mock.method(React, "useRef", () => ({ current: null }));
+  t.mock.method(React, "useEffect", () => {});
+  const state = createGame([7], [], 1);
+  const pokemon = state.players[0].party[0];
+  pokemon.moveIds = [33, 55, 229];
+  state.phase = "learn-move";
+  state.growth = { resume: "movement", queue: [{ ownerId: 0, pokemonId: pokemon.id,
+    pendingMoveIds: [44], consideredMoveIds: [33, 55, 229, 44] }] };
+  const actions = [];
+  const props = { state, dispatch: action => actions.push(action) };
+  const html = renderToStaticMarkup(React.createElement(MoveLearningPanel, props));
+  assert.match(html, /빈 네 번째 슬롯에 배우기/);
+  assert.doesNotMatch(html, /모두 찼어요/);
+  const buttons = [...elements(React.createElement(MoveLearningPanel, props))].filter(node => node.type === "button");
+  for (const button of buttons) button.props.onClick();
+  assert.deepEqual(actions, [{ type: "LEARN_MOVE" }, ...[33, 55, 229, null].map(replaceMoveId => ({ type: "CHOOSE_MOVE", replaceMoveId }))]);
 });
 
 test("rest rolls show escape feedback without movement progress, then retain a failed attempt result", () => {

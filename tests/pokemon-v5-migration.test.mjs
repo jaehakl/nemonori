@@ -46,6 +46,11 @@ test("v2/v3/v4 migrate cells by kind and order while preserving every interrupte
       assert.match(next.log.at(-1), /새 보드 배치/);
       assert.deepEqual(next.movement, old.movement);
       assert.deepEqual(next.players.map((player) => player.position), old.players.map((player) => mapping[player.position]));
+      for (const player of next.players) {
+        for (const pokemon of [...player.party, ...player.box]) {
+          assert.deepEqual(pokemon.moveIds, getAvailableMoves(pokemon.speciesId, pokemon.level, 3).map(move => move.id));
+        }
+      }
       for (const key of ["rng", "revision", "turn", "nextPokemonId", "activePlayer", "phase"]) assert.equal(next[key], old[key]);
       for (const [tile, guardian] of old.roads.entries()) {
         if (!guardian) continue;
@@ -74,9 +79,11 @@ test("v4 migration adds learned slots to delayed attack snapshots without changi
   const delayed = next.battle.combat.delayed[0];
   const { moveIds, ...pokemon } = delayed.pokemon;
   assert.deepEqual(pokemon, original.battle.combat.delayed[0].pokemon);
-  assert.deepEqual(moveIds, getAvailableMoves(pokemon.speciesId, pokemon.level).map((move) => move.id));
+  assert.deepEqual(moveIds, getAvailableMoves(pokemon.speciesId, pokemon.level, 3).map((move) => move.id));
   assert.deepEqual(old, original);
-  for (const invalid of [undefined, [165], [999999], [1, 1]]) {
+  delayed.pokemon.moveIds = [33, 55, 229, 44];
+  snapshot(next);
+  for (const invalid of [undefined, [165], [999999], [1, 1], [33, 55, 229, 44, 57]]) {
     const corrupt = structuredClone(next);
     corrupt.battle.combat.delayed[0].pokemon.moveIds = invalid;
     assert.equal(validateSave(corrupt), false);
@@ -107,6 +114,7 @@ test("new learned slots and growth references reject forged data", () => {
   for (const change of [
     (state) => { delete state.players[0].party[0].moveIds; },
     (state) => { state.players[0].party[0].moveIds = [165]; },
+    (state) => { state.players[0].party[0].moveIds = [33, 55, 229, 44, 57]; },
     (state) => { state.players[0].party[0].moveIds.push(state.players[0].party[0].moveIds[0]); },
     (state) => { state.growth.queue[0].ownerId = 1; },
     (state) => { state.growth.queue[0].pokemonId = state.players[1].party[0].id; },

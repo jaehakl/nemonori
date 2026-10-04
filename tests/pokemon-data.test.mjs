@@ -86,7 +86,7 @@ test("move selection honors levels, type diversity, power order and explicit sup
   for (const species of data.speciesList) {
     for (const level of [1, 20, 100]) {
       const selected = data.getAvailableMoves(species.id, level);
-      assert.ok(selected.length >= 0 && selected.length <= 3);
+      assert.ok(selected.length >= 0 && selected.length <= 4);
       assert.equal(
         new Set(selected.map((move) => move.id)).size,
         selected.length,
@@ -101,10 +101,10 @@ test("move selection honors levels, type diversity, power order and explicit sup
       const learned = species.learnset
         .filter((move) => move.level <= level)
         .map((move) => data.movesById[move.moveId]).filter(move => move.effects.support !== "excluded");
-      assert.equal(attacks.length, Math.min(3, learned.length));
+      assert.equal(attacks.length, Math.min(4, learned.length));
       assert.equal(
         new Set(attacks.map((move) => move.type)).size,
-        Math.min(3, new Set(learned.map((move) => move.type)).size),
+        Math.min(4, new Set(learned.map((move) => move.type)).size),
       );
       if (learned.length)
         assert.equal(

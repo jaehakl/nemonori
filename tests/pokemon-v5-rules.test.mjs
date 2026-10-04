@@ -26,13 +26,14 @@ function beforeWild(state) {
 }
 
 test("new starters have level-five HP and moves, and encounter levels three through five", () => {
-  for (const speciesId of [1, 4, 7, 172, 128, 132]) {
+  for (const speciesId of [1, 4, 7, 172, 128, 132, 209]) {
     const state = createGame([speciesId], [], 1);
     const starter = state.players[0].party[0];
     assert.equal(starter.level, 5);
     assert.equal(starter.hp, getStats(starter).hp);
     assert.equal(starter.xp, 0);
     assert.deepEqual(starter.moveIds, getAvailableMoves(speciesId, 5).map(move => move.id));
+    if (speciesId === 209) assert.equal(starter.moveIds.length, 4);
     assert.ok(validateSave(state));
   }
   const levels = new Set();

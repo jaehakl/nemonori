@@ -59,8 +59,12 @@ export function typeEffectiveness(
   );
 }
 
+export const MOVE_SLOT_LIMIT = 4;
+/** Preserve the automatic loadout used by v2–v4 saves. */
+export const LEGACY_MOVE_SLOT_LIMIT = 3;
+
 /** Keep strong attacks diverse; contextual availability and Struggle belong to battle.ts. */
-export function getAvailableMoves(speciesId: number, level: number): Move[] {
+export function getAvailableMoves(speciesId: number, level: number, slotLimit: 3 | 4 = MOVE_SLOT_LIMIT): Move[] {
   const learned = (speciesById[speciesId]?.learnset ?? [])
     .filter((entry) => entry.level <= level)
     .map((entry) => movesById[entry.moveId])
@@ -72,16 +76,14 @@ export function getAvailableMoves(speciesId: number, level: number): Move[] {
     if (selectedTypes.has(move.type)) continue;
     selected.push(move);
     selectedTypes.add(move.type);
-    if (selected.length === 3) break;
+    if (selected.length === slotLimit) break;
   }
   for (const move of learned) {
-    if (selected.length === 3) break;
+    if (selected.length === slotLimit) break;
     if (!selected.some((entry) => entry.id === move.id)) selected.push(move);
   }
   return selected;
 }
-
-export const MOVE_SLOT_LIMIT = 3;
 
 /** Learning order is stable even when several levels are gained at once. */
 export function getLearnableMoves(speciesId: number, level: number): Move[] {

@@ -425,7 +425,11 @@ test("legacy v3 saves preserve HP and RNG, mark old basic attacks and forbid new
   const migrated = parseGameSave(old);
   assert.ok(migrated);
   assert.equal(migrated.rng, old.rng);
-  assert.deepEqual(migrated.players, old.players.map(player => ({ ...player, position: 1 })));
+  assert.deepEqual(migrated.players, old.players.map(player => ({ ...player, position: 1,
+    party: player.party.map(pokemon => ({ ...pokemon,
+      moveIds: getAvailableMoves(pokemon.speciesId, pokemon.level, 3).map(move => move.id),
+    })),
+  })));
   assert.equal(migrated.battle.lastAttack.legacy, true);
   assert.equal(transition(migrated, { type: "ATTACK", moveId: 0 }), migrated);
   const corrupted = structuredClone(state);

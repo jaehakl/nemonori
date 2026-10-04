@@ -18,7 +18,7 @@
 .heading p, .footer p { margin: 6px 0; font-size: 13px; line-height: 1.5; }
 .comparison { flex: 1; min-height: 0; overflow: auto; margin: 14px 0; overscroll-behavior: contain; border: 1px solid #cdb982; border-radius: 10px; }
 .comparison:focus-visible { outline: 3px solid #286a49; outline-offset: 2px; }
-.comparison table { width: 100%; min-width: 560px; table-layout: fixed; border-collapse: collapse; font-size: 13px; line-height: 1.5; }
+.comparison table { width: 100%; min-width: 720px; table-layout: fixed; border-collapse: collapse; font-size: 13px; line-height: 1.5; }
 .comparison th, .comparison td { padding: 10px; vertical-align: top; text-align: left; border: 1px solid #d8c797; overflow-wrap: anywhere; }
 .comparison tr > :first-child { width: 64px; font-size: 12px; }
 .comparison thead th { position: sticky; top: 0; z-index: 1; background: #e8dbb2; }

@@ -209,7 +209,7 @@ export default function Setup({ onStart, onResume, loading, displayMode = "fixed
             </h3>
           </div>
           <span className={styles.subtle}>
-            모두 Lv. 3 · 일반 미진화형 선택 가능
+            모두 Lv. 5 · 일반 미진화형 선택 가능
           </span>
         </div>
         <div className={styles.filters}>

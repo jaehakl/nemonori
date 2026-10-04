@@ -133,6 +133,7 @@ export type GameAction =
   | { type: "THROW_BALL" }
   | { type: "CHOOSE_EVOLUTION"; speciesId: number }
   | { type: "CHOOSE_MOVE"; replaceMoveId: number | null }
+  | { type: "LEARN_MOVE" }
   | { type: "MOVE_TO_CENTER" }
   | { type: "CAPTURE"; capture: boolean }
   | { type: "DEPLOY"; pokemonId: string }

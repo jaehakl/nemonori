@@ -1,4 +1,4 @@
-import { movesById, speciesById } from "./pokemon-data";
+import { movesById, speciesById, MOVE_SLOT_LIMIT } from "./pokemon-data";
 import {
   createCombatant,
   type BattleActionResult,
@@ -102,7 +102,7 @@ function validCombatant(v: unknown): boolean {
 
 /** Learned slots exclude Struggle, which remains a contextual battle fallback. */
 export function validateMoveIds(value: unknown): value is number[] {
-  return Array.isArray(value) && value.length <= 3 &&
+  return Array.isArray(value) && value.length <= MOVE_SLOT_LIMIT &&
     new Set(value).size === value.length && value.every((id) =>
       moveId(id) && id !== 165 && movesById[id].effects.support !== "excluded",
     );

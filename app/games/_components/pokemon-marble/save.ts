@@ -1,6 +1,6 @@
 import { getStats } from "./battle";
 import { BOARD_SIZE, BOARD_TILES } from "./board";
-import { speciesById, movesById, isStarter, getAvailableMoves, getLearnableMoves } from "./pokemon-data";
+import { speciesById, movesById, isStarter, getAvailableMoves, getLearnableMoves, MOVE_SLOT_LIMIT, LEGACY_MOVE_SLOT_LIMIT } from "./pokemon-data";
 import type { GameState, Pokemon } from "./types";
 import { XP_PER_LEVEL } from "./progression";
 import { parseLegacyGameSave } from "./save-legacy";
@@ -341,7 +341,9 @@ function validate(value: unknown): value is GameState {
     const first = growth.queue[0];
     const learner = ownedPokemon.get(first.pokemonId)!;
     if (state.phase === "learn-move") {
-      if (state.evolution !== null || first.pendingMoveIds.length < 1 || learner.pokemon.moveIds.length !== 3) return false;
+      // Earlier v5 saves may be paused at the former three-slot limit.
+      if (state.evolution !== null || first.pendingMoveIds.length < 1 ||
+        ![LEGACY_MOVE_SLOT_LIMIT, MOVE_SLOT_LIMIT].includes(learner.pokemon.moveIds.length)) return false;
     } else if (first.pendingMoveIds.length !== 0 ||
       !matchesEvolution(state.evolution, learner.pokemon, first.ownerId)) return false;
     if (growth.resume === "movement") {
@@ -557,7 +559,7 @@ export function parseGameSave(value: unknown): GameState | null {
   const mapping = getLegacyTileMapping();
   const withMoves = (pokemon: Omit<Pokemon, "moveIds">): Pokemon => ({
     ...pokemon,
-    moveIds: getAvailableMoves(pokemon.speciesId, pokemon.level).map((move) => move.id),
+    moveIds: getAvailableMoves(pokemon.speciesId, pokemon.level, LEGACY_MOVE_SLOT_LIMIT).map((move) => move.id),
   });
   const migrated: GameState = {
     ...legacy,

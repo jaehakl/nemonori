@@ -1,4 +1,5 @@
 import type { Battle, BattleSide, GamePhase, Player, Pokemon } from "./types";
+import type { BattleActionResult, CombatState } from "./combat-types";
 
 /** A detached view: presentation must never mutate the saved game. */
 export interface PokemonView extends Pokemon {
@@ -21,6 +22,7 @@ export interface BattleView {
   defenderName: string;
   turn: BattleSide;
   outcome: Battle["outcome"];
+  combat?: CombatState;
 }
 
 export interface PresentationSnapshot {
@@ -42,6 +44,8 @@ export type PresentationEventKind =
   | "encounter"
   | "send-out"
   | "attack"
+  | "battle-action"
+  | "battle-effect"
   | "faint"
   | "experience-gain"
   | "level-up"
@@ -67,7 +71,7 @@ export interface PresentationEvent {
   tile: number;
   message: string;
   snapshot: PresentationSnapshot;
-  attack?: {
+  attack?: Partial<BattleActionResult> & {
     side: BattleSide;
     moveId: number;
     moveType: number | null;
@@ -77,6 +81,7 @@ export interface PresentationEvent {
     beforeHp: number;
     afterHp: number;
   };
+  effect?: { side: BattleSide; beforeHp: number; afterHp: number; message: string };
   pokemon?: PokemonView;
   previousSpeciesId?: number;
   side?: BattleSide;

@@ -12,17 +12,8 @@ export const speciesList: Species[] = importedSpecies;
 export const speciesById: Record<number, Species> = Object.fromEntries(
   speciesList.map((species) => [species.id, species]),
 );
-export const basicMove: Move = {
-  id: 0,
-  name: "기본 공격",
-  type: null,
-  power: 40,
-  category: "physical",
-};
-export const movesById: Record<number, Move> = {
-  ...importedMoves,
-  0: basicMove,
-};
+export const movesById: Record<number, Move> = importedMoves;
+export const struggleMove = movesById[165];
 export const typeNames: Record<number, string> = importedTypeNames;
 export const typeColors: Record<number, string> = {
   1: "#787663",
@@ -67,12 +58,12 @@ export function typeEffectiveness(
   );
 }
 
-/** Keep strong attacks diverse, then fill spare slots; the typeless attack is always available. */
+/** Keep strong attacks diverse; contextual availability and Struggle belong to battle.ts. */
 export function getAvailableMoves(speciesId: number, level: number): Move[] {
   const learned = (speciesById[speciesId]?.learnset ?? [])
     .filter((entry) => entry.level <= level)
     .map((entry) => movesById[entry.moveId])
-    .filter((move): move is Move => Boolean(move))
+    .filter((move): move is Move => Boolean(move) && move.effects.support !== "excluded" && move.id !== 165)
     .sort((left, right) => right.power - left.power || left.id - right.id);
   const selected: Move[] = [];
   const selectedTypes = new Set<number | null>();
@@ -86,5 +77,5 @@ export function getAvailableMoves(speciesId: number, level: number): Move[] {
     if (selected.length === 3) break;
     if (!selected.some((entry) => entry.id === move.id)) selected.push(move);
   }
-  return [...selected, basicMove];
+  return selected;
 }

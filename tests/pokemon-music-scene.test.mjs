@@ -49,6 +49,7 @@ test("capture music waits for the real result snapshot, then returns after the q
   state.players[0].position = wildTile;
   state.phase = "attack";
   state.battle = {
+    combat: loadGameSource("app/games/_components/pokemon-marble/combat-types.ts").createCombatState(),
     kind: "wild", defenderOwner: null, defenderPokemonId: null,
     attackerPokemonId: state.players[0].party[0].id,
     wild: { id: "wild-test", speciesId: 10, level: 1, xp: 0, hp: 1 },

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { loadGameSource } from "./game-test-helpers.mjs";
+import { loadGameSource, pokemonBattleAction } from "./game-test-helpers.mjs";
 
 const path = "app/games/_components/pokemon-marble/";
 const {
@@ -58,10 +58,10 @@ function winAsActive(state) {
     state,
     state.battle.kind === "wild"
       ? { type: "WILD_ATTACK" }
-      : { type: "ATTACK", moveId: 0 },
+      : pokemonBattleAction(state),
   );
   assert.equal(state.phase, "attack");
-  return transition(state, { type: "ATTACK", moveId: 0 });
+  return transition(state, pokemonBattleAction(state));
 }
 
 test("40 clockwise tiles contain four centers and a 3:1 road-to-grass ratio", () => {
@@ -195,7 +195,7 @@ test("trainer selection and attacks are defender first, active player chooses af
   battle = selectBoth(battle);
   assert.equal(getActingPlayer(battle), 1);
   const oldHP = battle.players[0].party[0].hp;
-  battle = transition(battle, { type: "ATTACK", moveId: 0 });
+  battle = transition(battle, pokemonBattleAction(battle));
   assert.ok(battle.players[0].party[0].hp < oldHP);
   assert.equal(getActingPlayer(battle), 0);
   assert.equal(
@@ -248,7 +248,7 @@ test("fainting at a center starts rest without immediate healing or ending the g
   initial.players[1].party[0] = pokemon(initial, 4, 80);
   initial.players[0].box.push(pokemon(initial, 7, 50));
   let state = selectBoth(enter(initial, 10));
-  state = transition(state, { type: "ATTACK", moveId: 0 });
+  state = transition(state, pokemonBattleAction(state));
   assert.equal(state.players[0].party[0].hp, 0);
   assert.equal(state.players[0].restTurnsRemaining, 3);
   assert.equal(state.players[0].position, 10);
@@ -264,10 +264,9 @@ test("a lost single battle permits continued movement when another party member 
   initial.players[0].party.push(pokemon(initial, 7));
   initial.players[1].position = 2;
   initial.players[1].party[0] = pokemon(initial, 4, 80);
-  const state = transition(selectBoth(enter(initial, 2, 2)), {
-    type: "ATTACK",
-    moveId: 0,
-  });
+  const previous = selectBoth(enter(initial, 2));
+  previous.movement.remaining = 1; // Resume a legacy encounter interrupted while passing.
+  const state = transition(previous, pokemonBattleAction(previous));
   assert.equal(state.players[0].restTurnsRemaining, 0);
   assert.equal(state.phase, "moving");
   assert.equal(state.movement.remaining, 1);
@@ -362,7 +361,7 @@ test("road deployment cannot remove the last healthy party member; retrieval and
   assert.equal(state.roads[2], null);
 });
 
-test("type multipliers include dual types and immunity; the basic attack is always neutral", () => {
+test("type multipliers include dual types and immunity; Struggle is neutral and the synthetic attack is absent", () => {
   const attacker = { id: "a", speciesId: 4, level: 50, hp: 100 };
   const grassSteel = { id: "d", speciesId: 598, level: 50, hp: 100 };
   assert.equal(
@@ -377,12 +376,13 @@ test("type multipliers include dual types and immunity; the basic attack is alwa
     0,
   );
   assert.equal(
-    getDamagePreview(attacker, { ...grassSteel, speciesId: 92 }, 0)
+    getDamagePreview(attacker, { ...grassSteel, speciesId: 92 }, 165)
       .effectiveness,
     1,
   );
-  assert.equal(getDamagePreview(attacker, grassSteel, 0).stab, 1);
-  assert.ok(getAvailableMoves(129, 1).some((move) => move.id === 0));
+  assert.equal(getDamagePreview(attacker, grassSteel, 165).stab, 1);
+  assert.deepEqual(getAvailableMoves(129, 1), []);
+  assert.equal(movesById[0], undefined);
 });
 
 test("illegal, immune and unavailable attacks preserve state and RNG", () => {
@@ -390,7 +390,7 @@ test("illegal, immune and unavailable attacks preserve state and RNG", () => {
   initial.players[1].position = 2;
   initial.players[1].party[0] = pokemon(initial, 92);
   let state = selectBoth(enter(initial, 2));
-  state = transition(state, { type: "ATTACK", moveId: 0 });
+  state = transition(state, pokemonBattleAction(state));
   assert.equal(transition(state, { type: "ATTACK", moveId: 33 }), state);
   assert.equal(transition(state, { type: "ATTACK", moveId: 999999 }), state);
   assert.equal(transition(state, { type: "WILD_ATTACK" }), state);
@@ -407,9 +407,9 @@ test("victory grants level-scaled XP and every available evolution without heali
     initial.players[1].party.push(pokemon(initial, 7));
     let state = selectBoth(enter(initial, 2));
     state.players[1].party[0].hp = 1;
-    state = transition(state, { type: "ATTACK", moveId: 0 });
+    state = transition(state, pokemonBattleAction(state));
     const hp = state.players[0].party[0].hp;
-    state = transition(state, { type: "ATTACK", moveId: 0 });
+    state = transition(state, pokemonBattleAction(state));
     const reward = getVictoryExperience(level, level);
     assert.equal(state.players[0].party[0].level, Math.min(100, level + Math.floor(reward / 1000)));
     assert.equal(state.players[0].party[0].xp, level === 100 ? 0 : reward % 1000);
@@ -426,7 +426,7 @@ test("special evolutions unlock at level 20 and branch ownership is explicit", (
   initial.players[0].party.push(pokemon(initial, 7));
   initial.players[0].party[0].hp = 1;
   let state = selectBoth(enter(initial, 2));
-  state = transition(state, { type: "ATTACK", moveId: 0 });
+  state = transition(state, pokemonBattleAction(state));
   assert.equal(state.phase, "evolution");
   assert.equal(getActingPlayer(state), 1);
   assert.equal(state.evolution.ownerId, 1);
@@ -498,7 +498,7 @@ test("recovery skips exactly three future own turns and heals party and box afte
   initial.players[0].box.push(pokemon(initial, 7, 20, 0));
   initial.roads[4] = { ownerId: 0, pokemon: pokemon(initial, 4, 10, 1) };
   initial.roads[2] = { ownerId: 1, pokemon: pokemon(initial, 128, 80) };
-  let state = transition(selectBoth(enter(initial, 2)), { type: "ATTACK", moveId: 0 });
+  let state = transition(selectBoth(enter(initial, 2)), pokemonBattleAction(selectBoth(enter(initial, 2))));
   assert.equal(state.players[0].restTurnsRemaining, 3);
   assert.equal(state.players[0].party[0].hp, 0);
   assert.equal(state.players[0].box[0].hp, 0);
@@ -532,7 +532,7 @@ test("resting trainers do not trigger contact battles and their guardians do not
   initial.roads[2] = { ownerId: 1, pokemon: pokemon(initial, 133, 19) };
   initial.roads[2].pokemon.xp = 900;
   initial.players[0].party[0].hp = 1;
-  let state = transition(selectBoth(enter(initial, 2)), { type: "ATTACK", moveId: 0 });
+  let state = transition(selectBoth(enter(initial, 2)), pokemonBattleAction(selectBoth(enter(initial, 2))));
   assert.equal(state.phase, "evolution");
   assert.equal(state.players[1].restTurnsRemaining, 2);
   assert.ok(validateSave(state));
@@ -649,7 +649,7 @@ test("rescue teleports and starting at the center do not award lap levels", () =
   const initial = game(2);
   initial.players[0].party[0].hp = 1;
   initial.roads[39] = { ownerId: 1, pokemon: pokemon(initial, 128, 80) };
-  const state = transition(selectBoth(enter(initial, 39)), { type: "ATTACK", moveId: 0 });
+  const state = transition(selectBoth(enter(initial, 39)), pokemonBattleAction(selectBoth(enter(initial, 39))));
   assert.equal(state.players[0].position, 0);
   assert.equal(state.players[0].restTurnsRemaining, 3);
   assert.equal(state.players[0].party[0].level, 3);
@@ -662,7 +662,7 @@ test("a victorious guardian gains XP and heals to its evolved maximum", () => {
     const initial = game(2);
     initial.players[0].party[0] = pokemon(initial, 128, level, 1);
     initial.roads[2] = { ownerId: 1, pokemon: pokemon(initial, speciesId, level, 1) };
-    const state = transition(selectBoth(enter(initial, 2)), { type: "ATTACK", moveId: 0 });
+    const state = transition(selectBoth(enter(initial, 2)), pokemonBattleAction(selectBoth(enter(initial, 2))));
     const guard = state.roads[2].pokemon;
     assert.equal(guard.level, Math.min(100, level + Math.floor(getVictoryExperience(level, level) / 1000)));
     assert.equal(guard.speciesId, evolvedSpecies);

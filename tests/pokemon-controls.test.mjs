@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import React from "react";
-import { loadGameSource } from "./game-test-helpers.mjs";
+import { loadGameSource, pokemonBattleAction } from "./game-test-helpers.mjs";
 
 const path = "app/games/_components/pokemon-marble/";
 const { createGame, transition, snapshotForPresentation } = loadGameSource(`${path}engine.ts`);
@@ -157,7 +157,7 @@ test("attack presentation keeps its initiating seat, then faces the next attacke
   const ui = controls(t, state);
   const initial = ui.render();
   assert.equal(findElement(initial, TabletopControls).props.seatSide, "left");
-  findElement(initial, ActionPanel).props.dispatch({ type: "ATTACK", moveId: 0 });
+  findElement(initial, ActionPanel).props.dispatch(pokemonBattleAction(state));
   assert.equal(ui.saves[0].battle.turn, "attacker");
   assert.equal(findElement(ui.render(), TabletopControls).props.seatSide, "left");
   ui.experience.busy = false;

@@ -24,7 +24,7 @@ test("v2 golden states migrate without changing progress, identities, HP or RNG"
     assert.ok(validateV2Save(legacy), name);
     const migrated = parseGameSave(legacy);
     assert.ok(validateSave(migrated), name);
-    assert.equal(migrated.version, 3);
+    assert.equal(migrated.version, 4);
     for (const field of ["revision", "rng", "nextPokemonId", "turn", "phase"])
       assert.equal(migrated[field], legacy[field], `${name}: ${field}`);
     assert.deepEqual(allPokemon(migrated).map(({ xp, ...pokemon }) => {
@@ -92,7 +92,7 @@ test("legacy full-party capture can be declined and older saves can omit lap gro
   assert.ok(validateSave(parseGameSave(earlier)));
 });
 
-test("load migration is read-only and the next accepted action uses version 3", () => {
+test("load migration is read-only and the next accepted action uses version 4", () => {
   const envelope = { protocol: "nemonori.save.v1", gameSlug: "pokemon-marble", gameTitle: "포켓몬 마블", updatedAt: "2026-10-03T00:00:00.000Z", data: fixtures.roll };
   const original = structuredClone(envelope);
   const { loadPokemonSave } = loadGameSource(`${path}load-save.ts`, {
@@ -101,7 +101,7 @@ test("load migration is read-only and the next accepted action uses version 3", 
   const result = loadPokemonSave();
   assert.ok(result.ok);
   assert.deepEqual(envelope, original);
-  assert.equal(transition(result.value.data, { type: "ROLL" }).version, 3);
+  assert.equal(transition(result.value.data, { type: "ROLL" }).version, 4);
 });
 
 test("invalid v2 and malformed v3 experience/outcomes are rejected", () => {

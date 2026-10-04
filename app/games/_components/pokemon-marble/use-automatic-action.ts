@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { getActingPlayer } from "./engine";
+import { getActingPlayer, hasForcedBattleAction } from "./engine";
 import type { GameAction, GameState } from "./types";
 
 /** Preserve the remaining delay when orientation or visibility pauses play. */
@@ -18,6 +18,8 @@ export function useAutomaticAction(
     const action: GameAction | null =
       game.phase === "moving"
         ? { type: "STEP" }
+        : hasForcedBattleAction(game)
+          ? { type: "CONTINUE_BATTLE" }
         : game.phase === "attack" && getActingPlayer(game) === null
           ? { type: "WILD_ATTACK" }
           : null;

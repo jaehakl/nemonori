@@ -3,7 +3,7 @@ import test from "node:test";
 import { readFileSync, readdirSync } from "node:fs";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { loadGameSource } from "./game-test-helpers.mjs";
+import { loadGameSource, pokemonBattleAction } from "./game-test-helpers.mjs";
 
 const path = "app/games/_components/pokemon-marble/";
 const { default: Battle2D } = loadGameSource(`${path}Battle2D.tsx`);
@@ -22,7 +22,7 @@ const presentation = (kind, progress, extra = {}) => ({
   progress, event: { kind, revision: 1, sequence: 0, ...extra },
 });
 const attack = (side = "attacker", moveType = 10) => ({
-  side, moveType, moveId: 0, category: "physical", damage: 15, beforeHp: 15, afterHp: 0,
+  side, moveType, moveId: 33, category: "physical", damage: 15, beforeHp: 15, afterHp: 0,
 });
 const render = (props) => renderToStaticMarkup(React.createElement(Battle2D, { battle, ...props }));
 
@@ -188,7 +188,7 @@ test("21 mixed battles render, return to the board and resume version-3 saves wi
       if (["choose-attacker", "choose-defender"].includes(state.phase)) {
         action = { type: "CHOOSE_POKEMON", pokemonId: state.players[getActingPlayer(state)].party.find(p => p.hp > 0).id };
       } else if (state.phase === "attack") {
-        action = getActingPlayer(state) === null ? { type: "WILD_ATTACK" } : { type: "ATTACK", moveId: 0 };
+        action = getActingPlayer(state) === null ? { type: "WILD_ATTACK" } : pokemonBattleAction(state);
       } else if (state.phase === "evolution") {
         action = { type: "CHOOSE_EVOLUTION", speciesId: state.evolution.options[0] };
       } else if (state.phase === "capture") {

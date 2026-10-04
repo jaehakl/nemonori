@@ -4,6 +4,8 @@ import { speciesById, movesById, isStarter } from "./pokemon-data";
 import type { GameState, Pokemon } from "./types";
 import { XP_PER_LEVEL } from "./progression";
 import { validateV2Save } from "./save-v2";
+import { createCombatState } from "./combat-types";
+import { validateCombat, validateBattleAction } from "./combat-save";
 
 const phases = new Set([
   "roll",
@@ -68,10 +70,10 @@ export function validateSave(value: unknown): value is GameState {
   }
 }
 
-function validate(value: unknown): value is GameState {
+function validate(value: unknown, legacy = false): value is GameState {
   if (
     !record(value) ||
-    value.version !== 3 ||
+    value.version !== (legacy ? 3 : 4) ||
     !integer(value.revision) ||
     !integer(value.rng, 1, 0xffffffff) ||
     !integer(value.nextPokemonId, 1) ||
@@ -79,6 +81,7 @@ function validate(value: unknown): value is GameState {
     !phases.has(value.phase as string)
   )
     return false;
+  if (!legacy && value.lastBattleAction !== null && !validateBattleAction(value.lastBattleAction)) return false;
   if (
     !Array.isArray(value.players) ||
     value.players.length < 1 ||
@@ -332,6 +335,7 @@ function validate(value: unknown): value is GameState {
   )
     return false;
   const outcome = battle.outcome;
+  if (!legacy && !validateCombat(battle.combat)) return false;
   if (outcome !== null) {
     if (!record(outcome) || !["knockout", "capture"].includes(outcome.kind)) return false;
     if (outcome.kind === "knockout") {
@@ -479,9 +483,11 @@ function validate(value: unknown): value is GameState {
       !record(last) ||
       !["attacker", "defender"].includes(last.side) ||
       !integer(last.moveId) ||
-      !movesById[last.moveId] ||
-      !integer(last.damage, 1, 1000000) ||
-      ![0.25, 0.5, 1, 2, 4].includes(last.effectiveness)
+      (!movesById[last.moveId] && !(last.moveId === 0 && (legacy || last.legacy === true))) ||
+      !integer(last.damage, legacy ? 1 : 0, 1000000) ||
+      ![0, 0.125, 0.25, 0.5, 1, 2, 4, 8].includes(last.effectiveness) ||
+      (!legacy && last.result !== undefined && !validateBattleAction(last.result)) ||
+      (!legacy && last.result === undefined && last.legacy !== true)
     )
       return false;
   }
@@ -490,13 +496,26 @@ function validate(value: unknown): value is GameState {
 
 export function parseGameSave(value: unknown): GameState | null {
   if (validateSave(value)) return structuredClone(value);
+  try {
+    if (validate(value, true)) {
+      const migrated = structuredClone(value);
+      migrated.version = 4;
+      migrated.lastBattleAction = null;
+      if (migrated.battle) {
+        migrated.battle.combat = createCombatState();
+        if (migrated.battle.lastAttack) migrated.battle.lastAttack.legacy = true;
+      }
+      return validateSave(migrated) ? migrated : null;
+    }
+  } catch { return null; }
   if (!validateV2Save(value)) return null;
   const legacy = structuredClone(value);
   const withExperience = (pokemon: Omit<Pokemon, "xp">): Pokemon => ({ ...pokemon, xp: 0 });
   const battle = legacy.battle;
   const migrated: GameState = {
     ...legacy,
-    version: 3,
+    version: 4,
+    lastBattleAction: null,
     players: legacy.players.map((player) => ({
       ...player,
       party: player.party.map(withExperience),
@@ -513,7 +532,8 @@ export function parseGameSave(value: unknown): GameState | null {
       attackerPokemonId: battle.attackerPokemonId,
       wild: battle.wild ? withExperience(battle.wild) : null,
       turn: battle.turn,
-      lastAttack: battle.lastAttack,
+      lastAttack: battle.lastAttack ? { ...battle.lastAttack, legacy: true } : null,
+      combat: createCombatState(),
       outcome: battle.winner === null ? null : {
         kind: "knockout",
         winner: battle.winner,

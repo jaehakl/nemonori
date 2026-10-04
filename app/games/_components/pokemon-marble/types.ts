@@ -1,3 +1,5 @@
+import type { BattleActionResult, CombatState } from "./combat-types";
+
 export interface Pokemon {
   id: string;
   speciesId: number;
@@ -37,13 +39,17 @@ export interface Battle {
   outcome:
     | { kind: "knockout"; winner: BattleSide; legacyCapturePending?: true }
     | { kind: "capture" }
+    | { kind: "draw" }
     | null;
   lastAttack: {
     side: BattleSide;
     moveId: number;
     damage: number;
     effectiveness: number;
+    result?: BattleActionResult;
+    legacy?: true;
   } | null;
+  combat: CombatState;
 }
 
 export interface PendingEvolution {
@@ -72,7 +78,7 @@ export type GamePhase =
   | "finished";
 
 export interface GameState {
-  version: 3;
+  version: 4;
   revision: number;
   rng: number;
   nextPokemonId: number;
@@ -90,6 +96,7 @@ export interface GameState {
   exchangeActive?: boolean;
   winner: number | null;
   log: string[];
+  lastBattleAction: BattleActionResult | null;
 }
 
 export type GameAction =
@@ -98,6 +105,7 @@ export type GameAction =
   | { type: "CHOOSE_POKEMON"; pokemonId: string }
   | { type: "ATTACK"; moveId: number }
   | { type: "WILD_ATTACK" }
+  | { type: "CONTINUE_BATTLE" }
   | { type: "THROW_BALL" }
   | { type: "CHOOSE_EVOLUTION"; speciesId: number }
   | { type: "CAPTURE"; capture: boolean }

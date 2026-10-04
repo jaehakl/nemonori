@@ -11,6 +11,7 @@ import {
   spriteRevision,
 } from "../scripts/import-pokemon-data.mjs";
 import { loadGameSource } from "./game-test-helpers.mjs";
+import { mechanicsRevision, buildMoveEffects } from "../scripts/pokemon-move-effects.mjs";
 
 const data = loadGameSource(
   "app/games/_components/pokemon-marble/pokemon-data.ts",
@@ -57,7 +58,7 @@ test("all 1,025 default species have localized names, stats and valid references
     );
     for (const learned of species.learnset) {
       const move = data.movesById[learned.moveId];
-      assert.ok(move && move.power > 0);
+      assert.ok(move && (move.power > 0 || [877, 894].includes(move.id)));
       assert.match(move.name, /[가-힣]/);
       assert.ok(["physical", "special"].includes(move.category));
       assert.ok(
@@ -81,17 +82,16 @@ test("starter filtering permits unevolved ordinary and single-stage species only
   assert.equal(data.isStarter(data.speciesById[906]), true);
 });
 
-test("move selection honors levels, type diversity, power order and the basic fallback", () => {
+test("move selection honors levels, type diversity, power order and explicit supported effects", () => {
   for (const species of data.speciesList) {
     for (const level of [1, 20, 100]) {
       const selected = data.getAvailableMoves(species.id, level);
-      assert.ok(selected.length >= 1 && selected.length <= 4);
-      assert.equal(selected.at(-1), data.movesById[0]);
+      assert.ok(selected.length >= 0 && selected.length <= 3);
       assert.equal(
         new Set(selected.map((move) => move.id)).size,
         selected.length,
       );
-      const attacks = selected.slice(0, -1);
+      const attacks = selected;
       for (const move of attacks)
         assert.ok(
           species.learnset.some(
@@ -100,7 +100,7 @@ test("move selection honors levels, type diversity, power order and the basic fa
         );
       const learned = species.learnset
         .filter((move) => move.level <= level)
-        .map((move) => data.movesById[move.moveId]);
+        .map((move) => data.movesById[move.moveId]).filter(move => move.effects.support !== "excluded");
       assert.equal(attacks.length, Math.min(3, learned.length));
       assert.equal(
         new Set(attacks.map((move) => move.type)).size,
@@ -113,14 +113,14 @@ test("move selection honors levels, type diversity, power order and the basic fa
         );
     }
   }
-  assert.deepEqual(data.getAvailableMoves(132, 1), [data.movesById[0]]);
+  assert.deepEqual(data.getAvailableMoves(132, 1), []);
   assert.deepEqual(
     data.getAvailableMoves(1, 1).map((move) => move.id),
-    [33, 0],
+    [33],
   );
-  assert.equal(data.movesById[0].type, null);
-  assert.equal(data.movesById[0].power, 40);
-  assert.equal(data.movesById[0].category, "physical");
+  assert.equal(data.movesById[165].type, null);
+  assert.equal(data.movesById[165].power, 50);
+  assert.equal(data.movesById[165].category, "physical");
 });
 
 test("type multipliers cover double weaknesses, resistances, immunity and typeless attacks", () => {
@@ -178,9 +178,11 @@ test("pinned provenance matches the generated catalog and every bundled PNG", ()
     readFileSync(resolve(generated, "provenance.json"), "utf8"),
   );
   assert.equal(manifest.data.revision, dataRevision);
+  assert.equal(manifest.mechanics.revision, mechanicsRevision);
+  assert.equal(manifest.mechanics.licenseSha256, sha256(readFileSync(resolve(root, "public/pokemon-marble/POKEMON-SHOWDOWN-LICENSE.txt"))));
   assert.equal(manifest.sprites.revision, spriteRevision);
   assert.equal(manifest.speciesCount, 1025);
-  assert.equal(manifest.moveCount + 1, Object.keys(data.movesById).length);
+  assert.equal(manifest.moveCount, Object.keys(data.movesById).length);
   assert.equal(
     manifest.catalogSha256,
     sha256(readFileSync(resolve(generated, "catalog.ts"))),
@@ -206,6 +208,11 @@ test("pinned provenance matches the generated catalog and every bundled PNG", ()
     assert.ok(bytes.readUInt32BE(16) > 0 && bytes.readUInt32BE(20) > 0);
     assert.equal(sha256(bytes), manifest.sprites.sha256[species.id]);
   }
+});
+
+test("the effects importer refuses unclassified mechanics", () => {
+  assert.throws(() => buildMoveEffects(99999, {key: "unknown", callbacks: ["onHit"]}), /Unclassified callbacks/);
+  assert.throws(() => buildMoveEffects(99999, {key: "unknown", callbacks: [], unexpected: true}), /Unclassified field/);
 });
 
 test("the CSV importer preserves UTF-8, quoted commas, quotes and CRLF", () => {

@@ -6,6 +6,8 @@ import { PLAYER_COLORS } from "./board";
 import GameBoard, { BattleHud, EventCaption } from "./GameBoard";
 import {
   createGame,
+  getActingPlayer,
+  hasForcedBattleAction,
   snapshotForPresentation,
   transitionWithEvents,
 } from "./engine";
@@ -14,6 +16,7 @@ import Setup from "./Setup";
 import GuardianPopup from "./GuardianPopup";
 import ActionPanel, { ExchangeControls, MovementPanel, PartySummary } from "./ActionPanel";
 import RulesDialog, { Modal } from "./RulesDialog";
+import { BattleHistoryButton } from "./DamageDetails";
 import type { GameAction, GameState, SeatSide } from "./types";
 import styles from "./PokemonMarble.module.css";
 import experienceStyles from "./Experience.module.css";
@@ -188,6 +191,7 @@ export default function PokemonMarble() {
         />
       </div>
       <div className={styles.topActions}>
+        {game && <BattleHistoryButton result={game.lastBattleAction} disabled={experience.busy || experience.paused || game.phase === "moving" || hasForcedBattleAction(game) || (game.phase === "attack" && getActingPlayer(game) === null)} />}
         <button className={systemStyles.iconButton} aria-label="모험 가이드"
           title="모험 가이드" onClick={() => setRulesOpen(true)}>
           <SystemIcon name="guide" />

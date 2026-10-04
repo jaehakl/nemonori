@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { loadGameSource } from "./game-test-helpers.mjs";
+import { loadGameSource, pokemonBattleAction } from "./game-test-helpers.mjs";
 
 const path = "app/games/_components/pokemon-marble/";
 const {
@@ -56,7 +56,7 @@ function readyForFinishingHit(state) {
     state,
     state.battle.kind === "wild"
       ? { type: "WILD_ATTACK" }
-      : { type: "ATTACK", moveId: 0 },
+      : pokemonBattleAction(state),
   );
   assert.equal(state.phase, "attack");
   assert.equal(state.battle.turn, "attacker");
@@ -131,14 +131,14 @@ test("the finishing attack survives battle cleanup with detached HP snapshots", 
   initial.players[0].party[0] = pokemon(initial);
   initial.players[1].position = 2;
   const previous = readyForFinishingHit(enter(initial, 2));
-  const result = assertTransition(previous, { type: "ATTACK", moveId: 0 });
+  const result = assertTransition(previous, pokemonBattleAction(previous));
   assert.deepEqual(kinds(result), ["attack", "faint", "experience-gain", "rescue"]);
   assert.equal(result.state.battle, null);
   assert.equal(result.state.phase, "road");
   const hit = result.events[0];
   assert.equal(hit.attack.beforeHp, 1);
   assert.equal(hit.attack.afterHp, 0);
-  assert.equal(hit.attack.moveType, null);
+  assert.equal(hit.attack.moveType, 1);
   assert.equal(hit.attack.category, "physical");
   assert.equal(hit.snapshot.battle.defender.hp, 0);
   assert.equal(hit.snapshot.battle.attacker.level, 40);
@@ -166,7 +166,7 @@ test("one finishing attack can queue the next trainer without replacing its hist
   initial.players[1].position = 2;
   initial.players[2].position = 2;
   const previous = readyForFinishingHit(enter(initial, 2));
-  const first = assertTransition(previous, { type: "ATTACK", moveId: 0 });
+  const first = assertTransition(previous, pokemonBattleAction(previous));
   assert.deepEqual(kinds(first), [
     "attack",
     "faint",
@@ -187,10 +187,7 @@ test("one finishing attack can queue the next trainer without replacing its hist
   assert.equal(first.state.battle.defenderOwner, 2);
   assert.equal(first.state.movement.remaining, 0);
 
-  const second = assertTransition(readyForFinishingHit(first.state), {
-    type: "ATTACK",
-    moveId: 0,
-  });
+  const second = assertTransition(readyForFinishingHit(first.state), pokemonBattleAction(readyForFinishingHit(first.state)));
   assert.equal(second.state.phase, "road");
   assert.equal(second.state.movement.remaining, 0);
   assert.equal(
@@ -204,7 +201,7 @@ test("automatic evolution follows level gain without rewriting the attack specie
   initial.players[0].party[0] = pokemon(initial, 1, 15, undefined, 999);
   initial.players[1].position = 2;
   const previous = readyForFinishingHit(enter(initial, 2));
-  const result = assertTransition(previous, { type: "ATTACK", moveId: 0 });
+  const result = assertTransition(previous, pokemonBattleAction(previous));
   assert.deepEqual(kinds(result), [
     "attack",
     "faint",
@@ -229,10 +226,7 @@ test("branch evolution emits only on selection and preserves the defender owner"
   initial.players[1].party[0] = pokemon(initial, 133, 19, undefined, 999);
   initial.players[0].party.push(pokemon(initial, 128, 1));
   initial.players[0].party[0].hp = 1;
-  const result = assertTransition(selectBoth(enter(initial, 2)), {
-    type: "ATTACK",
-    moveId: 0,
-  });
+  const result = assertTransition(selectBoth(enter(initial, 2)), pokemonBattleAction(selectBoth(enter(initial, 2))));
   assert.equal(result.state.phase, "evolution");
   assert.deepEqual(kinds(result), ["attack", "faint", "experience-gain", "level-up"]);
   const evolved = assertTransition(result.state, {
@@ -251,7 +245,7 @@ test("road guardian snapshots survive removal from the board into its owner's bo
   initial.players[0].party[0] = pokemon(initial);
   initial.roads[2] = { ownerId: 1, pokemon: pokemon(initial, 4, 1) };
   const previous = readyForFinishingHit(enter(initial, 2));
-  const result = assertTransition(previous, { type: "ATTACK", moveId: 0 });
+  const result = assertTransition(previous, pokemonBattleAction(previous));
   assert.deepEqual(kinds(result), ["attack", "faint", "experience-gain", "heal"]);
   assert.equal(result.events[1].snapshot.guardians.length, 1);
   assert.equal(result.events[2].snapshot.guardians.length, 0);
@@ -275,7 +269,7 @@ test("a defending guardian gains a level and evolves before the full healing cue
   initial.players[0].party.push(pokemon(initial, 128, 3));
   initial.roads[2] = { ownerId: 1, pokemon: pokemon(initial, 1, 15, 7, 999) };
   const previous = selectBoth(enter(initial, 2));
-  const result = assertTransition(previous, { type: "ATTACK", moveId: 0 });
+  const result = assertTransition(previous, pokemonBattleAction(previous));
   assert.deepEqual(kinds(result), ["attack", "faint", "experience-gain", "level-up", "evolution", "heal"]);
   assert.equal(result.events[0].snapshot.battle.defender.level, 15);
   assert.equal(result.events[2].pokemon.level, 16);
@@ -297,7 +291,7 @@ test("guardian healing waits for a branch choice and never rewrites its winning 
   initial.players[0].party[0].hp = 1;
   initial.players[0].party.push(pokemon(initial, 128, 3));
   initial.roads[2] = { ownerId: 1, pokemon: pokemon(initial, 133, 19, 5, 999) };
-  const won = assertTransition(selectBoth(enter(initial, 2)), { type: "ATTACK", moveId: 0 });
+  const won = assertTransition(selectBoth(enter(initial, 2)), pokemonBattleAction(selectBoth(enter(initial, 2))));
   assert.deepEqual(kinds(won), ["attack", "faint", "experience-gain", "level-up"]);
   assert.equal(won.state.phase, "evolution");
   assert.equal(won.state.roads[2].pokemon.hp, 5);
@@ -315,7 +309,7 @@ test("a defeated guardian stays fainted throughout the attacker's branch evoluti
   const initial = game();
   initial.players[0].party[0] = pokemon(initial, 133, 19, undefined, 999);
   initial.roads[2] = { ownerId: 1, pokemon: pokemon(initial, 4, 1) };
-  const won = assertTransition(readyForFinishingHit(enter(initial, 2)), { type: "ATTACK", moveId: 0 });
+  const won = assertTransition(readyForFinishingHit(enter(initial, 2)), pokemonBattleAction(readyForFinishingHit(enter(initial, 2))));
   assert.equal(won.state.phase, "evolution");
   assert.deepEqual(kinds(won), ["attack", "faint", "experience-gain", "level-up"]);
   for (const event of won.events) assert.equal(event.snapshot.battle.defender.hp, 0);
@@ -404,7 +398,7 @@ test("landing on the start center shows lap growth before healing, while a rescu
   rescue.players[0].party[0].hp = 1;
   rescue.players[1].position = 2;
   rescue.players[1].party[0] = pokemon(rescue);
-  const rescued = assertTransition(selectBoth(enter(rescue, 2)), { type: "ATTACK", moveId: 0 });
+  const rescued = assertTransition(selectBoth(enter(rescue, 2)), pokemonBattleAction(selectBoth(enter(rescue, 2))));
   assert.ok(kinds(rescued).includes("rescue"));
   assert.ok(!kinds(rescued).includes("lap"));
   assert.equal(rescued.state.players[0].party[0].level, 3);
@@ -457,7 +451,7 @@ test("center healing follows movement or a finished encounter, without healing g
   encounter.players[0].party[0] = pokemon(encounter);
   encounter.players[1].position = 10;
   const previous = readyForFinishingHit(enter(encounter, 10));
-  const result = assertTransition(previous, { type: "ATTACK", moveId: 0 });
+  const result = assertTransition(previous, pokemonBattleAction(previous));
   assert.equal(result.events.at(-1).kind, "heal");
   assert.ok(
     result.events[0].snapshot.battle.attacker.hp <
@@ -542,7 +536,7 @@ test("legacy pending capture retains its old zero-HP acceptance without another 
   previous.phase = "capture";
   previous.battle.wild.hp = 0;
   previous.battle.outcome = { kind: "knockout", winner: "attacker", legacyCapturePending: true };
-  previous.battle.lastAttack = { side: "attacker", moveId: 0, damage: 1, effectiveness: 1 };
+  previous.battle.lastAttack = { side: "attacker", moveId: 0, damage: 1, effectiveness: 1, legacy: true };
   const wildId = previous.battle.wild.id;
   const accepted = assertTransition(previous, { type: "CAPTURE", capture: true });
   assert.deepEqual(kinds(accepted), ["capture"]);
@@ -599,7 +593,7 @@ test("a level-100 finishing hit rescues the opponent without winning the game", 
   initial.players[0].party[0] = pokemon(initial, 128, 100);
   initial.players[1].position = 2;
   const previous = readyForFinishingHit(enter(initial, 2));
-  const result = assertTransition(previous, { type: "ATTACK", moveId: 0 });
+  const result = assertTransition(previous, pokemonBattleAction(previous));
   assert.deepEqual(kinds(result), ["attack", "faint", "rescue"]);
   assert.equal(result.events[0].snapshot.battle.defender.hp, 0);
   assert.equal(result.events.at(-1).snapshot.battle, null);
@@ -610,10 +604,7 @@ test("a level-100 finishing hit rescues the opponent without winning the game", 
   assert.equal(result.state.phase, "road");
   assert.equal(result.state.winner, null);
   assert.ok(validateSave(result.state));
-  const noReplay = assertTransition(result.state, {
-    type: "ATTACK",
-    moveId: 0,
-  });
+  const noReplay = assertTransition(result.state, { type: "ATTACK", moveId: result.events[0].attack.moveId });
   assert.equal(noReplay.state, result.state);
   assert.deepEqual(noReplay.events, []);
 });
@@ -624,7 +615,7 @@ test("rescue waits for the defender's chosen evolution and keeps the original at
   initial.players[1].position = 2;
   initial.players[1].party[0] = pokemon(initial, 133, 19, undefined, 999);
   const previous = selectBoth(enter(initial, 2));
-  const won = assertTransition(previous, { type: "ATTACK", moveId: 0 });
+  const won = assertTransition(previous, pokemonBattleAction(previous));
   assert.equal(won.state.phase, "evolution");
   assert.equal(won.state.winner, null);
   assert.deepEqual(kinds(won), ["attack", "faint", "experience-gain", "level-up"]);
@@ -669,7 +660,7 @@ test("invalid and immune actions preserve identity, RNG and an empty event queue
   initial.players[1].position = 2;
   initial.players[1].party[0] = pokemon(initial, 92, 1);
   let state = selectBoth(enter(initial, 2));
-  state = transition(state, { type: "ATTACK", moveId: 0 });
+  state = transition(state, pokemonBattleAction(state));
   for (const action of [
     { type: "ATTACK", moveId: 33 },
     { type: "ATTACK", moveId: 999999 },
@@ -699,7 +690,7 @@ function nextAction(state) {
     case "attack":
       return getActingPlayer(state) === null
         ? { type: "WILD_ATTACK" }
-        : { type: "ATTACK", moveId: 0 };
+        : pokemonBattleAction(state);
     case "evolution":
       return {
         type: "CHOOSE_EVOLUTION",

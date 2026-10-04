@@ -7,6 +7,8 @@ export const EVENT_DURATION: Record<PresentationEvent["kind"], number> = {
   encounter: 600,
   "send-out": 400,
   attack: 1000,
+  "battle-action": 650,
+  "battle-effect": 650,
   faint: 500,
   "experience-gain": 650,
   "level-up": 600,
@@ -62,7 +64,7 @@ export function createPresentationPlayer(
   const duration = () =>
     reducedMotion
       ? Math.min(180, EVENT_DURATION[queue[0].kind])
-      : EVENT_DURATION[queue[0].kind];
+      : EVENT_DURATION[queue[0].kind] + (queue[0].kind === "attack" ? Math.max(0, (queue[0].attack?.hits?.length ?? 1) - 1) * 250 : 0);
   const publish = () =>
     onFrame({
       event: queue[0] ?? null,

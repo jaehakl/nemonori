@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { loadGameSource } from "./game-test-helpers.mjs";
+import { loadGameSource, pokemonBattleAction } from "./game-test-helpers.mjs";
 
 const path = "app/games/_components/pokemon-marble/";
 const { XP_PER_LEVEL, getVictoryExperience, getExperienceGrowth, getCaptureChance } = loadGameSource(`${path}progression.ts`);
@@ -122,7 +122,7 @@ test("successful capture awards experience once and transfers the living wild af
 test("knocked-out wild Pokemon cannot be captured", () => {
   const state = encounter();
   state.battle.wild.hp = 1;
-  const result = transition(state, { type: "ATTACK", moveId: 0 });
+  const result = transition(state, pokemonBattleAction(state));
   assert.equal(result.phase, "turn-end");
   assert.equal(result.battle, null);
   assert.equal(result.players[0].party.length, 1);

@@ -8,6 +8,8 @@ import type { BattleView, PresentationEvent } from "./presentation-events";
 import { ExperienceBar, HealthBar, TypeBadge } from "./PokemonSprite";
 import { movesById, speciesById } from "./pokemon-data";
 import Board2D from "./Board2D";
+import { getAttackFrame } from "./battle-visuals";
+import { STATUS_NAMES } from "./battle-actions";
 
 export type { BoardGuardian, BoardToken } from "./board-view";
 
@@ -43,10 +45,13 @@ export function BattleHud({
         const pokemon = battle[side];
         const attack = presentation?.event.attack;
         const receiving = attack && attack.side !== side;
-        const hp =
-          pokemon && receiving && presentation!.progress < 0.45
-            ? attack.beforeHp
-            : pokemon?.hp;
+        const frame = getAttackFrame(presentation ?? null);
+        const effect = presentation?.event.effect;
+        let hp = pokemon?.hp;
+        if (receiving) hp = frame.hit ? (frame.progress < 0.45 ? frame.hit.beforeHp : frame.hit.afterHp) : presentation!.progress < 0.45 ? attack.beforeHp : attack.afterHp;
+        else if (attack?.sourceBeforeHp !== undefined) hp = presentation!.progress < 0.85 ? attack.sourceBeforeHp : attack.sourceAfterHp;
+        if (effect?.side === side) hp = presentation!.progress < 0.45 ? effect.beforeHp : effect.afterHp;
+        const status = battle.combat?.[side].status;
         const trainerName =
           side === "attacker" ? battle.attackerName : battle.defenderName;
         const healthDescription = pokemon
@@ -66,20 +71,22 @@ export function BattleHud({
             <strong>
               {pokemon ? speciesById[pokemon.speciesId].name : "파트너 선택 중"}
               {pokemon && <span>Lv. {pokemon.level}</span>}
+              {status && <span aria-label={`상태이상 ${STATUS_NAMES[status]}`}>{STATUS_NAMES[status]}</span>}
             </strong>
             <div className={styles.fighterTypes} aria-label={`${pokemon ? speciesById[pokemon.speciesId].name : trainerName} 타입`}>
               {pokemon && speciesById[pokemon.speciesId].types.map((type) => <TypeBadge key={type} type={type} />)}
             </div>
             {pokemon && <HealthBar hp={hp!} max={pokemon.maxHp} />}
             {pokemon && <ExperienceBar xp={pokemon.xp} level={pokemon.level} />}
-            {receiving && presentation!.progress >= 0.45 && (
+            {receiving && attack.outcome !== "miss" && frame.progress >= 0.45 && (
               <span
                 className={styles.damage}
                 key={`${presentation!.event.revision}-${presentation!.event.sequence}`}
               >
-                −{attack.damage}
+                −{frame.hit ? frame.hit.beforeHp - frame.hit.afterHp : attack.damage}
               </span>
             )}
+            {attack?.side === side && presentation!.progress >= 0.85 && Boolean(attack.healing) && <span className={styles.healing}>+{attack.healing} 회복</span>}
           </div>
         );
       })}
@@ -104,16 +111,17 @@ export function EventCaption({
       {attack ? (
         <>
           <TypeBadge type={attack.moveType} />
-          <strong>{movesById[attack.moveId].name}</strong>
+          <strong>{attack.moveName ?? movesById[attack.moveId]?.name ?? "이전 버전 공격"}</strong>
           {presentation.progress >= 0.45 && (
             <small>
-              {attack.effectiveness > 1
+              {attack.outcome === "miss" ? "빗나갔다!" : attack.outcome && attack.outcome !== "hit" ? presentation.event.message : attack.critical ? "급소에 맞았다!" : attack.effectiveness > 1
                 ? "효과가 굉장합니다!"
                 : attack.effectiveness < 1
                   ? "효과가 약합니다"
                   : "명중!"}
             </small>
           )}
+          {(attack.hits?.length ?? 0) > 1 && <small>{attack.hits!.length}회 공격 · 총 {attack.damage} 피해</small>}
         </>
       ) : (
         <strong>{presentation.event.message}</strong>

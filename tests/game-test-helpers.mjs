@@ -83,3 +83,23 @@ export function deferred() {
 }
 
 export const flushPromises = () => new Promise((resolve) => setImmediate(resolve));
+
+let pokemonEngine;
+let pokemonBattle;
+/** Integration scenarios select a real legal move instead of relying on the removed move 0. */
+export function pokemonBattleAction(state) {
+  pokemonEngine ??= loadGameSource("app/games/_components/pokemon-marble/engine.ts");
+  pokemonBattle ??= loadGameSource("app/games/_components/pokemon-marble/battle.ts");
+  if (pokemonEngine.hasForcedBattleAction(state)) return { type: "CONTINUE_BATTLE" };
+  const side = state.battle.turn;
+  const source = pokemonEngine.getBattlePokemon(state, side);
+  const target = pokemonEngine.getBattlePokemon(state, side === "attacker" ? "defender" : "attacker");
+  const context = pokemonEngine.getBattleContext(state);
+  const options = pokemonEngine.getBattleCommands(state).filter(move => !pokemonBattle.getMoveUnavailableReason(source, target, move, context));
+  const cost = (move) => (move.effects.selfDamage ? 1000 : 0) + (move.effects.charge ? 500 : 0) +
+    (move.effects.lock ? 200 : 0) + (move.effects.recharge ? 100 : 0) + (move.effects.secondary ? 40 : 0) +
+    (move.effects.rule === "delayed" ? 300 : 0) + (100 - (move.accuracy ?? 100));
+  options.sort((a, b) => cost(a) - cost(b) || b.power - a.power);
+  if (!options.length) throw new Error("No usable move in integration fixture");
+  return { type: "ATTACK", moveId: options[0].id };
+}

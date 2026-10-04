@@ -109,6 +109,7 @@ test("legacy pending captures retain a playable continuation choice", () => {
   const state = createGame([1], [], 1);
   state.phase = "capture";
   state.battle = {
+    combat: loadGameSource("app/games/_components/pokemon-marble/combat-types.ts").createCombatState(),
     kind: "wild", defenderOwner: null, defenderPokemonId: "wild",
     attackerPokemonId: state.players[0].party[0].id,
     wild: { id: "wild", speciesId: 7, level: 2, xp: 0, hp: 0 },
@@ -228,6 +229,7 @@ test("wild battle offers HP-based capture odds only on the player's turn with pa
   const state = createGame([1, 4], [], 12);
   state.phase = "attack";
   state.battle = {
+    combat: loadGameSource("app/games/_components/pokemon-marble/combat-types.ts").createCombatState(),
     kind: "wild", defenderOwner: null, defenderPokemonId: "wild",
     attackerPokemonId: state.players[0].party[0].id,
     wild: { id: "wild", speciesId: 7, level: 2, xp: 0, hp: 1 },
@@ -348,6 +350,7 @@ test("battle stage HP changes on impact and retains the finishing attack snapsho
   const game = createGame([1, 4], ["민지", "준"], 15);
   const target = { id: "wild", speciesId: 7, level: 1, xp: 0, hp: 0 };
   game.battle = {
+    combat: loadGameSource("app/games/_components/pokemon-marble/combat-types.ts").createCombatState(),
     kind: "wild",
     defenderOwner: null,
     defenderPokemonId: target.id,

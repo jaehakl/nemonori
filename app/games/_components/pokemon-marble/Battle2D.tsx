@@ -5,7 +5,7 @@ import type { BattleView } from "./presentation-events";
 import { speciesById, typeNames } from "./pokemon-data";
 import SvgPokemon from "./SvgPokemon";
 import {
-  BATTLE_ANCHORS, TYPE_EFFECTS, clampProgress, getBattlePose,
+  BATTLE_ANCHORS, TYPE_EFFECTS, clampProgress, getBattlePose, getAttackFrame,
   type BattlePresentation,
 } from "./battle-visuals";
 import styles from "./Battle2D.module.css";
@@ -34,8 +34,10 @@ function AttackEffect({ presentation, reducedMotion }: {
   reducedMotion: boolean;
 }) {
   const attack = presentation?.event.attack;
-  if (presentation?.event.kind !== "attack" || !attack) return null;
-  const p = clampProgress(presentation.progress);
+  if (presentation?.event.kind !== "attack" || !attack || attack.outcome === "miss") return null;
+  const frame = getAttackFrame(presentation);
+  const p = frame.progress;
+  const critical = frame.hit?.breakdown.critical ?? attack.critical;
   if (p < 0.12 || p > 0.85) return null;
   const source = BATTLE_ANCHORS[attack.side];
   const target = BATTLE_ANCHORS[attack.side === "attacker" ? "defender" : "attacker"];
@@ -45,6 +47,7 @@ function AttackEffect({ presentation, reducedMotion }: {
     return p < 0.45 ? null : (
       <g data-effect={shape} data-reduced-motion="true" stroke={color} fill="none" strokeWidth="4">
         <ellipse cx={target.x} cy={target.y} rx="165" ry="165" />
+        {critical && <text data-critical="true" x={target.x} y={target.y - 140} textAnchor="middle" fill="#ffe390" stroke="none" fontSize="28" fontWeight="800">급소!</text>}
       </g>
     );
   }
@@ -64,6 +67,10 @@ function AttackEffect({ presentation, reducedMotion }: {
         );
       })}
       {p >= 0.45 && <circle cx={target.x} cy={target.y} r={30 + impact * 135} fill="none" strokeWidth={7 * (1 - impact)} />}
+      {critical && p >= 0.45 && <g data-critical="true" fill="#ffe390" stroke="#fff4c1" strokeWidth="3">
+        <path d="m0-68 12 43 43-18-28 36 42 16-45 3 9 45-28-35-29 35 10-45-45-3 42-16-28-36 43 18Z" transform={`translate(${target.x} ${target.y}) scale(${1 + impact})`} />
+        <text x={target.x} y={target.y - 140} textAnchor="middle" stroke="none" fontSize="28" fontWeight="800">급소!</text>
+      </g>}
     </g>
   );
 }

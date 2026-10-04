@@ -62,7 +62,7 @@
   align-items: stretch;
   gap: 8px;
 }
-.game[data-playing="true"] .topActions > * {
+.game[data-playing="true"] .topActions > :not(dialog) {
   width: 48px;
   font-size: 12px;
 }
@@ -1125,6 +1125,19 @@
   background: linear-gradient(#fffaf0, #f0deb0);
   box-shadow: 0 2px 0 #a07b44, inset 0 1px 0 #fff;
 }
+.moveCommand { display: flex; min-width: 0; gap: 3px; }
+.moveCommand .moveButton { flex: 1; min-width: 0; }
+.moveDetailsButton { flex: 0 0 44px; padding: 4px; border: 1px solid #c4a86e; border-radius: 8px; background: #fff8e6; color: #2b4f3f; font-size: 11px; }
+.historyButton { min-height: 44px; padding: 5px 10px; border: 1px solid #d7b46a; border-radius: 10px; background: #fff8e6; color: #244939; font-size: 12px; font-weight: 700; }
+.damageDetails { max-width: 640px; overflow-wrap: anywhere; line-height: 1.65; }
+.damageDetails p { margin: 12px 0; }
+.damageDetails details { margin: 12px 0; border: 1px solid #d7b46a; border-radius: 8px; padding: 10px; }
+.damageDetails summary { cursor: pointer; min-height: 32px; font-weight: 700; }
+.damageCalculation dl { display: grid; gap: 6px; margin: 12px 0; }
+.damageCalculation dl > div { display: grid; grid-template-columns: 92px 1fr; gap: 10px; }
+.damageCalculation dt { font-weight: 700; }
+.damageCalculation dd { margin: 0; }
+.damageCalculation p { padding: 8px; background: #f1f5ec; border-radius: 6px; font-variant-numeric: tabular-nums; }
 .moveButton:hover:not(:disabled) {
   border-color: #339773;
   background: #f0f8ec;
@@ -1136,7 +1149,7 @@
 }
 .moveButton small {
   font-size: 9px;
-  color: #7d9183;
+  color: #506557;
   display: block;
   line-height: 1.5;
 }
@@ -1268,6 +1281,7 @@
   margin: 10px 0 20px;
 }
 .dialog {
+  margin: auto;
   --muted: #72867b;
   --ink: #243d3b;
   border: 3px solid #d7b46a;
@@ -1280,6 +1294,17 @@
   overflow: auto;
   box-shadow: 0 24px 120px #0b201955;
 }
+.game[data-control-seat="top"] .dialog {
+  rotate: 180deg;
+}
+.game[data-control-seat="left"] .dialog,
+.game[data-control-seat="right"] .dialog {
+  width: min(640px, calc(100dvh - 60px));
+  max-height: calc(100vw - 60px);
+}
+.game[data-control-seat="left"] .dialog { rotate: 90deg; }
+.game[data-control-seat="right"] .dialog { rotate: -90deg; }
+.dialog .iconButton { min-width: 44px; min-height: 44px; flex-shrink: 0; }
 .dialog::backdrop {
   background: #0c271f99;
   backdrop-filter: blur(4px);

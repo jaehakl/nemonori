@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { loadGameSource } from "./game-test-helpers.mjs";
+import { loadGameSource, pokemonBattleAction } from "./game-test-helpers.mjs";
 
 const path = "app/games/_components/pokemon-marble/";
 const { resolveControlLayout } = loadGameSource(`${path}control-orientation.ts`);
@@ -44,7 +44,7 @@ test("automatic controls follow defender selection and each side's attack turn",
   assert.equal(state.phase, "attack");
   assert.equal(state.battle.turn, "defender");
   assert.equal(seat(state), "left");
-  state = transition(state, { type: "ATTACK", moveId: 0 });
+  state = transition(state, pokemonBattleAction(state));
   assert.equal(state.battle.turn, "attacker");
   assert.equal(seat(state), "bottom");
 });
@@ -59,7 +59,7 @@ test("branch evolution faces its owner, then recovery returns controls to the tu
   defender.xp = 900;
   defender.hp = getStats(defender).hp;
   let state = choose(choose(enter(initial, 2), 1), 0);
-  state = transition(state, { type: "ATTACK", moveId: 0 });
+  state = transition(state, pokemonBattleAction(state));
   assert.equal(state.phase, "evolution");
   assert.equal(state.evolution.ownerId, 1);
   assert.equal(seat(state), "left");

@@ -6,11 +6,11 @@ import type { Battle, GameState as CurrentGameState, Player, Pokemon as CurrentP
 // Frozen v2 contract: validate the original data before migrating any fields.
 type Pokemon = Omit<CurrentPokemon, "xp">;
 type LegacyPlayer = Omit<Player, "party" | "box"> & { party: Pokemon[]; box: Pokemon[] };
-export type LegacyGameState = Omit<CurrentGameState, "version" | "players" | "roads" | "battle"> & {
+export type LegacyGameState = Omit<CurrentGameState, "version" | "players" | "roads" | "battle" | "lastBattleAction"> & {
   version: 2;
   players: LegacyPlayer[];
   roads: ({ ownerId: number; pokemon: Pokemon } | null)[];
-  battle: (Omit<Battle, "outcome" | "wild"> & {
+  battle: (Omit<Battle, "outcome" | "wild" | "combat"> & {
     winner: "attacker" | "defender" | null;
     wild: Pokemon | null;
   }) | null;
@@ -468,7 +468,7 @@ function validate(value: unknown): value is GameState {
       !record(last) ||
       !["attacker", "defender"].includes(last.side) ||
       !integer(last.moveId) ||
-      !movesById[last.moveId] ||
+      (!movesById[last.moveId] && last.moveId !== 0) ||
       !integer(last.damage, 1, 1000000) ||
       ![0.25, 0.5, 1, 2, 4].includes(last.effectiveness)
     )

@@ -11,6 +11,11 @@ export const BATTLE_ANCHORS = {
 export function clampProgress(progress: number) {
   return Math.max(0, Math.min(1, progress));
 }
+export function getAttackFrame(presentation: BattlePresentation) {
+  const hits = presentation?.event.attack?.hits ?? [];
+  const scaled = Math.min(0.999999, presentation?.progress ?? 0) * Math.max(1, hits.length);
+  return { progress: scaled % 1, hit: hits[Math.floor(scaled)], index: Math.floor(scaled) };
+}
 
 /** Pure poses share the presentation clock with HP and audio, including pause/skip. */
 export function getBattlePose(
@@ -21,15 +26,14 @@ export function getBattlePose(
 ) {
   const pokemon = battle[side];
   const event = presentation?.event;
-  const p = clampProgress(presentation?.progress ?? 1);
+  const p = event?.kind === "attack" ? getAttackFrame(presentation).progress : clampProgress(presentation?.progress ?? 1);
   const eventSide = event?.side ??
     (battle.defender?.id === event?.pokemon?.id ? "defender" : "attacker");
   const fainting = event?.kind === "faint" && (event.side ?? "defender") === side;
   const captureEvent = event?.kind === "capture" || event?.kind.startsWith("capture-");
   const capturing = captureEvent && side === "defender";
   const captured = battle.outcome?.kind === "capture" && side === "defender";
-  const finalHit = event?.kind === "attack" && event.attack?.side !== side &&
-    Boolean(event.attack?.beforeHp);
+  const finalHit = event?.kind === "attack" && Boolean(event.attack?.side === side ? event.attack.sourceBeforeHp : event.attack?.beforeHp);
   const pose = {
     ...BATTLE_ANCHORS[side],
     speciesId: pokemon?.speciesId ?? null,
@@ -46,9 +50,9 @@ export function getBattlePose(
     const direction = side === "attacker" ? 1 : -1;
     if (!reducedMotion) {
       if (source) pose.x += Math.sin(Math.min(1, p / 0.45) * Math.PI) * 42 * direction;
-      else if (p > 0.45 && p < 0.75) pose.x += Math.sin((p - 0.45) * 65) * 12;
+      else if (event.attack.outcome !== "miss" && p > 0.45 && p < 0.75) pose.x += Math.sin((p - 0.45) * 65) * 12;
     }
-    pose.hit = !source && p >= 0.45 && p < 0.62;
+    pose.hit = !source && event.attack.outcome !== "miss" && p >= 0.45 && p < 0.62;
   } else if (fainting) {
     pose.opacity = 1 - p;
     if (!reducedMotion) pose.y += p * 45;

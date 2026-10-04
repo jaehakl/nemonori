@@ -1,10 +1,12 @@
 import { BOARD_SIZE, BOARD_TILES, getDefaultSeatSides } from "./board";
-import { getDamagePreview, getStats } from "./battle";
+import { getDamagePreview, getStats, getBattleMoves, getMoveUnavailableReason, getForcedMove, oppositeSide } from "./battle";
+import { finishCombatRound, resolveBattleMove } from "./battle-actions";
+import { createCombatState, type BattleActionResult } from "./combat-types";
 import { getPartyLeader } from "./party";
 import { getCaptureChance, getExperienceGrowth, getVictoryExperience } from "./progression";
 import {
   speciesById as byId,
-  getAvailableMoves,
+  movesById,
   isStarter,
   speciesList,
 } from "./pokemon-data";
@@ -84,7 +86,7 @@ export function createGame(
   )
     throw new Error("각 플레이어의 자리 방향을 골라 주세요.");
   const state: GameState = {
-    version: 3,
+    version: 4,
     revision: 0,
     rng: seed >>> 0 || 0x9e3779b9,
     nextPokemonId: 1,
@@ -100,6 +102,7 @@ export function createGame(
     lapGrowth: null,
     winner: null,
     log: ["모험을 시작합니다. 주사위를 굴려 주세요!"],
+    lastBattleAction: null,
   };
   state.players = starters.map((speciesId, id) => ({
     id,
@@ -192,6 +195,7 @@ export function snapshotForPresentation(
               : state.players[battle.defenderOwner].name,
           turn: battle.turn,
           outcome: battle.outcome ? { ...battle.outcome } : null,
+          combat: structuredClone(battle.combat),
         }
       : null,
   };
@@ -221,6 +225,7 @@ function startBattle(
     turn: "defender",
     outcome: null,
     lastAttack: null,
+    combat: createCombatState(),
   };
   state.phase = kind === "trainer" ? "choose-defender" : "choose-attacker";
   const opponent =
@@ -554,79 +559,191 @@ function awardLapGrowth(state: GameState, events?: EventSink) {
   continueLapGrowth(state, events);
 }
 
-function attack(state: GameState, moveId: number, events?: EventSink): boolean {
+export function getBattleContext(state: GameState, side = state.battle!.turn) {
   const battle = state.battle!;
-  const side = battle.turn;
-  const attacker = getBattlePokemon(state, side)!;
-  const defender = getBattlePokemon(
-    state,
-    side === "attacker" ? "defender" : "attacker",
-  )!;
-  const move = getAvailableMoves(attacker.speciesId, attacker.level).find(
+  const owner = side === "attacker" ? state.activePlayer : battle.defenderOwner;
+  return { combat: battle.combat, side,
+    faintedAllies: owner === null ? 0 : state.players[owner].party.filter(p => p.hp === 0).length };
+}
+
+export function getBattleCommands(state: GameState) {
+  if (state.phase !== "attack" || !state.battle) return [];
+  const side = state.battle.turn;
+  return getBattleMoves(getBattlePokemon(state, side)!, getBattlePokemon(state, oppositeSide(side))!, getBattleContext(state));
+}
+
+export function getBattleMovePreview(state: GameState, moveId: number) {
+  const side = state.battle!.turn;
+  return getDamagePreview(getBattlePokemon(state, side)!, getBattlePokemon(state, oppositeSide(side))!, moveId, getBattleContext(state));
+}
+
+export function hasForcedBattleAction(state: GameState): boolean {
+  return state.phase === "attack" && !!state.battle && getForcedMove(state.battle.combat[state.battle.turn]) !== null;
+}
+
+function presentBattleAction(
+  state: GameState,
+  result: BattleActionResult,
+  events?: EventSink,
+) {
+  const battle = state.battle!;
+  battle.lastAttack = {
+    side: result.side,
+    moveId: result.moveId,
+    damage: result.damage,
+    effectiveness: result.effectiveness,
+    result,
+  };
+  state.lastBattleAction = structuredClone(result);
+  const details =
+    result.outcome === "hit"
+      ? `${result.damage} 피해${result.critical ? " · 급소!" : ""}${result.healing ? ` · ${result.healing} 회복` : ""}${result.recoil ? ` · 반동 ${result.recoil}` : ""}`
+      : result.message;
+  addLog(state, `${result.moveName} · ${details}`);
+  events?.(state, {
+    kind:
+      result.outcome === "hit" || result.outcome === "miss"
+        ? "attack"
+        : "battle-action",
+    playerId:
+      result.side === "attacker" ? state.activePlayer : battle.defenderOwner,
+    side: result.side,
+    pokemon: pokemonView(getBattlePokemon(state, result.side)!),
+    message: result.message,
+    attack: result,
+  });
+}
+
+function attack(state: GameState, moveId: number, events?: EventSink): boolean {
+  const battle = state.battle!,
+    side = battle.turn;
+  const attacker = getBattlePokemon(state, side)!,
+    defender = getBattlePokemon(state, oppositeSide(side))!;
+  const move = getBattleCommands(state).find(
     (candidate) => candidate.id === moveId,
   );
   if (!move) return false;
-  const preview = getDamagePreview(attacker, defender, move);
-  if (preview.effectiveness === 0) return false;
-  const beforeHp = defender.hp;
-  defender.hp = Math.max(0, defender.hp - preview.damage);
-  battle.lastAttack = {
+  if (
+    !hasForcedBattleAction(state) &&
+    getMoveUnavailableReason(attacker, defender, move, getBattleContext(state))
+  )
+    return false;
+  const randomBattle = (limit: number) => random(state, limit);
+
+  const result = resolveBattleMove(
+    attacker,
+    defender,
+    move,
+    battle.combat,
     side,
-    moveId,
-    damage: preview.damage,
-    effectiveness: preview.effectiveness,
-  };
-  addLog(
-    state,
-    `${byId[attacker.speciesId].name}의 ${move.name}! ${preview.damage} 피해`,
+    randomBattle,
+    getBattleContext(state),
   );
-  events?.(state, {
-    kind: "attack",
-    playerId: side === "attacker" ? state.activePlayer : battle.defenderOwner,
-    side,
-    pokemon: pokemonView(attacker),
-    message: `${byId[attacker.speciesId].name}의 ${move.name}!`,
-    attack: {
-      side,
-      moveId,
-      moveType: move.type,
-      category: move.category,
-      damage: preview.damage,
-      effectiveness: preview.effectiveness,
-      beforeHp,
-      afterHp: defender.hp,
-    },
-  });
-  if (defender.hp > 0) {
-    battle.turn = side === "attacker" ? "defender" : "attacker";
+  presentBattleAction(state, result, events);
+  finishBattleAction(state, side, events);
+  return true;
+}
+
+function finishBattleAction(
+  state: GameState,
+  side: BattleSide,
+  events?: EventSink,
+) {
+  const battle = state.battle!;
+  const attacker = getBattlePokemon(state, side)!,
+    defender = getBattlePokemon(state, oppositeSide(side))!;
+  const randomBattle = (limit: number) => random(state, limit);
+  if (battle.combat[side].throatChop > 0) battle.combat[side].throatChop -= 1;
+  const fighters = {
+    attacker: getBattlePokemon(state, "attacker")!,
+    defender: getBattlePokemon(state, "defender")!,
+  };
+  if (attacker.hp > 0 && defender.hp > 0 && side === "attacker") {
+    const due = battle.combat.delayed.filter(
+      (entry) => entry.dueRound <= battle.combat.round,
+    );
+    battle.combat.delayed = battle.combat.delayed.filter(
+      (entry) => entry.dueRound > battle.combat.round,
+    );
+    for (const entry of due) {
+      // A scheduled attack still lands if its original user fell to another
+      // round-end effect. Judge the round only after both sides have resolved.
+      if (!fighters[oppositeSide(entry.side)].hp) continue;
+      const liveSource = battle.combat[entry.side];
+      battle.combat[entry.side] = structuredClone(entry.combatant);
+      const delayed = resolveBattleMove(
+        structuredClone(entry.pokemon),
+        fighters[oppositeSide(entry.side)],
+        movesById[entry.moveId],
+        battle.combat,
+        entry.side,
+        randomBattle,
+        getBattleContext(state, entry.side),
+        true,
+      );
+      battle.combat[entry.side] = liveSource;
+      delayed.sourceBeforeHp = delayed.sourceAfterHp = fighters[entry.side].hp;
+      presentBattleAction(state, delayed, events);
+    }
+    // Residuals and due attacks belong to the same round-end outcome.
+    finishCombatRound(fighters, battle.combat, (effect) => {
+      state.lastBattleAction?.changes.push({
+        side: effect.side,
+        message: effect.message,
+      });
+      events?.(state, {
+        kind: "battle-effect",
+        side: effect.side,
+        message: effect.message,
+        effect,
+      });
+      addLog(state, effect.message);
+    });
+  }
+  if (fighters.attacker.hp > 0 && fighters.defender.hp > 0) {
+    battle.turn = oppositeSide(side);
     return true;
   }
-  battle.outcome = { kind: "knockout", winner: side };
-  events?.(state, {
-    kind: "faint",
-    playerId: side === "attacker" ? battle.defenderOwner : state.activePlayer,
-    side: side === "attacker" ? "defender" : "attacker",
-    pokemon: pokemonView(defender),
-    message: `${byId[defender.speciesId].name}, 잠시 쉬어요!`,
-  });
-  if (battle.kind === "road" && side === "attacker") {
-    state.players[battle.defenderOwner!].box.push(defender);
+  const winner =
+    fighters.attacker.hp > 0
+      ? "attacker"
+      : fighters.defender.hp > 0
+        ? "defender"
+        : null;
+  battle.outcome = winner ? { kind: "knockout", winner } : { kind: "draw" };
+  for (const lostSide of ["defender", "attacker"] as const) {
+    if (fighters[lostSide].hp > 0) continue;
+    events?.(state, {
+      kind: "faint",
+      side: lostSide,
+      playerId:
+        lostSide === "attacker" ? state.activePlayer : battle.defenderOwner,
+      pokemon: pokemonView(fighters[lostSide]),
+      message: `${byId[fighters[lostSide].speciesId].name}, 잠시 쉬어요!`,
+    });
+  }
+  if (battle.kind === "road" && fighters.defender.hp === 0) {
+    state.players[battle.defenderOwner!].box.push(fighters.defender);
     state.roads[state.players[state.activePlayer].position] = null;
   }
-  const winnerOwner =
-    side === "attacker" ? state.activePlayer : battle.defenderOwner;
-  awardVictory(state, attacker, winnerOwner, defender.level, events);
+  battle.combat = createCombatState();
+  if (winner) {
+    battle.turn = winner;
+    awardVictory(
+      state,
+      fighters[winner],
+      winner === "attacker" ? state.activePlayer : battle.defenderOwner,
+      fighters[oppositeSide(winner)].level,
+      events,
+    );
+  } else addLog(state, "양쪽 포켓몬이 모두 쓰러졌습니다. 무승부입니다.");
   if (!state.evolution) finishBattle(state, events);
   return true;
 }
 
 export function hasExtraRoll(state: GameState): boolean {
-  return (
-    state.phase !== "finished" &&
-    state.players[state.activePlayer].restTurnsRemaining === 0 &&
-    state.dice !== null &&
-    state.dice[0] === state.dice[1]
-  );
+  return state.phase !== "finished" && state.players[state.activePlayer].restTurnsRemaining === 0 &&
+    state.dice !== null && state.dice[0] === state.dice[1];
 }
 
 function canEndTurn(state: GameState): boolean {
@@ -790,10 +907,16 @@ function applyTransition(
     case "ATTACK": {
       if (
         state.phase !== "attack" ||
+        hasForcedBattleAction(state) ||
         getActingPlayer(state) === null ||
         !attack(state, action.moveId, events)
       )
         return previous;
+      break;
+    }
+    case "CONTINUE_BATTLE": {
+      if (!hasForcedBattleAction(state)) return previous;
+      if (!attack(state, getForcedMove(state.battle!.combat[state.battle!.turn])!, events)) return previous;
       break;
     }
     case "WILD_ATTACK": {
@@ -805,16 +928,17 @@ function applyTransition(
         return previous;
       const wild = getBattlePokemon(state, "defender")!;
       const opponent = getBattlePokemon(state, "attacker")!;
-      const options = getAvailableMoves(wild.speciesId, wild.level).filter(
-        (move) => getDamagePreview(wild, opponent, move).effectiveness > 0,
-      );
-      attack(state, options[random(state, options.length)].id, events);
+      const forced = getForcedMove(state.battle!.combat.defender);
+      const options = getBattleCommands(state).filter(move => !getMoveUnavailableReason(wild, opponent, move, getBattleContext(state)));
+      if (forced !== null) attack(state, forced, events);
+      else if (options.length) attack(state, options[random(state, options.length)].id, events);
+      else return previous;
       break;
     }
     case "THROW_BALL": {
       const battle = state.battle;
       if (
-        state.phase !== "attack" ||
+        state.phase !== "attack" || hasForcedBattleAction(state) ||
         battle?.kind !== "wild" ||
         battle.turn !== "attacker" ||
         battle.outcome !== null ||
@@ -851,8 +975,15 @@ function applyTransition(
         message,
       });
       if (success) {
+        battle.combat = createCombatState();
         awardVictory(state, attacker, player.id, wild.level, events);
         if (!state.evolution) finishBattle(state, events);
+      } else {
+        battle.combat.attacker.exposed = false;
+        battle.combat.attacker.actions += 1;
+        battle.combat.defender.receivedDamage = 0;
+        battle.combat.defender.receivedPhysical = false;
+        finishBattleAction(state, "attacker", events);
       }
       break;
     }

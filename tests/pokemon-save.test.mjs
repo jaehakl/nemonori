@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { loadGameSource } from "./game-test-helpers.mjs";
+import { loadGameSource, pokemonBattleAction } from "./game-test-helpers.mjs";
 
 const path = "app/games/_components/pokemon-marble/";
 const { createGame, transition, getStats, getActingPlayer } = loadGameSource(
@@ -38,7 +38,7 @@ function nextAction(state) {
     case "attack":
       return getActingPlayer(state) === null
         ? { type: "WILD_ATTACK" }
-        : { type: "ATTACK", moveId: 0 };
+        : pokemonBattleAction(state);
     case "evolution":
       return {
         type: "CHOOSE_EVOLUTION",
@@ -139,7 +139,7 @@ test("branch evolution snapshots resume rewards once, including a victorious roa
     let state = enter(initial, 2);
     while (state.phase.startsWith("choose-"))
       state = transition(state, nextAction(state));
-    state = transition(state, { type: "ATTACK", moveId: 0 });
+    state = transition(state, pokemonBattleAction(state));
     assert.equal(state.phase, "evolution");
     const restored = snapshot(state);
     const winnerId = state.evolution.pokemonId;
@@ -174,7 +174,7 @@ test("active winner evolution preserves a defeated guardian and ends a knocked-o
     state = transition(state, nextAction(state));
     if (kind === "wild") state.battle.wild.hp = 1;
     state = transition(state, nextAction(state));
-    state = transition(state, { type: "ATTACK", moveId: 0 });
+    state = transition(state, pokemonBattleAction(state));
     assert.equal(state.phase, "evolution");
     if (kind === "road") assert.equal(state.players[1].box[0].hp, 0);
     snapshot(state);
@@ -199,7 +199,7 @@ test("a full-party attack save resumes with capture blocked and attacks availabl
   state = transition(state, { type: "WILD_ATTACK" });
   const restored = snapshot(state);
   assert.equal(transition(restored, { type: "THROW_BALL" }), restored);
-  const won = transition(restored, { type: "ATTACK", moveId: 0 });
+  const won = transition(restored, pokemonBattleAction(restored));
   assert.equal(won.phase, "turn-end");
   assert.equal(won.players[0].party.length, 6);
   snapshot(won);
@@ -211,8 +211,8 @@ test("a defeated guardian returns fully healed before a completed battle can be 
   initial.roads[2] = { ownerId: 1, pokemon: pokemon(initial, 7, 1, 1) };
   let state = enter(initial, 2);
   state = transition(state, nextAction(state));
-  state = transition(state, { type: "ATTACK", moveId: 0 });
-  state = transition(state, { type: "ATTACK", moveId: 0 });
+  state = transition(state, pokemonBattleAction(state));
+  state = transition(state, pokemonBattleAction(state));
   assert.equal(state.phase, "road");
   assert.equal(state.roads[2], null);
   const returned = state.players[1].box[0];
@@ -330,7 +330,7 @@ test("pending branch evolution resumes before rescuing a defeated party", () => 
   let state = enter(initial, 2);
   while (state.phase.startsWith("choose-"))
     state = transition(state, nextAction(state));
-  state = transition(state, { type: "ATTACK", moveId: 0 });
+  state = transition(state, pokemonBattleAction(state));
   assert.equal(state.phase, "evolution");
   assert.equal(state.winner, null);
   assert.equal(state.players[0].restTurnsRemaining, 0);

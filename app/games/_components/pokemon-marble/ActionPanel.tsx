@@ -1,4 +1,4 @@
-import { canMoveToCenter, getNextRollPlayer, hasExtraRoll, transition } from "./engine";
+import { canMoveToCenter, hasExtraRoll, transition } from "./engine";
 import { BOARD_TILES, PLAYER_COLORS } from "./board";
 import { speciesById } from "./pokemon-data";
 import { PokemonSprite, TypeBadge } from "./PokemonSprite";
@@ -7,7 +7,7 @@ import type { GameAction, GameState } from "./types";
 import PokemonCard from "./PokemonCard";
 import { getPartyLeader, sortPartyByLevel } from "./party";
 import DiceCradle from "./DiceCradle";
-import MoveLearningPanel from "./MoveLearningPanel";
+import SystemIcon from "./SystemIcon";
 import type { PresentationEvent } from "./presentation-events";
 import styles from "./PokemonMarble.module.css";
 
@@ -22,21 +22,20 @@ function TurnHeading({ state }: { state: GameState }) {
 }
 
 function RollButton({ state, dispatch }: { state: GameState; dispatch: (action: GameAction) => void }) {
-  const player = getNextRollPlayer(state);
-  if (!player) return null;
+  if (state.phase !== "roll" && state.phase !== "rest-roll") return null;
+  const player = state.players[state.activePlayer];
   const resting = player.restTurnsRemaining > 0;
   const label = `${player.name} ${resting ? "탈출 " : hasExtraRoll(state) ? "한 번 더 " : ""}주사위 굴리기`;
   return (
     <button
       type="button"
       className={styles.rollButton}
-      style={{ "--player-color": PLAYER_COLORS[player.id] } as React.CSSProperties}
       aria-label={label}
-      onClick={() => dispatch({ type: state.phase === "roll" || state.phase === "rest-roll" ? "ROLL" : "END_TURN_AND_ROLL" })}
+      disabled={Boolean(state.exchangeActive)}
+      onClick={() => dispatch({ type: "ROLL" })}
     >
       <DiceCradle dice={state.dice} />
       <span className={styles.rollLabel}>
-        <span className={styles.playerDot} aria-hidden="true">{player.id + 1}</span>
         <span>{label}</span>
       </span>
     </button>
@@ -57,9 +56,10 @@ export default function ActionPanel({
   const player = state.players[state.activePlayer];
   const allowed = (action: GameAction) => transition(state, action) !== state;
   const guardian = state.roads[player.position];
-  const storedPokemon = state.phase === "center" ? player.box : guardian ? [guardian.pokemon] : [];
-
-  if (state.phase === "learn-move") return <MoveLearningPanel state={state} dispatch={dispatch} />;
+  const atCenter = BOARD_TILES[player.position] === "center";
+  const storedPokemon = atCenter ? player.box : guardian ? [guardian.pokemon] : [];
+  const exchangeAction: GameAction = { type: state.exchangeActive ? "END_EXCHANGE" : "START_EXCHANGE" };
+  const beforeRoll = state.phase === "roll" || state.phase === "rest-roll";
 
   if (["choose-defender", "choose-attacker", "attack"].includes(state.phase))
     return (
@@ -162,12 +162,12 @@ export default function ActionPanel({
       <TurnHeading state={state} />
       {state.exchangeActive ? (
         <>
-          {player.party.length > 6 && <p role="status">한 마리를 옮겨 6마리로 정리하세요</p>}
+          {player.party.length > 6 && <p className={styles.exchangeHint} role="status">한 마리를 옮겨 6마리로 정리하세요</p>}
           <div className={styles.centerSection}>
-            <h4>{state.phase === "center" ? `박스 · ${player.box.length}` : "현재 수비"}</h4>
+            <h4>{atCenter ? `박스 · ${player.box.length}` : "현재 수비"}</h4>
             <div className={styles.partyCards}>
               {storedPokemon.map((pokemon) => {
-                const action: GameAction = state.phase === "center"
+                const action: GameAction = atCenter
                   ? { type: "CENTER_TRANSFER", pokemonId: pokemon.id, to: "party" }
                   : { type: "RETRIEVE" };
                 return <PokemonCard key={pokemon.id} pokemon={pokemon} destination="파티로 이동"
@@ -188,18 +188,26 @@ export default function ActionPanel({
                 : "회복이 끝났어요. 다음 내 차례부터 이동할 수 있어요."}
             </p>
           )}
-          <RollButton state={state} dispatch={dispatch} />
           {state.phase === "turn-end" && player.restTurnsRemaining > 0 && (
             <p className={styles.journeyHint} role="status">남은 휴식 {player.restTurnsRemaining}턴</p>
           )}
+          {!beforeRoll && <p className={styles.journeyHint} role="status">차례를 마무리하고 있어요.</p>}
         </div>
       )}
-      {!state.exchangeActive && (
-        <div className={styles.turnOptions}>
-          {canMoveToCenter(state) && <button type="button" className={styles.secondaryButton}
-            onClick={() => dispatch({ type: "MOVE_TO_CENTER" })}>다음 포켓몬센터로 이동 · 3턴 휴식</button>}
-          {allowed({ type: "END_TURN" }) && <button type="button" className={styles.secondaryButton}
-            onClick={() => dispatch({ type: "END_TURN" })}>턴만 마치기</button>}
+      {(beforeRoll || state.exchangeActive) && (
+        <div className={styles.turnActions} role="group" aria-label="턴 행동">
+          <RollButton state={state} dispatch={dispatch} />
+          <button type="button" className={styles.exchangeAction} disabled={!allowed(exchangeAction)}
+            title={state.exchangeActive ? "6마리 이하로 정리한 뒤 교환을 끝내세요" : "현재 센터나 빈 도로, 내 도로에서 교환할 수 있어요"}
+            onClick={() => dispatch(exchangeAction)}>
+            <SystemIcon name="exchange" />
+            <span>{state.exchangeActive ? "교환 끝내기" : "포켓몬 교환"}</span>
+          </button>
+          <button type="button" className={styles.centerAction} disabled={!canMoveToCenter(state)}
+            onClick={() => dispatch({ type: "MOVE_TO_CENTER" })}>
+            <SystemIcon name="center" />
+            <span>포켓몬센터 방문<small>다음 센터로 이동 · 3턴 휴식</small></span>
+          </button>
         </div>
       )}
     </section>
@@ -242,30 +250,12 @@ export function MovementPanel({
   );
 }
 
-/** The exchange action stays below the party, including while moving cards. */
-export function ExchangeControls({ state, dispatch, blocked = false }: {
-  state: GameState;
-  dispatch: (action: GameAction) => void;
-  blocked?: boolean;
-}) {
-  const action: GameAction = { type: state.exchangeActive ? "END_EXCHANGE" : "START_EXCHANGE" };
-  const allowed = transition(state, action) !== state;
-  if (!state.exchangeActive && !allowed) return null;
-  return (
-    <div className={styles.exchangeFooter}>
-      <button type="button" className={styles.secondaryButton} disabled={blocked || !allowed}
-        onClick={() => dispatch(action)}>
-        {state.exchangeActive ? "교환 끝내기" : "교환"}
-      </button>
-    </div>
-  );
-}
-
 export function PartySummary({ state, dispatch, blocked = false }: { state: GameState; dispatch?: (action: GameAction) => void; blocked?: boolean }) {
   const player = state.players[state.activePlayer];
   const leader = getPartyLeader(player.party);
   const ownedRoads = state.roads.filter((guardian) => guardian?.ownerId === player.id).length;
   const roadCount = BOARD_TILES.filter((tile) => tile === "road").length;
+  const atCenter = BOARD_TILES[player.position] === "center";
   return (
     <section
       className={styles.partyPanel}
@@ -280,13 +270,13 @@ export function PartySummary({ state, dispatch, blocked = false }: { state: Game
       </div>
       <div className={styles.partyCards} tabIndex={0} aria-label="파티 카드 목록">
         {sortPartyByLevel(player.party).map((pokemon) => {
-          const action: GameAction = state.phase === "center"
+          const action: GameAction = atCenter
             ? { type: "CENTER_TRANSFER", pokemonId: pokemon.id, to: "box" }
             : { type: "DEPLOY", pokemonId: pokemon.id };
           const canMove = !blocked && state.exchangeActive && dispatch && transition(state, action) !== state;
           return <PokemonCard key={pokemon.id} pokemon={pokemon}
             leader={pokemon.id === leader?.id}
-            destination={state.phase === "center" ? "박스로 이동" : "수비로 배치"}
+            destination={atCenter ? "박스로 이동" : "수비로 배치"}
             onClick={canMove ? () => dispatch(action) : undefined} />;
         })}
       </div>

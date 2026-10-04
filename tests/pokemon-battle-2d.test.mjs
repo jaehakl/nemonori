@@ -146,7 +146,7 @@ test("normalized PNG bounds are shared with the board and stay in the portrait c
   assert.match(html, /<rect x="-160" y="-160" width="320" height="320"/);
 });
 
-test("21 mixed battles render, return to the board and resume version-5 saves without GPU access", () => {
+test("21 mixed battles render, return to the board and resume version-6 saves without GPU access", () => {
   const kinds = new Set();
   let savedBattles = 0;
   for (let round = 0; round < 21; round++) {
@@ -170,6 +170,7 @@ test("21 mixed battles render, return to the board and resume version-5 saves wi
     for (let step = 0; step < 100; step++) {
       const result = transitionWithEvents(state, action);
       state = result.state;
+      assert.notEqual(state.phase, "learn-move", "Learning never interrupts the battle flow");
       const before = JSON.stringify(state);
       for (const event of result.events) {
         if (!event.snapshot.battle) continue;
@@ -194,8 +195,6 @@ test("21 mixed battles render, return to the board and resume version-5 saves wi
         action = getActingPlayer(state) === null ? { type: "WILD_ATTACK" } : pokemonBattleAction(state);
       } else if (state.phase === "evolution") {
         action = { type: "CHOOSE_EVOLUTION", speciesId: state.evolution.options[0] };
-      } else if (state.phase === "learn-move") {
-        action = { type: "CHOOSE_MOVE", replaceMoveId: null };
       } else if (state.phase === "capture") {
         action = { type: "CAPTURE", capture: false };
       } else {

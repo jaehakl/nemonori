@@ -8,10 +8,27 @@ const { parseGameSave, validateSave, getLegacyTileMapping } = loadGameSource(`${
 const { parseLegacyGameSave, validateLegacySave } = loadGameSource(`${path}save-legacy.ts`);
 const { BOARD_TILES: oldBoard } = loadGameSource(`${path}save-legacy-board.ts`);
 const { BOARD_TILES: board } = loadGameSource(`${path}board.ts`);
-const { getAvailableMoves } = loadGameSource(`${path}pokemon-data.ts`);
+const { getLegacyAvailableMoves } = loadGameSource(`${path}legacy-moves.ts`);
+const { getLearnableMoves } = loadGameSource(`${path}pokemon-data.ts`);
+const { parseV5GameSave, validateV5Save } = loadGameSource(`${path}save-v5.ts`);
 const { createGame, transition, getStats, hasExtraRoll } = loadGameSource(`${path}engine.ts`);
 const { createCombatant } = loadGameSource(`${path}combat-types.ts`);
 const fixtures = JSON.parse(readFileSync(new URL("./fixtures/pokemon-v2.json", import.meta.url), "utf8"));
+
+
+function pendingV5Learning() {
+  const state = parseV5GameSave(fixtures.wildEvolution);
+  const pokemon = state.players[0].party[0];
+  const growth = state.growth.queue[0];
+  pokemon.speciesId = 134;
+  state.evolution = null;
+  state.phase = "learn-move";
+  const eligible = getLearnableMoves(pokemon.speciesId, pokemon.level).map((move) => move.id);
+  growth.pendingMoveIds = eligible.filter((id) => !growth.consideredMoveIds.includes(id) && !pokemon.moveIds.includes(id));
+  growth.consideredMoveIds = [...new Set([...growth.consideredMoveIds, ...eligible])];
+  assert.ok(validateV5Save(state));
+  return state;
+}
 
 function snapshot(state) {
   assert.ok(validateSave(state), `Invalid ${state.phase} state`);
@@ -40,7 +57,7 @@ test("v2/v3/v4 migrate cells by kind and order while preserving every interrupte
       const old = makeVersion(fixture, version);
       const original = structuredClone(old);
       const next = snapshot(parseGameSave(old));
-      assert.equal(next.version, 5);
+      assert.equal(next.version, 6);
       assert.deepEqual(old, original);
       assert.deepEqual(next.log.slice(0, -1), old.log.slice(-23));
       assert.match(next.log.at(-1), /새 보드 배치/);
@@ -48,10 +65,11 @@ test("v2/v3/v4 migrate cells by kind and order while preserving every interrupte
       assert.deepEqual(next.players.map((player) => player.position), old.players.map((player) => mapping[player.position]));
       for (const player of next.players) {
         for (const pokemon of [...player.party, ...player.box]) {
-          assert.deepEqual(pokemon.moveIds, getAvailableMoves(pokemon.speciesId, pokemon.level, 3).map(move => move.id));
+          assert.deepEqual(pokemon.moveIds, getLegacyAvailableMoves(pokemon.speciesId, pokemon.level).map(move => move.id));
         }
       }
-      for (const key of ["rng", "revision", "turn", "nextPokemonId", "activePlayer", "phase"]) assert.equal(next[key], old[key]);
+      for (const key of ["rng", "revision", "turn", "nextPokemonId", "activePlayer"]) assert.equal(next[key], old[key]);
+      assert.equal(next.phase, ["road", "center"].includes(old.phase) ? "turn-end" : old.phase);
       for (const [tile, guardian] of old.roads.entries()) {
         if (!guardian) continue;
         assert.equal(next.roads[mapping[tile]].pokemon.id, guardian.pokemon.id);
@@ -79,7 +97,7 @@ test("v4 migration adds learned slots to delayed attack snapshots without changi
   const delayed = next.battle.combat.delayed[0];
   const { moveIds, ...pokemon } = delayed.pokemon;
   assert.deepEqual(pokemon, original.battle.combat.delayed[0].pokemon);
-  assert.deepEqual(moveIds, getAvailableMoves(pokemon.speciesId, pokemon.level, 3).map((move) => move.id));
+  assert.deepEqual(moveIds, getLegacyAvailableMoves(pokemon.speciesId, pokemon.level).map((move) => move.id));
   assert.deepEqual(old, original);
   delayed.pokemon.moveIds = [33, 55, 229, 44];
   snapshot(next);
@@ -106,10 +124,9 @@ test("a v4 monopoly migrates all 27 guardian slots and remains terminal", () => 
 });
 
 test("new learned slots and growth references reject forged data", () => {
-  const base = parseGameSave(fixtures.wildEvolution);
-  const learning = transition(base, { type: "CHOOSE_EVOLUTION", speciesId: 134 });
+  const learning = pendingV5Learning();
   assert.equal(learning.phase, "learn-move");
-  snapshot(learning);
+  assert.ok(validateV5Save(learning));
   assert.ok(learning.growth.queue[0].pendingMoveIds.length > 1);
   for (const change of [
     (state) => { delete state.players[0].party[0].moveIds; },
@@ -134,7 +151,8 @@ test("new learned slots and growth references reject forged data", () => {
   ]) {
     const corrupt = structuredClone(learning);
     change(corrupt);
-    assert.equal(validateSave(corrupt), false, change.toString());
+    assert.equal(validateV5Save(corrupt), false, change.toString());
+    assert.equal(parseGameSave(corrupt), null);
   }
 });
 

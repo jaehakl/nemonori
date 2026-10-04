@@ -1212,7 +1212,11 @@
   margin-bottom: 8px;
 }
 .centerSection {
-  margin-top: 16px;
+  flex: 1;
+  min-height: 0;
+  margin-top: 8px;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 .centerSection > h4 {
   font-size: 12px;
@@ -1577,6 +1581,7 @@ button.tradingCard:focus-visible {
   height: 100%;
   min-height: 0;
   padding: 18px;
+  overflow: hidden;
 }
 .journeyPanel .journeyHeading {
   flex-shrink: 0;
@@ -1594,22 +1599,23 @@ button.tradingCard:focus-visible {
 }
 .rollButton {
   display: flex;
-  flex-direction: column;
+  grid-column: 1 / -1;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  width: min(360px, 100%);
+  width: 100%;
   flex-shrink: 0;
   padding: 10px 12px;
-  border: 2px solid var(--player-color);
-  border-radius: 22px;
-  background: #fff9e8;
-  color: #173f35;
+  border: 2px solid #3976b7;
+  border-radius: 14px;
+  background: #e7f2ff;
+  color: #163d6c;
   box-shadow: 0 4px 0 #51362924;
   cursor: pointer;
 }
 .rollButton:hover {
-  background: #fffdf5;
+  background: #d5e9ff;
   box-shadow: 0 4px 0 #51362940;
 }
 .rollButton:focus-visible {
@@ -1643,29 +1649,113 @@ button.tradingCard:focus-visible {
   width: min(260px, 90%);
   margin: 0;
 }
-.turnOptions {
-  display: flex;
+.turnActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   flex: 0 0 auto;
-  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 10px;
+  --dice-cradle-width: 140px;
+}
+.turnActions button {
+  min-height: 48px;
+}
+.exchangeAction,
+.centerAction {
+  display: flex;
+  align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 9px;
+  padding: 10px;
+  border: 2px solid;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.exchangeAction {
+  border-color: #8864b5;
+  background: #f0e7ff;
+  color: #55347e;
+}
+.centerAction {
+  border-color: #c87e28;
+  background: #fff0d6;
+  color: #79490f;
+}
+.centerAction small {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+}
+.turnActions svg {
+  flex-shrink: 0;
+}
+.turnActions button:focus-visible {
+  outline: 3px solid #173f35;
+  outline-offset: 3px;
+}
+.turnActions button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.turnActions button:not(:disabled):active {
+  transform: translateY(1px);
+}
+.tableControls[data-exchange="true"] .journeyPanel { padding: 10px; }
+.tableControls[data-exchange="true"] .journeyHeading {
+  min-height: 32px;
+  padding-bottom: 4px;
+  gap: 7px;
+}
+.tableControls[data-exchange="true"] .journeyHeading h3 { font-size: 14px; }
+.tableControls[data-exchange="true"] .journeyHeading small { font-size: 9px; }
+.tableControls[data-exchange="true"] .centerSection { margin-top: 6px; }
+.tableControls[data-exchange="true"] .centerSection > h4 { margin-bottom: 4px; }
+.tableControls[data-exchange="true"] .turnActions {
+  --dice-cradle-width: 90px;
+  gap: 8px;
   padding-top: 6px;
 }
-.turnOptions button {
-  padding: 8px 10px;
-  font-size: 12px;
+.tableControls[data-exchange="true"] .rollButton {
+  height: 59px;
+  padding: 5px 8px;
+  gap: 6px;
 }
-.exchangeFooter {
+.tableControls[data-exchange="true"] .rollLabel { font-size: 14px; }
+.tableControls[data-exchange="true"] .exchangeAction,
+.tableControls[data-exchange="true"] .centerAction { padding: 6px; }
+.tableControls[data-exchange="true"] .partyPanel { padding: 6px 9px; }
+.exchangeHint {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.tableControls[data-exchange="true"] .tradingCard {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-content: center;
+  gap: 4px;
+  flex-basis: 230px;
+  padding: 6px;
+}
+.tableControls[data-exchange="true"] .cardArtwork {
+  grid-column: 1;
+  grid-row: 1 / 5;
+  width: 64px;
+  height: 80px;
+  margin: 0;
   display: flex;
-  justify-content: flex-end;
-  flex: 0 0 auto;
-  padding: 6px 10px;
-  border-top: 1px solid #d9c491;
-  background: #f2e5be;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
 }
-.exchangeFooter button {
-  min-width: 96px;
-}
+.tableControls[data-exchange="true"] .cardArtwork > span { transform: scale(0.44); }
+.tableControls[data-exchange="true"] .tradingCard > :not(.cardArtwork):not(.leaderBadge) { grid-column: 2; }
+.tableControls[data-exchange="true"] .typeRow { margin-bottom: 0; }
+.tableControls[data-exchange="true"] .cardHeading { flex-wrap: wrap; }
 @container journey-actions (max-height: 320px) {
   .controlActions .journeyPanel { padding: 10px; }
   .journeyHeading { min-height: 36px; padding-bottom: 5px; gap: 7px; }
@@ -1675,11 +1765,13 @@ button.tradingCard:focus-visible {
   .journeyHint { font-size: 11px; }
   .rollButton { gap: 6px; padding: 7px 10px; }
   .rollLabel { font-size: 14px; }
+  .turnActions { --dice-cradle-width: 110px; gap: 8px; padding-top: 6px; }
 }
 @container journey-actions (max-height: 240px) {
   .journeyCenter { --dice-cradle-width: 190px; padding: 5px 0; }
   .rollButton { gap: 4px; padding: 5px 8px; }
   .rollLabel { font-size: 12px; }
+  .turnActions { --dice-cradle-width: 90px; }
 }
 @container journey-actions (max-height: 190px) {
   .controlActions .journeyPanel { padding: 7px 10px; }
@@ -1818,5 +1910,4 @@ button.tradingCard:focus-visible {
   .partyPanel .tradingCard > :not(.cardArtwork):not(.leaderBadge) { grid-column: 2; }
   .partyPanel .typeRow { margin-bottom: 0; }
   .partyPanel .cardHeading { flex-wrap: wrap; }
-  .exchangeFooter { padding-block: 4px; }
 }

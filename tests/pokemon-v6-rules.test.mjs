@@ -25,7 +25,7 @@ function beforeWild(state) {
   return state;
 }
 
-test("new starters have level-five HP and moves, and encounter levels three through five", () => {
+test("new starters have level-five HP and moves, and encounter every level from one to five", () => {
   for (const speciesId of [1, 4, 7, 172, 128, 132, 209]) {
     const state = createGame([speciesId], [], 1);
     const starter = state.players[0].party[0];
@@ -43,28 +43,23 @@ test("new starters have level-five HP and moves, and encounter levels three thro
     levels.add(next.battle.wild.level);
     assert.deepEqual(transition(parseGameSave(state), { type: "STEP" }), next);
   }
-  assert.deepEqual([...levels].sort(), [3, 4, 5]);
+  assert.deepEqual([...levels].sort(), [1, 2, 3, 4, 5]);
 });
 
-test("mixed parties keep their lower bound under a randomly reduced upper bound", () => {
-  const caps = new Set();
+test("lower-level party members never raise the minimum or reduce the maximum wild level", () => {
   const observed = new Set();
   for (let seed = 1; seed <= 150; seed++) {
     const state = beforeWild(createGame([1], [], Math.imul(seed, 2654435761) >>> 0));
     state.players[0].party = [pokemon(state, 5), pokemon(state, 12)];
     const capOnly = structuredClone(state);
     capOnly.players[0].party.shift();
-    // The same random reduction sets the singleton's exact level and the mixed party's cap.
     const capResult = transition(capOnly, { type: "STEP" });
-    const cap = capResult.battle.wild.level;
     const mixed = transition(state, { type: "STEP" });
-    caps.add(cap);
     observed.add(mixed.battle.wild.level);
-    assert.ok(mixed.battle.wild.level >= 5 && mixed.battle.wild.level <= cap);
+    assert.equal(mixed.battle.wild.level, capResult.battle.wild.level);
     assert.equal(mixed.rng, capResult.rng);
   }
-  assert.deepEqual([...caps].sort((a, b) => a - b), [10, 11, 12]);
-  assert.deepEqual([...observed].sort((a, b) => a - b), [5, 6, 7, 8, 9, 10, 11, 12]);
+  assert.deepEqual([...observed].sort((a, b) => a - b), Array.from({ length: 12 }, (_, i) => i + 1));
 });
 
 test("low-level existing saves keep their roster and ongoing encounters unchanged", () => {
@@ -95,12 +90,12 @@ test("capture adds exactly one percentage point per positive level and caps at 9
   assert.equal(getCaptureChance({ ...wild, hp: 1 }, 100), 0.95);
 });
 
-test("grass encounter bounds exclude fainted, boxed and deployed Pokemon", () => {
+test("grass encounter bounds include fainted party members but exclude boxed and deployed Pokemon", () => {
   assert.deepEqual(BOARD_TILES.flatMap((kind, index) => kind === "grass" ? [index + 1] : []), [3, 8, 13, 19, 23, 29, 33, 36, 39]);
   const observed = new Set();
   for (let seed = 1; seed <= 150; seed++) {
     const state = createGame([1], [], Math.imul(seed, 2654435761) >>> 0);
-    state.players[0].party = [pokemon(state, 1, 0), pokemon(state, 99, 0), pokemon(state, 12), pokemon(state, 15)];
+    state.players[0].party = [pokemon(state, 1, 0), pokemon(state, 15, 0), pokemon(state, 5), pokemon(state, 12)];
     state.players[0].box = [pokemon(state, 100)];
     state.roads[4] = { ownerId: 0, pokemon: pokemon(state, 80) };
     state.players[0].position = 1;
@@ -110,32 +105,26 @@ test("grass encounter bounds exclude fainted, boxed and deployed Pokemon", () =>
     state.movement = { remaining: 1, encounters: [] };
     const next = transition(state, { type: "STEP" });
     const level = next.battle.wild.level;
-    assert.ok(level >= 12 && level <= 15);
+    assert.ok(level >= 1 && level <= 15);
     observed.add(level);
     assert.ok(validateSave(next));
     state.players[0].party[3].hp = 0;
     const soloLevel = transition(state, { type: "STEP" }).battle.wild.level;
-    assert.ok(soloLevel >= 10 && soloLevel <= 12);
+    assert.equal(soloLevel, level, "fainting another party member does not change the cap");
   }
-  assert.deepEqual([...observed].sort((a, b) => a - b), [12, 13, 14, 15]);
+  assert.deepEqual([...observed].sort((a, b) => a - b), Array.from({ length: 15 }, (_, i) => i + 1));
 });
 
 test("voluntary rescue always goes forward, cancels doubles and never grants lap rewards", () => {
   for (let position = 0; position < 40; position++)
     assert.equal(getNextCenter(position), ((Math.floor(position / 10) + 1) * 10) % 40);
-  for (const phase of ["roll", "road", "center", "turn-end"]) {
+  for (const position of [0, 10, 30, 39]) {
     const state = createGame([1], [], 1);
-    state.phase = phase;
-    state.players[0].position = phase === "center" ? 30 : 39;
+    state.players[0].position = position;
     state.players[0].party[0].hp = 1;
-    if (phase !== "roll") {
-      state.dice = [2, 2];
-      state.dicePurpose = "movement";
-      state.movement = { remaining: 0, encounters: [] };
-    }
     const before = structuredClone(state);
     const { state: rescued, events } = transitionWithEvents(state, { type: "MOVE_TO_CENTER" });
-    assert.equal(rescued.players[0].position, 0);
+    assert.equal(rescued.players[0].position, getNextCenter(position));
     assert.equal(rescued.players[0].restTurnsRemaining, 3);
     assert.equal(rescued.phase, "turn-end");
     assert.equal(rescued.movement, null);
@@ -189,7 +178,10 @@ test("escaping doubles heal and move their sum, persist across reload and never 
   state.dice = [1, 2];
   state.dicePurpose = "movement";
   state.movement = { remaining: 0, encounters: [] };
-  state = transition(state, { type: "END_TURN_AND_ROLL" });
+  state = transition(state, { type: "END_TURN" });
+  assert.equal(state.phase, "rest-roll");
+  assert.equal(state.dice, null);
+  state = transition(state, { type: "ROLL" });
   assert.deepEqual(state.dice, [2, 2]);
   assert.equal(state.dicePurpose, "rest");
   assert.equal(state.phase, "moving");
@@ -201,14 +193,14 @@ test("escaping doubles heal and move their sum, persist across reload and never 
     assert.ok(validateSave(state));
     state = transition(parseGameSave(state), { type: "STEP" });
   }
-  assert.equal(state.phase, "road");
+  assert.equal(state.phase, "turn-end");
   assert.equal(state.players[0].position, 14);
   assert.equal(hasExtraRoll(state), false);
   assert.equal(transition(state, { type: "END_TURN" }).activePlayer, 1);
 });
 
 test("voluntary center travel is rejected during choices, exchange and rest without consuming RNG", () => {
-  for (const phase of ["moving", "choose-defender", "choose-attacker", "attack", "evolution", "learn-move", "capture", "rest-roll", "rest-end", "finished"]) {
+  for (const phase of ["moving", "choose-defender", "choose-attacker", "attack", "evolution", "capture", "rest-roll", "rest-end", "road", "center", "turn-end", "finished"]) {
     const state = { ...createGame([1], [], 1), phase };
     assert.equal(transition(state, { type: "MOVE_TO_CENTER" }), state, phase);
   }

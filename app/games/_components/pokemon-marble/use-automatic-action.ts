@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { getActingPlayer, hasForcedBattleAction } from "./engine";
+import { canEndTurn, getActingPlayer, hasForcedBattleAction } from "./engine";
 import type { GameAction, GameState } from "./types";
 
 /** Preserve the remaining delay when orientation or visibility pauses play. */
@@ -22,6 +22,8 @@ export function useAutomaticAction(
           ? { type: "CONTINUE_BATTLE" }
         : game.phase === "attack" && getActingPlayer(game) === null
           ? { type: "WILD_ATTACK" }
+        : canEndTurn(game)
+          ? { type: "END_TURN" }
           : null;
     if (!action) {
       pending.current.key = "";

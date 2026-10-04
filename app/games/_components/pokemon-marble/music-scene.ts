@@ -1,4 +1,5 @@
 import type { PresentationEvent, PresentationSnapshot } from "./presentation-events";
+import { BOARD_TILES } from "./board";
 
 export type AudioScene =
   | "opening"
@@ -28,5 +29,8 @@ export function getAudioScene(
     }
     return battle.kind;
   }
-  return ["center", "rest-roll", "rest-end"].includes(view.phase) ? "center" : "adventure";
+  if (["center", "rest-roll", "rest-end"].includes(view.phase)) return "center";
+  const preparingAtCenter = ["roll", "turn-end"].includes(view.phase) &&
+    BOARD_TILES[view.players[view.activePlayerId].position] === "center";
+  return preparingAtCenter ? "center" : "adventure";
 }

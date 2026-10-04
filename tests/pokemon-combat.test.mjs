@@ -25,6 +25,7 @@ const {
   getBattleMovePreview,
 } = loadGameSource(`${root}engine.ts`);
 const { parseGameSave, validateSave } = loadGameSource(`${root}save.ts`);
+const { getLegacyAvailableMoves } = loadGameSource(`${root}legacy-moves.ts`);
 const safeRandom = (limit) => (limit === 10000 ? 5000 : limit - 1);
 const pokemon = (speciesId = 1, level = 30, hp) => {
   const p = { id: `p${speciesId}`, speciesId, level, hp: 0, xp: 0,
@@ -343,7 +344,7 @@ test("status immunity, capped stages, sleep, thawing and residual damage are exp
   assert.equal(d.hp, before[1] - Math.max(1, Math.floor(getStats(d).hp / 8)));
 });
 
-test("real reducer preserves forced actions, status and RNG across version-5 saves", () => {
+test("real reducer preserves forced actions, status and RNG across version-6 saves", () => {
   let state = trainerBattle([1, 1], 30);
   state.battle.combat.defender.charging = 76;
   state.battle.combat.attacker.status = "tox";
@@ -357,7 +358,7 @@ test("real reducer preserves forced actions, status and RNG across version-5 sav
   );
   state = transition(state, action);
   assert.ok(validateSave(state));
-  assert.equal(state.version, 5);
+  assert.equal(state.version, 6);
 });
 
 test("Struggle recoil resolves self knockout and simultaneous knockout without duplicated XP", () => {
@@ -427,7 +428,7 @@ test("legacy v3 saves preserve HP and RNG, mark old basic attacks and forbid new
   assert.equal(migrated.rng, old.rng);
   assert.deepEqual(migrated.players, old.players.map(player => ({ ...player, position: 1,
     party: player.party.map(pokemon => ({ ...pokemon,
-      moveIds: getAvailableMoves(pokemon.speciesId, pokemon.level, 3).map(move => move.id),
+      moveIds: getLegacyAvailableMoves(pokemon.speciesId, pokemon.level).map(move => move.id),
     })),
   })));
   assert.equal(migrated.battle.lastAttack.legacy, true);
@@ -535,6 +536,63 @@ test("all packaged attacks have classified effects, valid resolution records and
   for (const species of speciesList)
     for (const move of getAvailableMoves(species.id, 100))
       assert.notEqual(move.effects.support, "excluded");
+});
+
+test("Meowth's level-five Feint remains usable after Fake Out and on repeated turns", () => {
+  const meowth = pokemon(52, 5);
+  const target = pokemon(19, 5);
+  const combat = createCombatState();
+  assert.deepEqual(meowth.moveIds, [252, 364]);
+  assert.equal(moveResult(252, meowth, target, combat).result.damage, 7);
+  assert.match(getMoveUnavailableReason(meowth, target, movesById[252], { combat }), /첫 행동/);
+  for (let action = 0; action < 3; action++) {
+    target.hp = getStats(target).hp;
+    assert.equal(getMoveUnavailableReason(meowth, target, movesById[364], { combat }), null);
+    assert.ok(!getBattleMoves(meowth, target, { combat }).some(move => move.id === 165));
+    const { result } = moveResult(364, meowth, target, combat);
+    assert.equal(result.damage, 6);
+    assert.equal(result.recoil, 0);
+  }
+});
+
+test("low-level Fake Out users fall back safely, then gain repeatable attacks at level four", () => {
+  for (const speciesId of [52, 300, 859]) {
+    for (const level of [1, 3]) {
+      const source = pokemon(speciesId, level);
+      const target = pokemon(113, 5);
+      const combat = createCombatState();
+      assert.deepEqual(source.moveIds, [252]);
+      moveResult(252, source, target, combat);
+      const usable = getBattleMoves(source, target, { combat })
+        .filter(move => !getMoveUnavailableReason(source, target, move, { combat }));
+      assert.deepEqual(usable.map(move => move.id), [165]);
+      const { result } = moveResult(165, source, target, combat);
+      assert.ok(result.damage > 0);
+      assert.ok(result.recoil > 0);
+    }
+    const source = pokemon(speciesId, 4);
+    const target = pokemon(113, 5);
+    const combat = createCombatState();
+    combat.attacker.actions = 1;
+    const usable = getBattleMoves(source, target, { combat })
+      .filter(move => !getMoveUnavailableReason(source, target, move, { combat }));
+    assert.ok(usable.some(move => move.id !== 165 && move.id !== 252));
+    assert.ok(!usable.some(move => move.id === 165));
+  }
+});
+
+test("species without supported low-level attacks can still resolve a battle using Struggle", () => {
+  for (const speciesId of [63, 129, 132, 201, 360]) {
+    const source = pokemon(speciesId, 1);
+    const target = pokemon(19, 1);
+    const combat = createCombatState();
+    assert.deepEqual(source.moveIds, []);
+    for (let round = 0; source.hp > 0 && target.hp > 0 && round < 20; round++) {
+      assert.deepEqual(getBattleMoves(source, target, { combat }).map(move => move.id), [165]);
+      moveResult(165, source, target, combat);
+    }
+    assert.ok(source.hp === 0 || target.hp === 0);
+  }
 });
 
 test("buttons distinguish base power, final damage and accuracy; details show applied HP separately", () => {

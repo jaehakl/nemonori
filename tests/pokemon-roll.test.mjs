@@ -3,190 +3,114 @@ import test from "node:test";
 import { loadGameSource } from "./game-test-helpers.mjs";
 
 const path = "app/games/_components/pokemon-marble/";
-const {
-  createGame,
-  transition,
-  transitionWithEvents,
-  getNextRollPlayer,
-  getStats,
-  hasExtraRoll,
-} = loadGameSource(`${path}engine.ts`);
+const { createGame, transition, transitionWithEvents, getNextRollPlayer, getStats, hasExtraRoll, canEndTurn } = loadGameSource(`${path}engine.ts`);
 const { validateSave } = loadGameSource(`${path}save.ts`);
 
 function game(count = 3, seed = 9182) {
   return createGame([1, 4, 7, 172].slice(0, count), ["민지", "준", "하늘", "지우"], seed);
 }
-
-function ready(state = game(), phase = "turn-end", dice = [1, 2]) {
-  state.phase = phase;
+function ready(state = game(), dice = [1, 2]) {
+  state.phase = "turn-end";
   state.dice = dice;
   state.dicePurpose = "movement";
   state.movement = { remaining: 0, encounters: [] };
-  if (phase === "road") state.players[state.activePlayer].position = 1;
   return state;
 }
-
 function rest(player, remaining = 3) {
   player.restTurnsRemaining = remaining;
   player.party.forEach((pokemon) => { pokemon.hp = 0; });
 }
 
-function assertAtomicRoll(previous) {
-  const original = structuredClone(previous);
-  assert.ok(validateSave(previous));
-  const preview = getNextRollPlayer(previous);
-  const ended = transition(previous, { type: "END_TURN" });
-  assert.deepEqual(preview, ended.players[ended.activePlayer]);
-  const sequential = transition(ended, { type: "ROLL" });
-  const result = transitionWithEvents(previous, { type: "END_TURN_AND_ROLL" });
-  const { state, events } = result;
-
-  assert.deepEqual(previous, original, "Neither preview nor transition may mutate the input");
-  assert.deepEqual(state, { ...sequential, revision: previous.revision + 1 });
-  assert.equal(state.activePlayer, preview.id);
-  const resting = preview.restTurnsRemaining > 0;
-  assert.equal(state.dicePurpose, resting ? "rest" : "movement");
-  if (resting && state.dice[0] !== state.dice[1]) {
-    assert.equal(state.phase, "rest-end");
-    assert.equal(state.movement, null);
-  } else {
-    assert.equal(state.phase, "moving");
-    assert.equal(state.movement.remaining, state.dice[0] + state.dice[1]);
-  }
-  assert.equal(state.revision, previous.revision + 1);
-  assert.equal(events[0].kind, "roll");
-  if (!resting) assert.deepEqual(events.map((event) => event.kind), ["roll"]);
-  assert.equal(events[0].revision, state.revision);
-  assert.equal(events[0].sequence, 0);
-  assert.equal(events[0].playerId, preview.id);
-  assert.equal(events[0].snapshot.activePlayerId, preview.id);
-  assert.deepEqual(events[0].snapshot.dice, state.dice);
-  assert.notEqual(events[0].snapshot.dice, state.dice);
-  assert.ok(validateSave(state));
-  assert.deepEqual(transition(previous, { type: "END_TURN_AND_ROLL" }), state);
-  assert.deepEqual(
-    transitionWithEvents(JSON.parse(JSON.stringify(previous)), { type: "END_TURN_AND_ROLL" }),
-    result,
-    "The saved input must replay the exact same dice and events",
-  );
-  return result;
-}
-
-test("ending and rolling is one revision with the same seeded dice, state and logs as two actions", () => {
+test("automatic handoff opens the next player's actions without rolling or consuming RNG", () => {
   for (const count of [1, 2, 3, 4]) {
-    for (const seed of [1, 9182, 15000]) {
-      for (const phase of ["center", "road", "turn-end"]) {
-        const initial = ready(game(count, seed), phase);
-        const result = assertAtomicRoll(initial);
-        const nextPlayer = count === 1 ? 0 : 1;
-        assert.equal(result.state.activePlayer, nextPlayer);
-        assert.equal(result.state.turn, initial.turn + 1);
-        assert.match(result.state.log.at(-1), new RegExp(`^${initial.players[nextPlayer].name}: 주사위`));
-      }
-    }
+    const previous = ready(game(count));
+    const original = structuredClone(previous);
+    assert.ok(canEndTurn(previous));
+    assert.equal(getNextRollPlayer(previous), null);
+    const { state, events } = transitionWithEvents(previous, { type: "END_TURN" });
+    assert.deepEqual(previous, original);
+    assert.equal(state.activePlayer, count === 1 ? 0 : 1);
+    assert.equal(state.turn, previous.turn + 1);
+    assert.equal(state.phase, "roll");
+    assert.equal(state.dice, null);
+    assert.equal(state.movement, null);
+    assert.equal(state.rng, previous.rng);
+    assert.equal(state.revision, previous.revision + 1);
+    assert.equal(getNextRollPlayer(state), state.players[state.activePlayer]);
+    assert.deepEqual(events.map(event => event.kind), ["turn"]);
+    assert.equal(events[0].snapshot.activePlayerId, state.activePlayer);
+    assert.ok(validateSave(state));
+    assert.equal(transition(state, { type: "END_TURN" }), state);
+    assert.equal(transition(previous, { type: "END_TURN_AND_ROLL" }), previous);
   }
 });
 
-test("consecutive doubles keep the same player and preserve opponents' remaining rest", () => {
-  let state = game(2);
-  rest(state.players[1]);
-  for (const dice of [[2, 2], [6, 6], [1, 1]]) {
-    ready(state, "turn-end", dice);
-    assert.equal(hasExtraRoll(state), true);
-    const result = assertAtomicRoll(state);
-    assert.equal(result.state.activePlayer, 0);
-    assert.equal(result.state.turn, 1);
-    assert.equal(result.state.players[1].restTurnsRemaining, 3);
-    assert.match(result.state.log.at(-2), /더블! 한 번 더/);
-    state = result.state;
+test("movement doubles reopen the same player's actions without changing the turn or rest counters", () => {
+  for (const dice of [[1, 1], [2, 2], [6, 6]]) {
+    const previous = ready(game(2), dice);
+    rest(previous.players[1]);
+    assert.ok(hasExtraRoll(previous));
+    const result = transition(previous, { type: "END_TURN" });
+    assert.equal(result.activePlayer, 0);
+    assert.equal(result.turn, previous.turn);
+    assert.equal(result.phase, "roll");
+    assert.equal(result.rng, previous.rng);
+    assert.equal(result.players[1].restTurnsRemaining, 3);
+    assert.equal(result.dicePurpose, null);
   }
 });
 
-test("the combined action rolls once for the next resting player instead of skipping them", () => {
+test("handoff shows a resting player their own roll before consuming one rest attempt", () => {
   for (const remaining of [2, 1]) {
-    const initial = ready();
-    initial.rng = 12345;
-    const player = initial.players[1];
-    rest(player, remaining);
-    player.box.push({ ...player.party[0], id: `p${initial.nextPokemonId++}` });
-    const guardian = { ...player.party[0], id: `p${initial.nextPokemonId++}`, hp: 1 };
-    initial.roads[4] = { ownerId: player.id, pokemon: guardian };
-    const result = assertAtomicRoll(initial);
-    assert.equal(result.state.activePlayer, 1);
-    assert.equal(result.state.turn, initial.turn + 1);
-    assert.equal(result.state.players[1].restTurnsRemaining, remaining - 1);
-    for (const pokemon of [...result.state.players[1].party, ...result.state.players[1].box])
-      assert.equal(pokemon.hp, remaining === 1 ? getStats(pokemon).hp : 0);
-    assert.equal(result.state.roads[4].pokemon.hp, 1);
-    assert.ok(result.state.log.some((message) => message.includes(`남은 휴식 ${remaining - 1}턴`)));
-    assert.equal(result.state.log.some((message) => message.includes("모두 회복")), remaining === 1);
+    const previous = ready();
+    previous.rng = 12345;
+    rest(previous.players[1], remaining);
+    let state = transition(previous, { type: "END_TURN" });
+    assert.equal(state.phase, "rest-roll");
+    assert.equal(state.activePlayer, 1);
+    assert.equal(state.players[1].restTurnsRemaining, remaining);
+    assert.equal(state.rng, previous.rng);
+    state = transition(state, { type: "ROLL" });
+    assert.equal(state.phase, "rest-end");
+    assert.equal(state.players[1].restTurnsRemaining, remaining - 1);
+    assert.equal(state.players[1].party[0].hp, remaining === 1 ? getStats(state.players[1].party[0]).hp : 0);
+    assert.ok(canEndTurn(state));
+    assert.equal(transition(state, { type: "END_TURN" }).activePlayer, 2);
   }
 });
 
-test("when everyone rests, only the next player gets one attempt, including solo play", () => {
-  for (const count of [1, 4]) {
-    const initial = ready(game(count), "turn-end", [6, 6]);
-    initial.players.forEach((player) => rest(player));
-    initial.movement = null;
-    initial.dice = null;
-    initial.dicePurpose = null;
-    initial.rng = 12345;
-    assert.equal(hasExtraRoll(initial), false);
-    const result = assertAtomicRoll(initial);
-    assert.equal(result.state.activePlayer, count === 1 ? 0 : 1);
-    for (const player of result.state.players) {
-      assert.equal(player.restTurnsRemaining, player.id === result.state.activePlayer ? 2 : 3);
-      assert.equal(player.party[0].hp, 0);
-    }
-    assert.equal(result.state.phase, "rest-end");
-    assert.equal(result.state.log.some((message) => message.includes("모두 회복")), false);
-  }
+test("rest doubles never grant a second roll after movement finishes", () => {
+  const previous = ready(game(2), [6, 6]);
+  previous.dicePurpose = "rest";
+  assert.equal(hasExtraRoll(previous), false);
+  assert.equal(transition(previous, { type: "END_TURN" }).activePlayer, 1);
 });
 
-test("exchange and party capacity block the combined action with the same end-turn guard", () => {
-  for (const phase of ["center", "road", "turn-end"]) {
-    for (const blockedBy of ["exchange", "capacity"]) {
-      const initial = ready(game(), phase);
-      if (blockedBy === "exchange") initial.exchangeActive = true;
-      else {
-        const party = initial.players[0].party;
-        while (party.length < 7)
-          party.push({ ...party[0], id: `p${initial.nextPokemonId++}` });
-      }
-      assert.equal(getNextRollPlayer(initial), null);
-      for (const type of ["END_TURN", "END_TURN_AND_ROLL"]) {
-        const result = transitionWithEvents(initial, { type });
-        assert.equal(result.state, initial);
-        assert.deepEqual(result.events, []);
-      }
+test("exchange and a temporary seventh party member block rolling and handoff", () => {
+  for (const phase of ["roll", "turn-end"]) {
+    for (const reason of ["exchange", "capacity"]) {
+      const state = phase === "roll" ? game() : ready();
+      if (reason === "exchange") state.exchangeActive = true;
+      else while (state.players[0].party.length < 7)
+        state.players[0].party.push({ ...state.players[0].party[0], id: `p${state.nextPokemonId++}` });
+      assert.equal(getNextRollPlayer(state), null);
+      assert.equal(canEndTurn(state), false);
+      for (const type of ["ROLL", "END_TURN", "END_TURN_AND_ROLL"])
+        assert.equal(transition(state, { type }), state);
     }
   }
 });
 
-test("invalid phases and repeated clicks cannot roll again or consume more RNG", () => {
-  for (const phase of ["roll", "rest-roll", "moving", "choose-defender", "choose-attacker", "attack", "evolution", "learn-move", "capture", "finished"]) {
-    const initial = { ...game(), phase };
-    const before = structuredClone(initial);
-    const result = transitionWithEvents(initial, { type: "END_TURN_AND_ROLL" });
-    assert.equal(result.state, initial);
-    assert.deepEqual(result.events, []);
-    assert.deepEqual(initial, before);
-    if (!["roll", "rest-roll"].includes(phase)) assert.equal(getNextRollPlayer(initial), null);
-  }
-  const { state } = assertAtomicRoll(ready());
-  for (const type of ["END_TURN_AND_ROLL", "ROLL"]) {
-    const repeated = transitionWithEvents(state, { type });
-    assert.equal(repeated.state, state);
-    assert.deepEqual(repeated.events, []);
-  }
-});
-
-test("ordinary roll preview and a saved combined roll resume without another random draw", () => {
+test("rolling consumes one seeded result and cannot repeat through a stale click or save", () => {
   const initial = game();
-  assert.equal(getNextRollPlayer(initial), initial.players[0]);
-  const { state } = assertAtomicRoll(ready(initial));
-  const resumed = JSON.parse(JSON.stringify(state));
-  assert.ok(validateSave(resumed));
-  assert.deepEqual(transitionWithEvents(resumed, { type: "STEP" }), transitionWithEvents(state, { type: "STEP" }));
-  assert.equal(getNextRollPlayer(resumed), null);
+  const { state, events } = transitionWithEvents(initial, { type: "ROLL" });
+  assert.equal(state.phase, "moving");
+  assert.equal(events[0].kind, "roll");
+  assert.deepEqual(transitionWithEvents(structuredClone(initial), { type: "ROLL" }), { state, events });
+  assert.equal(getNextRollPlayer(state), null);
+  assert.equal(transition(state, { type: "ROLL" }), state);
+  assert.equal(transition(state, { type: "END_TURN" }), state);
+  const saved = JSON.parse(JSON.stringify(state));
+  assert.ok(validateSave(saved));
+  assert.deepEqual(transition(saved, { type: "STEP" }), transition(state, { type: "STEP" }));
 });

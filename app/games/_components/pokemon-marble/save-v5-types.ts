@@ -1,3 +1,4 @@
+/** Frozen version-5 save shapes. Never widen these to accept current phases or rules. */
 import type { BattleActionResult, CombatState } from "./combat-types";
 
 export interface Pokemon {
@@ -7,7 +8,7 @@ export interface Pokemon {
   /** Progress toward the next level; 1,000 XP advances one level. */
   xp: number;
   hp: number;
-  /** Up to four persistent moves, ordered from oldest to newest. */
+  /** Three persistent move slots, in the player's chosen order. */
   moveIds: number[];
 }
 
@@ -70,7 +71,7 @@ export interface PendingPokemonGrowth {
   ownerId: number;
   pokemonId: string;
   pendingMoveIds: number[];
-  /** Eligible moves already processed in this reward, including forgotten moves. */
+  /** Includes older eligible moves and each offered move, even when declined. */
   consideredMoveIds: number[];
 }
 
@@ -78,7 +79,7 @@ export interface PendingGrowth {
   resume: "battle" | "movement";
   /** Version-2 lap rewards did not include deployed guardians. */
   legacyPartyOnly?: true;
-  /** Experience is already awarded; only automatic learning and evolution choices remain. */
+  /** Experience is already awarded; only move and evolution choices remain. */
   queue: PendingPokemonGrowth[];
 }
 
@@ -91,6 +92,7 @@ export type GamePhase =
   | "choose-attacker"
   | "attack"
   | "evolution"
+  | "learn-move"
   | "capture"
   | "road"
   | "center"
@@ -98,7 +100,7 @@ export type GamePhase =
   | "finished";
 
 export interface GameState {
-  version: 6;
+  version: 5;
   revision: number;
   rng: number;
   nextPokemonId: number;
@@ -122,20 +124,3 @@ export interface GameState {
   lastBattleAction: BattleActionResult | null;
 }
 
-export type GameAction =
-  | { type: "ROLL" }
-  | { type: "STEP" }
-  | { type: "CHOOSE_POKEMON"; pokemonId: string }
-  | { type: "ATTACK"; moveId: number }
-  | { type: "WILD_ATTACK" }
-  | { type: "CONTINUE_BATTLE" }
-  | { type: "THROW_BALL" }
-  | { type: "CHOOSE_EVOLUTION"; speciesId: number }
-  | { type: "MOVE_TO_CENTER" }
-  | { type: "CAPTURE"; capture: boolean }
-  | { type: "DEPLOY"; pokemonId: string }
-  | { type: "RETRIEVE" }
-  | { type: "START_EXCHANGE" }
-  | { type: "END_EXCHANGE" }
-  | { type: "CENTER_TRANSFER"; pokemonId: string; to: "party" | "box" }
-  | { type: "END_TURN" };

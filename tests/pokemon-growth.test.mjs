@@ -79,7 +79,7 @@ test("a full lap groups all 33 rewards in party then road order without changing
   assert.deepEqual(result.state.players[0].box, state.players[0].box);
   assert.equal(result.state.rng, state.rng);
   assert.equal(result.state.movement.remaining, 1);
-  assert.equal(result.state.growth.resume, "movement");
+  assert.equal(result.state.growth, null);
   const html = renderToStaticMarkup(React.createElement(GrowthPresentation, {
     event, progress: 0.85, reducedMotion: false, width: 1024, height: 672,
   }));

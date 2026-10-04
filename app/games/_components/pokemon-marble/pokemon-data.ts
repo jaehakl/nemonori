@@ -63,26 +63,15 @@ export const MOVE_SLOT_LIMIT = 4;
 /** Preserve the automatic loadout used by v2–v4 saves. */
 export const LEGACY_MOVE_SLOT_LIMIT = 3;
 
-/** Keep strong attacks diverse; contextual availability and Struggle belong to battle.ts. */
+/** The newest learned moves fill four slots, ordered from oldest to newest. */
 export function getAvailableMoves(speciesId: number, level: number, slotLimit: 3 | 4 = MOVE_SLOT_LIMIT): Move[] {
-  const learned = (speciesById[speciesId]?.learnset ?? [])
-    .filter((entry) => entry.level <= level)
-    .map((entry) => movesById[entry.moveId])
-    .filter((move): move is Move => Boolean(move) && move.effects.support !== "excluded" && move.id !== 165)
-    .sort((left, right) => right.power - left.power || left.id - right.id);
-  const selected: Move[] = [];
-  const selectedTypes = new Set<number | null>();
-  for (const move of learned) {
-    if (selectedTypes.has(move.type)) continue;
-    selected.push(move);
-    selectedTypes.add(move.type);
-    if (selected.length === slotLimit) break;
-  }
-  for (const move of learned) {
-    if (selected.length === slotLimit) break;
-    if (!selected.some((entry) => entry.id === move.id)) selected.push(move);
-  }
-  return selected;
+  return getLearnableMoves(speciesId, level).slice(-slotLimit);
+}
+
+/** Preserve learning order without adding a duplicate or changing the input. */
+export function learnMove(moveIds: number[], moveId: number): number[] {
+  if (moveIds.includes(moveId)) return [...moveIds];
+  return [...moveIds, moveId].slice(-MOVE_SLOT_LIMIT);
 }
 
 /** Learning order is stable even when several levels are gained at once. */

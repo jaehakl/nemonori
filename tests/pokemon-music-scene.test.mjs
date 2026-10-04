@@ -12,6 +12,7 @@ const { getAvailableMoves } = loadGameSource(`${source}pokemon-data.ts`);
 test("setup, center, movement and all battle kinds select their music", () => {
   assert.equal(getAudioScene(null), "opening");
   const state = createGame([1, 4], [], 9182);
+  state.players[0].position = 1;
   for (const phase of ["roll", "moving", "road", "turn-end", "finished"]) {
     state.phase = phase;
     assert.equal(getAudioScene(snapshotForPresentation(state)), "adventure");
@@ -23,6 +24,28 @@ test("setup, center, movement and all battle kinds select their music", () => {
       assert.equal(getAudioScene({ phase, battle: { kind, outcome: null } }), kind);
     }
   }
+});
+
+test("center music follows arrival and pre-roll exchange until movement or another player's turn", () => {
+  let state = createGame([1, 4], [], 9182);
+  state.players[0].position = 9;
+  state.players[1].position = 1;
+  state.phase = "moving";
+  state.dice = [1, 2];
+  state.dicePurpose = "movement";
+  state.movement = { remaining: 1, encounters: [] };
+  const arrived = transitionWithEvents(state, { type: "STEP" });
+  const healing = arrived.events.find(event => event.kind === "heal");
+  assert.equal(getAudioScene(healing.snapshot, healing), "center");
+  assert.equal(arrived.state.phase, "turn-end");
+  state = transitionWithEvents(arrived.state, { type: "END_TURN" }).state;
+  assert.equal(getAudioScene(snapshotForPresentation(state)), "adventure");
+  state.activePlayer = 0;
+  state = transitionWithEvents(state, { type: "START_EXCHANGE" }).state;
+  assert.equal(getAudioScene(snapshotForPresentation(state)), "center");
+  state = transitionWithEvents(state, { type: "END_EXCHANGE" }).state;
+  state = transitionWithEvents(state, { type: "ROLL" }).state;
+  assert.equal(getAudioScene(snapshotForPresentation(state)), "adventure");
 });
 
 test("visible outcomes distinguish capture, player victories and wild defeats", () => {
@@ -68,7 +91,7 @@ test("capture music waits for the real result snapshot, then returns after the q
       assert.equal(getAudioScene(event.snapshot, event), "wild");
     }
     assert.equal(getAudioScene(capture.snapshot, capture), capture.capture.success ? "wild-victory" : "wild");
-    if (capture.capture.success && !["evolution", "learn-move"].includes(result.state.phase)) {
+    if (capture.capture.success && result.state.phase !== "evolution") {
       assert.equal(getAudioScene(snapshotForPresentation(result.state)), "adventure");
     }
   }

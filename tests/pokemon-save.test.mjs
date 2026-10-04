@@ -32,8 +32,6 @@ function nextAction(state) {
     case "roll":
     case "rest-roll":
       return { type: "ROLL" };
-    case "learn-move":
-      return { type: "CHOOSE_MOVE", replaceMoveId: null };
     case "moving":
       return { type: "STEP" };
     case "choose-defender":
@@ -74,15 +72,8 @@ function snapshot(state) {
   return resumed;
 }
 
-function declineMoves(state) {
-  while (state.phase === "learn-move") {
-    const restored = snapshot(state);
-    const action = { type: "CHOOSE_MOVE", replaceMoveId: null };
-    const next = transition(restored, action);
-    assert.equal(next.revision, state.revision + 1);
-    assert.deepEqual(next, transition(state, action));
-    state = next;
-  }
+function assertAutomaticLearning(state) {
+  assert.notEqual(state.phase, "learn-move", "Current saves must never pause for move selection");
   return state;
 }
 
@@ -161,11 +152,11 @@ test("branch evolution snapshots resume rewards once, including a victorious roa
     while (state.phase.startsWith("choose-"))
       state = transition(state, nextAction(state));
     state = transition(state, pokemonBattleAction(state));
-    state = declineMoves(state);
+    state = assertAutomaticLearning(state);
     assert.equal(state.phase, "evolution");
     const restored = snapshot(state);
     const winnerId = state.evolution.pokemonId;
-    const evolved = declineMoves(transition(restored, {
+    const evolved = assertAutomaticLearning(transition(restored, {
       type: "CHOOSE_EVOLUTION",
       speciesId: 134,
     }));
@@ -197,12 +188,12 @@ test("active winner evolution preserves a defeated guardian and ends a knocked-o
     if (kind === "wild") state.battle.wild.hp = 1;
     state = transition(state, nextAction(state));
     state = transition(state, pokemonBattleAction(state));
-    state = declineMoves(state);
+    state = assertAutomaticLearning(state);
     assert.equal(state.phase, "evolution");
     if (kind === "road") assert.equal(state.players[1].box[0].hp, 0);
     snapshot(state);
-    state = declineMoves(transition(state, { type: "CHOOSE_EVOLUTION", speciesId: 134 }));
-    assert.equal(state.phase, kind === "road" ? "road" : "turn-end");
+    state = assertAutomaticLearning(transition(state, { type: "CHOOSE_EVOLUTION", speciesId: 134 }));
+    assert.equal(state.phase, "turn-end");
     if (kind === "road") {
       const returned = state.players[1].box[0];
       assert.equal(returned.hp, getStats(returned).hp);
@@ -236,8 +227,8 @@ test("a defeated guardian returns fully healed before a completed battle can be 
   state = transition(state, nextAction(state));
   state = transition(state, pokemonBattleAction(state));
   state = transition(state, pokemonBattleAction(state));
-  state = declineMoves(state);
-  assert.equal(state.phase, "road");
+  state = assertAutomaticLearning(state);
+  assert.equal(state.phase, "turn-end");
   assert.equal(state.roads[1], null);
   const returned = state.players[1].box[0];
   assert.equal(returned.hp, getStats(returned).hp);
@@ -255,7 +246,7 @@ function pendingLap(remaining = 4) {
   ];
   state.players[0].box.push(pokemon(state, 133, 19));
   state.roads[1] = { ownerId: 0, pokemon: pokemon(state, 133, 19) };
-  return declineMoves(enter(state, 0, remaining));
+  return assertAutomaticLearning(enter(state, 0, remaining));
 }
 
 test("multiple lap evolution saves resume each choice once without replaying growth or consuming RNG", () => {
@@ -269,23 +260,23 @@ test("multiple lap evolution saves resume each choice once without replaying gro
     assert.equal(first.roads[1].pokemon.level, 20);
     assert.deepEqual(first.growth.queue.slice(1).map((entry) => entry.pokemonId), [...first.players[0].party.slice(1).map((entry) => entry.id), first.roads[1].pokemon.id]);
     const firstChoice = { type: "CHOOSE_EVOLUTION", speciesId: 134 };
-    const second = declineMoves(transition(snapshot(first), firstChoice));
-    assert.deepEqual(second, declineMoves(transition(first, firstChoice)));
+    const second = assertAutomaticLearning(transition(snapshot(first), firstChoice));
+    assert.deepEqual(second, assertAutomaticLearning(transition(first, firstChoice)));
     assert.equal(second.phase, "evolution");
     assert.equal(second.evolution.pokemonId, second.players[0].party[1].id);
     assert.equal(second.players[0].party[1].hp, 0);
     assert.deepEqual(second.growth.queue.slice(1).map((entry) => entry.pokemonId), [second.players[0].party[2].id, second.roads[1].pokemon.id]);
     const secondChoice = { type: "CHOOSE_EVOLUTION", speciesId: 135 };
-    const guardianChoice = declineMoves(transition(snapshot(second), secondChoice));
-    assert.deepEqual(guardianChoice, declineMoves(transition(second, secondChoice)));
+    const guardianChoice = assertAutomaticLearning(transition(snapshot(second), secondChoice));
+    assert.deepEqual(guardianChoice, assertAutomaticLearning(transition(second, secondChoice)));
     assert.equal(guardianChoice.evolution.pokemonId, guardianChoice.roads[1].pokemon.id);
-    const completed = declineMoves(transition(snapshot(guardianChoice), { type: "CHOOSE_EVOLUTION", speciesId: 136 }));
+    const completed = assertAutomaticLearning(transition(snapshot(guardianChoice), { type: "CHOOSE_EVOLUTION", speciesId: 136 }));
     assert.equal(completed.roads[1].pokemon.speciesId, 136);
     assert.deepEqual(completed.players[0].party.map((entry) => entry.speciesId), [134, 135, 2]);
     assert.deepEqual(completed.players[0].party.map((entry) => entry.level), [20, 20, 17]);
     assert.equal(completed.growth, null);
     assert.equal(completed.evolution, null);
-    assert.equal(completed.phase, remaining === 1 ? "center" : "moving");
+    assert.equal(completed.phase, remaining === 1 ? "turn-end" : "moving");
     assert.equal(completed.movement.remaining, remaining - 1);
     assert.equal(completed.rng, first.rng);
     assert.equal(completed.turn, first.turn);
@@ -300,10 +291,10 @@ test("lap evolution saves preserve trainer encounters waiting at the start corne
   const initial = createGame([133, 4, 7], [], 9182);
   initial.players[0].party[0] = pokemon(initial, 133, 19);
     initial.players[0].party[0].xp = 900;
-  const pending = declineMoves(enter(initial, 0));
+  const pending = assertAutomaticLearning(enter(initial, 0));
   assert.equal(pending.phase, "evolution");
   assert.deepEqual(pending.movement.encounters, [1, 2]);
-  const resumed = declineMoves(transition(snapshot(pending), { type: "CHOOSE_EVOLUTION", speciesId: 134 }));
+  const resumed = assertAutomaticLearning(transition(snapshot(pending), { type: "CHOOSE_EVOLUTION", speciesId: 134 }));
   assert.equal(resumed.phase, "choose-defender");
   assert.equal(resumed.battle.defenderOwner, 1);
   assert.deepEqual(resumed.movement, { remaining: 0, encounters: [2] });
@@ -355,12 +346,12 @@ test("pending branch evolution resumes before rescuing a defeated party", () => 
   while (state.phase.startsWith("choose-"))
     state = transition(state, nextAction(state));
   state = transition(state, pokemonBattleAction(state));
-  state = declineMoves(state);
+  state = assertAutomaticLearning(state);
   assert.equal(state.phase, "evolution");
   assert.equal(state.winner, null);
   assert.equal(state.players[0].restTurnsRemaining, 0);
   snapshot(state);
-  state = declineMoves(transition(state, { type: "CHOOSE_EVOLUTION", speciesId: 134 }));
+  state = assertAutomaticLearning(transition(state, { type: "CHOOSE_EVOLUTION", speciesId: 134 }));
   assert.equal(state.phase, "turn-end");
   assert.equal(state.players[0].restTurnsRemaining, 3);
   assert.equal(state.players[0].position, 10);
@@ -556,7 +547,8 @@ test("monopoly saves resume the terminal state and reject incomplete or unrecord
     if (kind === "road" && tile !== ROAD_TILE)
       initial.roads[tile] = { ownerId: 0, pokemon: pokemon(initial, 1) };
   }
-  const ready = snapshot(enter(initial, ROAD_TILE));
+  initial.players[0].position = ROAD_TILE;
+  const ready = snapshot(initial);
   const state = snapshot(transition(transition(ready, { type: "START_EXCHANGE" }), { type: "DEPLOY", pokemonId: ready.players[0].party[0].id }));
   assert.equal(state.winner, 0);
   assert.equal(state.phase, "finished");

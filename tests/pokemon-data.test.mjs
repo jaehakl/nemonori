@@ -82,7 +82,7 @@ test("starter filtering permits unevolved ordinary and single-stage species only
   assert.equal(data.isStarter(data.speciesById[906]), true);
 });
 
-test("move selection honors levels, type diversity, power order and explicit supported effects", () => {
+test("move selection keeps the latest four eligible moves in stable learning order", () => {
   for (const species of data.speciesList) {
     for (const level of [1, 20, 100]) {
       const selected = data.getAvailableMoves(species.id, level);
@@ -100,17 +100,10 @@ test("move selection honors levels, type diversity, power order and explicit sup
         );
       const learned = species.learnset
         .filter((move) => move.level <= level)
+        .toSorted((left, right) => left.level - right.level || left.moveId - right.moveId)
         .map((move) => data.movesById[move.moveId]).filter(move => move.effects.support !== "excluded");
       assert.equal(attacks.length, Math.min(4, learned.length));
-      assert.equal(
-        new Set(attacks.map((move) => move.type)).size,
-        Math.min(4, new Set(learned.map((move) => move.type)).size),
-      );
-      if (learned.length)
-        assert.equal(
-          attacks[0].power,
-          Math.max(...learned.map((move) => move.power)),
-        );
+      assert.deepEqual(attacks.map(move => move.id), learned.slice(-4).map(move => move.id));
     }
   }
   assert.deepEqual(data.getAvailableMoves(132, 1), []);
@@ -121,6 +114,14 @@ test("move selection honors levels, type diversity, power order and explicit sup
   assert.equal(data.movesById[165].type, null);
   assert.equal(data.movesById[165].power, 50);
   assert.equal(data.movesById[165].category, "physical");
+});
+
+test("learning remembers a move once and replaces the oldest slot rather than the weakest attack", () => {
+  const previous = [76, 33, 22, 75];
+  assert.deepEqual(data.learnMove(previous, 402), [33, 22, 75, 402]);
+  assert.deepEqual(data.learnMove(previous, 33), previous);
+  assert.deepEqual(previous, [76, 33, 22, 75]);
+  assert.deepEqual(data.getAvailableMoves(52, 44).map(move => move.id), [372, 154, 163, 583]);
 });
 
 test("type multipliers cover double weaknesses, resistances, immunity and typeless attacks", () => {

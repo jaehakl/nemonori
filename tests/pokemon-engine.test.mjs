@@ -1,18 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { loadGameSource, pokemonBattleAction, declineNewMoves } from "./game-test-helpers.mjs";
+import { loadGameSource, pokemonBattleAction } from "./game-test-helpers.mjs";
 
 const path = "app/games/_components/pokemon-marble/";
 const {
   createGame,
-  transition: rawTransition,
+  transition,
   getStats,
   getDamagePreview,
   getBattlePokemon,
   getActingPlayer,
   getNextCenter,
 } = loadGameSource(`${path}engine.ts`);
-const transition = (state, action) => declineNewMoves(rawTransition(state, action));
 const { BOARD_SIZE, BOARD_TILES, getTilePosition, getDefaultSeatSides } = loadGameSource(`${path}board.ts`);
 const { speciesById, getAvailableMoves, movesById, typeEffectiveness } =
   loadGameSource(`${path}pokemon-data.ts`);
@@ -174,7 +173,7 @@ test("multiple destination trainers battle in order before the tile effect", () 
   assert.equal(state.battle.defenderOwner, 2);
   state.players[0].party[0].hp = getStats(state.players[0].party[0]).hp;
   state = winAsActive(state);
-  assert.equal(state.phase, "road");
+  assert.equal(state.phase, "turn-end");
 });
 
 test("trainer selection and attacks are defender first, active player chooses after seeing defender", () => {
@@ -225,7 +224,7 @@ test("destination trainer battle precedes the road guardian and deployment", () 
   assert.equal(getActingPlayer(selectBoth(state)), 1);
   const guardId = state.roads[3].pokemon.id;
   state = winAsActive(state);
-  assert.equal(state.phase, "road");
+  assert.equal(state.phase, "turn-end");
   assert.equal(state.roads[3], null);
   const returned = state.players[1].box.find((entry) => entry.id === guardId);
   assert.equal(returned.hp, getStats(returned).hp);
@@ -307,9 +306,9 @@ test("centers heal party and box only; exchanges preserve capacity and healthy p
   initial.players[0].party[0].hp = 1;
   initial.players[0].box.push(pokemon(initial, 7, 1, 0));
   initial.roads[3] = { ownerId: 0, pokemon: pokemon(initial, 4, 1, 1) };
-  let state = transition(enter(initial, 10), { type: "START_EXCHANGE" });
+  let state = transition(transition(enter(initial, 10), { type: "END_TURN" }), { type: "START_EXCHANGE" });
   const player = state.players[0];
-  assert.equal(state.phase, "center");
+  assert.equal(state.phase, "roll");
   assert.equal(player.party[0].hp, getStats(player.party[0]).hp);
   assert.equal(player.box[0].hp, getStats(player.box[0]).hp);
   assert.equal(state.roads[3].pokemon.hp, 1);
@@ -334,7 +333,7 @@ test("centers heal party and box only; exchanges preserve capacity and healthy p
 });
 
 test("road deployment cannot remove the last healthy party member; retrieval and redeployment retain HP", () => {
-  let state = transition(enter(game(), 3), { type: "START_EXCHANGE" });
+  let state = transition(transition(enter(game(), 3), { type: "END_TURN" }), { type: "START_EXCHANGE" });
   const starterId = state.players[0].party[0].id;
   assert.equal(
     transition(state, { type: "DEPLOY", pokemonId: starterId }),
@@ -349,13 +348,13 @@ test("road deployment cannot remove the last healthy party member; retrieval and
   state = transition(state, { type: "DEPLOY", pokemonId: starterId });
   assert.equal(state.roads[3].pokemon.id, starterId);
   assert.equal(state.players[0].party.length, 1);
-  state.phase = "road";
+  state.phase = "roll";
   const nextId = state.players[0].party[0].id;
   state = transition(state, { type: "RETRIEVE" });
   state = transition(state, { type: "DEPLOY", pokemonId: nextId });
   assert.equal(state.players[0].party[0].id, starterId);
   assert.equal(state.roads[3].pokemon.hp, 2);
-  state.phase = "road";
+  state.phase = "roll";
   while (state.players[0].party.length < 6)
     state.players[0].party.push(pokemon(state));
   assert.equal(state.players[0].box.length, 0);
@@ -408,6 +407,7 @@ test("victory grants level-scaled XP and every available evolution without heali
     initial.players[0].party[0] = pokemon(initial, 1, level);
     initial.players[1].position = 3;
     initial.players[1].party[0] = pokemon(initial, 128, level);
+    initial.players[1].party[0].moveIds = [33];
     initial.players[1].party.push(pokemon(initial, 7));
     let state = selectBoth(enter(initial, 3));
     state.players[1].party[0].hp = 1;
@@ -443,7 +443,7 @@ test("special evolutions unlock at level 20 and branch ownership is explicit", (
   state = transition(state, { type: "CHOOSE_EVOLUTION", speciesId: 134 });
   assert.equal(state.players[1].party[0].speciesId, 134);
   assert.equal(state.players[1].party[0].hp, hp);
-  assert.equal(state.phase, "road");
+  assert.equal(state.phase, "turn-end");
   assert.ok(validateSave(state));
   assert.ok(speciesById[133].evolutions.every((edge) => edge.level === 20));
 });
@@ -455,14 +455,14 @@ test("board wraps around and center arrival preserves wounds on deployed Pokemon
   initial.players[0].party[0].hp = 1;
   const state = enter(initial, 0);
   assert.equal(state.players[0].position, 0);
-  assert.equal(state.phase, "center");
+  assert.equal(state.phase, "turn-end");
   assert.equal(
     state.players[0].party[0].hp,
     getStats(state.players[0].party[0]).hp,
   );
 });
 
-test("wild levels are at most two below the only healthy member and never below one", () => {
+test("wild levels include fainted party members when determining the upper bound", () => {
   const encountered = new Set();
   for (const level of [1, 25, 100]) {
     for (const seed of [1, 13, 35, 9182, 987654321]) {
@@ -471,12 +471,12 @@ test("wild levels are at most two below the only healthy member and never below 
       initial.players[0].party.push(pokemon(initial, 7, 100, 0));
       const state = enter(initial, 2);
       const baseline = enter(createGame([1, 4], [], seed), 2);
-      assert.ok(baseline.battle.wild.level >= 3 && baseline.battle.wild.level <= 5);
-      assert.equal(state.battle.wild.level, Math.max(1, level - (5 - baseline.battle.wild.level)));
+      assert.ok(baseline.battle.wild.level >= 1 && baseline.battle.wild.level <= 5);
+      assert.ok(state.battle.wild.level >= 1 && state.battle.wild.level <= 100);
       encountered.add(state.battle.wild.level);
     }
   }
-  assert.ok(encountered.has(1));
+  assert.ok([...encountered].some(level => level > 25));
   assert.ok(encountered.size > 3);
 });
 
@@ -585,10 +585,10 @@ test("only one player occupying every road wins immediately on the last deployme
     }
     if (otherRoad === "empty") initial.roads[4] = null;
     if (otherRoad === "opponent") initial.roads[4].ownerId = 1;
-    const ready = transition(enter(initial, 3), { type: "START_EXCHANGE" });
+    const ready = transition(transition(enter(initial, 3), { type: "END_TURN" }), { type: "START_EXCHANGE" });
     assert.ok(validateSave(ready));
     const state = transition(ready, { type: "DEPLOY", pokemonId: ready.players[0].party[0].id });
-    assert.equal(state.phase, otherRoad === "owned" ? "finished" : "road");
+    assert.equal(state.phase, otherRoad === "owned" ? "finished" : "roll");
     assert.equal(state.winner, otherRoad === "owned" ? 0 : null);
     assert.ok(validateSave(state));
     assert.equal(state.players[0].starterSpeciesId, 1, "The initial starter remains save metadata");
@@ -651,7 +651,7 @@ test("lap growth completes before contact battles and a center stop heals after 
     assert.equal(state.players[0].party[0].hp, 1);
     assert.deepEqual(state.movement.encounters, contact ? [1] : []);
     state = transition(state, { type: "CHOOSE_EVOLUTION", speciesId: 134 });
-    assert.equal(state.phase, contact ? "choose-defender" : "center");
+    assert.equal(state.phase, contact ? "choose-defender" : "turn-end");
     assert.equal(state.players[0].party[0].hp, contact ? 1 : getStats(state.players[0].party[0]).hp);
     assert.equal(state.players[0].party[0].level, 20);
     assert.equal(state.growth, null);
@@ -675,6 +675,7 @@ test("a victorious guardian gains XP and heals to its evolved maximum", () => {
     const initial = game(2);
     initial.players[0].party[0] = pokemon(initial, 128, level, 1);
     initial.roads[3] = { ownerId: 1, pokemon: pokemon(initial, speciesId, level, 1) };
+    initial.roads[3].pokemon.moveIds = [33];
     const state = transition(selectBoth(enter(initial, 3)), pokemonBattleAction(selectBoth(enter(initial, 3))));
     const guard = state.roads[3].pokemon;
     assert.equal(guard.level, Math.min(100, level + Math.floor(getVictoryExperience(level, level) / 1000)));

@@ -7,7 +7,7 @@ import { loadGameSource } from "./game-test-helpers.mjs";
 const root = "app/games/_components/pokemon-marble/";
 const { createGame, transition, getStats } = loadGameSource(`${root}engine.ts`);
 const { parseGameSave, validateSave } = loadGameSource(`${root}save.ts`);
-const { default: ActionPanel, PartySummary, ExchangeControls } = loadGameSource(`${root}ActionPanel.tsx`);
+const { default: ActionPanel, PartySummary } = loadGameSource(`${root}ActionPanel.tsx`);
 const { default: GuardianPopup } = loadGameSource(`${root}GuardianPopup.tsx`);
 const { getAvailableMoves } = loadGameSource(`${root}pokemon-data.ts`);
 const { guardianPopupPosition } = loadGameSource(`${root}guardian-popup-position.ts`);
@@ -25,7 +25,10 @@ function landed(tile) {
   state.dicePurpose = "movement";
   state.movement = { remaining: 1, encounters: [] };
   while (state.players[0].party.length < 6) state.players[0].party.push(pokemon(state));
-  return transition(state, { type: "STEP" });
+  const arrived = transition(state, { type: "STEP" });
+  assert.equal(arrived.phase, "turn-end");
+  assert.equal(transition(arrived, { type: "START_EXCHANGE" }), arrived);
+  return transition(arrived, { type: "END_TURN" });
 }
 function resume(state) {
   assert.ok(validateSave(state), `invalid ${state.phase} save`);
@@ -45,7 +48,7 @@ test("box exchange supports repeated 6–7–6 transfers and preserves unfinishe
   state = resume(transition(state, receive));
   assert.equal(state.players[0].party.length, 7);
   for (const action of [
-    { type: "END_EXCHANGE" }, { type: "END_TURN" }, { type: "END_TURN_AND_ROLL" }, { type: "ROLL" },
+    { type: "END_EXCHANGE" }, { type: "END_TURN" }, { type: "ROLL" },
     { type: "CENTER_TRANSFER", pokemonId: state.players[0].box[0].id, to: "party" },
   ]) assert.equal(transition(state, action), state);
   state = resume(transition(state, { type: "CENTER_TRANSFER", pokemonId: outgoing, to: "box" }));
@@ -55,9 +58,10 @@ test("box exchange supports repeated 6–7–6 transfers and preserves unfinishe
   state = resume(transition(state, { type: "CENTER_TRANSFER", pokemonId: incoming, to: "box" }));
   state = transition(state, { type: "END_EXCHANGE" });
   assert.equal(state.exchangeActive, false);
-  const next = transition(state, { type: "END_TURN" });
-  assert.equal(next.phase, "roll");
-  assert.equal(next.activePlayer, 0, "double roll still extends the turn after exchange");
+  assert.equal(state.phase, "roll");
+  assert.equal(state.activePlayer, 0, "double roll returns to the same player's preparation phase");
+  assert.equal(transition(state, { type: "END_TURN" }), state);
+  assert.equal(transition(state, { type: "ROLL" }).phase, "moving");
 });
 
 test("road exchange repeatedly retrieves and deploys without ending the turn or healing", () => {
@@ -75,7 +79,7 @@ test("road exchange repeatedly retrieves and deploys without ending the turn or 
   assert.equal(transition(state, { type: "END_TURN" }), state);
   for (const id of [replacement, original, replacement]) {
     state = resume(transition(state, { type: "DEPLOY", pokemonId: id }));
-    assert.equal(state.phase, "road");
+    assert.equal(state.phase, "roll");
     assert.equal(state.exchangeActive, true);
     state = resume(transition(state, { type: "RETRIEVE" }));
   }
@@ -112,69 +116,81 @@ test("exchange validation rejects overflow outside exchange and forged destinati
   }
 });
 
-test("old road turn-end saves can restart exchange but resting players and enemy roads cannot", () => {
+test("exchange is available before rolling but never after movement, during rest or on enemy roads", () => {
   for (const occupied of [false, true]) {
-    const legacy = landed(3);
-    legacy.phase = "turn-end";
-    if (occupied) legacy.roads[3] = { ownerId: 0, pokemon: pokemon(legacy) };
-    const opened = transition(resume(legacy), { type: "START_EXCHANGE" });
-    assert.equal(opened.phase, "road");
+    const ready = landed(3);
+    if (occupied) ready.roads[3] = { ownerId: 0, pokemon: pokemon(ready) };
+    const opened = transition(resume(ready), { type: "START_EXCHANGE" });
+    assert.equal(opened.phase, "roll");
     assert.equal(opened.exchangeActive, true);
     resume(opened);
   }
   const enemy = landed(3);
-  enemy.phase = "turn-end";
   enemy.roads[3] = { ownerId: 1, pokemon: pokemon(enemy) };
   assert.equal(transition(enemy, { type: "START_EXCHANGE" }), enemy);
   const resting = landed(10);
-  resting.phase = "turn-end";
+  resting.phase = "rest-roll";
   resting.players[0].restTurnsRemaining = 2;
   assert.equal(transition(resting, { type: "START_EXCHANGE" }), resting);
 });
 
-test("exchange actions live in the footer while destinations and party cards hide the roll button", () => {
+test("one turn menu keeps the dice visible and disabled while exchanging", () => {
   let state = landed(10);
   state.players[0].box.push(pokemon(state));
   const render = (Component, props = {}) => renderToStaticMarkup(React.createElement(Component, { state, dispatch() {}, onRestart() {}, ...props }));
-  assert.match(render(ExchangeControls), /class="exchangeFooter"/);
-  assert.match(render(ExchangeControls), />교환<\/button>/);
-  assert.match(render(ExchangeControls, { blocked: true }), /disabled=""/);
-  assert.doesNotMatch(render(ActionPanel), /교환|교환 시작하기/);
-  assert.match(render(ActionPanel), /민지 한 번 더 주사위 굴리기/);
+  assert.match(render(ActionPanel), /aria-label="턴 행동"/);
+  assert.match(render(ActionPanel), /교환/);
+  assert.match(render(ActionPanel), /주사위 굴리기/);
+  assert.match(render(ActionPanel), /3턴 휴식/);
   assert.doesNotMatch(render(ActionPanel), /YOUR ADVENTURE|다시 힘차게|한 번에 맞교환|두 포켓몬 교환|이상해씨/);
   assert.doesNotMatch(render(PartySummary), /<button/);
   state = transition(state, { type: "START_EXCHANGE" });
-  assert.match(render(ExchangeControls), />교환 끝내기<\/button>/);
-  assert.doesNotMatch(render(ExchangeControls), /disabled=""/);
-  assert.doesNotMatch(render(ActionPanel), /교환 끝내기/);
+  assert.match(render(ActionPanel), /교환 끝내기/);
   assert.match(render(ActionPanel), /파티로 이동/);
-  assert.doesNotMatch(render(ActionPanel), /턴 마치기|주사위 굴리기|data-die=/);
+  assert.doesNotMatch(render(ActionPanel), /턴 마치기|턴만 마치기/);
+  assert.match(render(ActionPanel), /data-die=/);
+  assert.match(render(ActionPanel), /주사위 굴리기/);
   assert.match(render(PartySummary), /<button[^>]*aria-label="이상해씨, 레벨 5, 박스로 이동"/);
   assert.doesNotMatch(render(PartySummary, { blocked: true }), /<button/);
   state = transition(state, { type: "CENTER_TRANSFER", pokemonId: state.players[0].box[0].id, to: "party" });
-  assert.match(render(ExchangeControls), /disabled=""[^>]*>교환 끝내기/);
   assert.match(render(ActionPanel), /한 마리를 옮겨 6마리로 정리하세요/);
 });
 
-test("the footer opens and ends exchange with one action and restores the roll button", () => {
+function* elements(node) {
+  if (!React.isValidElement(node)) return;
+  if (node.type.name === "PokemonSprite") return;
+  if (typeof node.type === "function") {
+    yield* elements(node.type(node.props));
+    return;
+  }
+  yield node;
+  for (const child of React.Children.toArray(node.props.children)) yield* elements(child);
+}
+
+test("the turn menu opens and ends exchange without rolling or handing off", () => {
   let state = landed(10);
   const actions = [];
   const dispatch = (action) => {
     actions.push(action);
     state = transition(state, action);
   };
-  const footer = () => ExchangeControls({ state, dispatch });
+  const buttons = () => [...elements(React.createElement(ActionPanel, { state, dispatch, onRestart() {} }))]
+    .filter(node => node.type === "button");
+  const button = (label) => buttons().find(node => renderToStaticMarkup(node).includes(label));
   const panel = () => renderToStaticMarkup(React.createElement(ActionPanel, { state, dispatch, onRestart() {} }));
-  footer().props.children.props.onClick();
+  button("교환").props.onClick();
   assert.deepEqual(actions, [{ type: "START_EXCHANGE" }]);
   assert.equal(state.exchangeActive, true);
-  assert.doesNotMatch(panel(), /주사위 굴리기|data-die=/);
-  footer().props.children.props.onClick();
+  assert.match(panel(), /주사위 굴리기/);
+  assert.equal(button("주사위 굴리기").props.disabled, true);
+  button("교환 끝내기").props.onClick();
   assert.deepEqual(actions, [{ type: "START_EXCHANGE" }, { type: "END_EXCHANGE" }]);
   assert.equal(state.exchangeActive, false);
-  assert.match(panel(), /민지 한 번 더 주사위 굴리기/);
-  const starting = createGame([1, 4], [], 1);
-  assert.equal(ExchangeControls({ state: starting, dispatch }), null);
+  assert.match(panel(), /주사위 굴리기/);
+  assert.equal(Boolean(button("주사위 굴리기").props.disabled), false);
+  assert.equal(state.phase, "roll");
+  assert.equal(state.activePlayer, 0);
+  assert.equal(state.dice, null);
 });
 
 test("guardian popup displays a read-only card and stays inside small and large viewports", () => {

@@ -14,7 +14,7 @@ import {
 import { loadPokemonSave } from "./load-save";
 import Setup from "./Setup";
 import GuardianPopup from "./GuardianPopup";
-import ActionPanel, { ExchangeControls, MovementPanel, PartySummary } from "./ActionPanel";
+import ActionPanel, { MovementPanel, PartySummary } from "./ActionPanel";
 import RulesDialog, { Modal } from "./RulesDialog";
 import { BattleHistoryButton } from "./DamageDetails";
 import type { GameAction, GameState, SeatSide } from "./types";
@@ -26,7 +26,6 @@ import { getAudioScene } from "./music-scene";
 import { useAutomaticAction } from "./use-automatic-action";
 import TabletopControls from "./TabletopControls";
 import GrowthPresentation, { hasGrowthPresentation } from "./GrowthPresentation";
-import MoveLearningPanel from "./MoveLearningPanel";
 import FullscreenToggle from "./FullscreenToggle";
 import SystemIcon from "./SystemIcon";
 import systemStyles from "./SystemControls.module.css";
@@ -76,7 +75,6 @@ export default function PokemonMarble() {
     : null;
   const growthEvent = hasGrowthPresentation(experience.frame.event) ? experience.frame.event : null;
   const growthOwner = growthEvent?.snapshot.players.find((player) => player.id === growthEvent.playerId);
-  const learning = game?.phase === "learn-move" && !experience.frame.event ? game.growth?.queue[0] : null;
   // A committed state can already belong to the next actor while its animations
   // are still playing. Keep the visible controls facing the previous actor.
   const nextControlLayout = resolveControlLayout(game, displayPreferences.mode, controlLayout, experience.busy);
@@ -125,10 +123,6 @@ export default function PokemonMarble() {
         const { state: next, events } = transitionWithEvents(current, action);
         if (next !== current) {
           setGameError(null);
-          // Start a combined turn handoff with the dice already facing its roller.
-          if (action.type === "ROLL" || action.type === "END_TURN_AND_ROLL") {
-            setControlLayout((previous) => resolveControlLayout(next, displayPreferences.mode, previous, false));
-          }
           commit(next);
           enqueue(events);
         }
@@ -138,7 +132,7 @@ export default function PokemonMarble() {
         );
       }
     },
-    [commit, displayPreferences.mode, enqueue, isBlocked],
+    [commit, enqueue, isBlocked],
   );
 
   useAutomaticAction(
@@ -279,9 +273,6 @@ export default function PokemonMarble() {
                   seatSide: growthOwner?.seatSide ?? controlLayout.seatSide,
                   render: (size) => <GrowthPresentation event={growthEvent} progress={experience.frame.progress}
                     reducedMotion={experience.reducedMotion} {...size} />,
-                } : learning ? {
-                  seatSide: game.players[learning.ownerId].seatSide,
-                  render: () => <MoveLearningPanel state={game} dispatch={(action) => dispatch(action, game.revision)} />,
                 } : undefined}
                 board={
                   <GameBoard
@@ -310,7 +301,7 @@ export default function PokemonMarble() {
                   />
                 }
               >
-                <div className={battleVisible ? styles.battleControls : styles.tableControls}>
+                <div className={battleVisible ? styles.battleControls : styles.tableControls} data-exchange={game.exchangeActive}>
                   <div className={styles.controlActions}>
                     {view!.battle && <BattleHud battle={view!.battle} presentation={presentation} inline />}
                     {!battleVisible && movementVisible ? (
@@ -330,7 +321,7 @@ export default function PokemonMarble() {
                         <strong role="status">{experience.frame.event.message}</strong>
                         <progress aria-label="연출 진행" max={1} value={experience.frame.progress} />
                       </section>
-                    ) : learning ? null : (
+                    ) : (
                       <ActionPanel
                         key={`${game.activePlayer}-${game.turn}`}
                         state={game}
@@ -342,7 +333,6 @@ export default function PokemonMarble() {
 
                   </div>
                   {!battleVisible && <PartySummary state={game} blocked={experience.busy || experience.paused} dispatch={(action) => dispatch(action, game.revision)} />}
-                  {!battleVisible && <ExchangeControls state={game} blocked={experience.busy || experience.paused} dispatch={(action) => dispatch(action, game.revision)} />}
                 </div>
               </TabletopControls>
               {selectedTile !== null && game.roads[selectedTile] && !battleVisible && !movementVisible && !experience.busy && !experience.paused && (

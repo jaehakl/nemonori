@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { loadGameSource, pokemonBattleAction, declineNewMoves } from "./game-test-helpers.mjs";
+import { loadGameSource, pokemonBattleAction } from "./game-test-helpers.mjs";
 
 const path = "app/games/_components/pokemon-marble/";
 const {
@@ -70,22 +70,15 @@ function kinds(result) {
   return result.events.map((event) => event.kind);
 }
 
-function assertTransition(previous, action, settleLearning = true) {
+function assertTransition(previous, action) {
   const original = structuredClone(previous);
-  const next = transition(previous, action);
-  const expected = settleLearning ? declineNewMoves(next) : next;
+  const expected = transition(previous, action);
   const result = transitionWithEvents(previous, action);
-  const checkEvents = (batch) => batch.events.forEach((event, index) => {
-    assert.equal(event.revision, batch.state.revision);
+  result.events.forEach((event, index) => {
+    assert.equal(event.revision, result.state.revision);
     assert.equal(event.sequence, index);
   });
-  checkEvents(result);
-  while (settleLearning && result.state.phase === "learn-move") {
-    const learned = transitionWithEvents(result.state, { type: "CHOOSE_MOVE", replaceMoveId: null });
-    checkEvents(learned);
-    result.state = learned.state;
-    result.events.push(...learned.events);
-  }
+  assert.notEqual(result.state.phase, "learn-move", "Learning never pauses an accepted action");
   assert.deepEqual(previous, original, "Presentation mutated the input state");
   assert.deepEqual(
     result.state,
@@ -145,7 +138,7 @@ test("the finishing attack survives battle cleanup with detached HP snapshots", 
   const result = assertTransition(previous, pokemonBattleAction(previous));
   assert.deepEqual(kinds(result), ["attack", "faint", "experience-gain", "rescue"]);
   assert.equal(result.state.battle, null);
-  assert.equal(result.state.phase, "road");
+  assert.equal(result.state.phase, "turn-end");
   const hit = result.events[0];
   assert.equal(hit.attack.beforeHp, 1);
   assert.equal(hit.attack.afterHp, 0);
@@ -199,7 +192,7 @@ test("one finishing attack can queue the next trainer without replacing its hist
   assert.equal(first.state.movement.remaining, 0);
 
   const second = assertTransition(readyForFinishingHit(first.state), pokemonBattleAction(readyForFinishingHit(first.state)));
-  assert.equal(second.state.phase, "road");
+  assert.equal(second.state.phase, "turn-end");
   assert.equal(second.state.movement.remaining, 0);
   assert.equal(
     second.events[0].snapshot.battle.defender.id,
@@ -403,7 +396,7 @@ test("landing on the start center shows lap growth before healing, while a rescu
   assert.equal(landed.events[1].growth[0].after.level, 9);
   assert.equal(landed.events[1].growth[0].after.hp, 2);
   assert.equal(landed.state.players[0].party[0].hp, getStats(landed.state.players[0].party[0]).hp);
-  assert.equal(landed.state.phase, "center");
+  assert.equal(landed.state.phase, "turn-end");
 
   const rescue = game();
   rescue.players[0].party[0].hp = 1;
@@ -419,7 +412,7 @@ test("center box transfers and swaps fully heal without redundant cues or automa
   const initial = game();
   initial.players[0].party.push(pokemon(initial, 128, 3));
   initial.players[0].box.push(pokemon(initial, 7, 3));
-  const centered = assertTransition(enter(initial, 10), { type: "START_EXCHANGE" }).state;
+  const centered = assertTransition(transition(enter(initial, 10), { type: "END_TURN" }), { type: "START_EXCHANGE" }).state;
   centered.players[0].party[0].hp = 0;
   const transferred = assertTransition(centered, { type: "CENTER_TRANSFER", pokemonId: centered.players[0].party[0].id, to: "box" });
   assert.deepEqual(kinds(transferred), []);
@@ -501,7 +494,7 @@ test("lap evolution preserves each intermediate species before center healing", 
   assert.deepEqual(result.events.filter((event) => event.kind === "evolution").map((event) => [event.previousSpeciesId, event.pokemon.speciesId]), [[1, 2], [2, 3], [4, 5], [5, 6]]);
   assert.deepEqual(result.events[1].growth.map((entry) => entry.after.speciesId), [1, 4]);
   assert.equal(result.events[2].pokemon.speciesId, 2, "later evolution never rewrites an earlier step");
-  assert.equal(result.state.phase, "center");
+  assert.equal(result.state.phase, "turn-end");
   assert.ok(validateSave(result.state));
 });
 
@@ -509,7 +502,7 @@ test("failed capture retains the living wild snapshot and schedules its next tur
   const initial = game();
   initial.players[0].party[0] = pokemon(initial);
   const previous = readyForFinishingHit(enter(initial, 2));
-  previous.rng = 15000; // Next seeded roll is above even the lowest-HP capture chance.
+  previous.rng = 15872; // Next seeded roll is above the maximum 95% capture chance.
   const failed = assertTransition(previous, { type: "THROW_BALL" });
   assert.equal(failed.events[4].capture.success, false);
   assert.deepEqual(kinds(failed), ["capture-throw", "capture-shake", "capture-shake", "capture-shake", "capture-result"]);
@@ -569,7 +562,7 @@ test("legacy pending capture retains its old zero-HP acceptance without another 
 test("deployment, replacement, retrieval and next turn expose the resulting board", () => {
   const initial = game();
   initial.players[0].party.push(pokemon(initial, 7, 1));
-  const road = assertTransition(enter(initial, 3), { type: "START_EXCHANGE" }).state;
+  const road = assertTransition(transition(enter(initial, 3), { type: "END_TURN" }), { type: "START_EXCHANGE" }).state;
   const deployed = assertTransition(road, {
     type: "DEPLOY",
     pokemonId: road.players[0].party[0].id,
@@ -579,7 +572,7 @@ test("deployment, replacement, retrieval and next turn expose the resulting boar
     { tile: 3, ownerId: 0, speciesId: 1 },
   ]);
   const replacement = structuredClone(deployed.state);
-  replacement.phase = "road";
+  replacement.phase = "roll";
   const removed = assertTransition(replacement, { type: "RETRIEVE" });
   const swapped = assertTransition(removed.state, {
     type: "DEPLOY", pokemonId: replacement.players[0].party[0].id,
@@ -587,12 +580,15 @@ test("deployment, replacement, retrieval and next turn expose the resulting boar
   assert.deepEqual(kinds(swapped), ["deploy"]);
   assert.equal(swapped.events[0].snapshot.guardians[0].speciesId, 7);
   const retrieving = structuredClone(swapped.state);
-  retrieving.phase = "road";
+  retrieving.phase = "roll";
   const retrieved = assertTransition(retrieving, { type: "RETRIEVE" });
   assert.deepEqual(kinds(retrieved), ["retrieve"]);
   assert.deepEqual(retrieved.events[0].snapshot.guardians, []);
-  retrieved.state.dice = [5, 6];
-  const ended = assertTransition(assertTransition(retrieved.state, { type: "END_EXCHANGE" }).state, { type: "END_TURN" });
+  const closed = assertTransition(retrieved.state, { type: "END_EXCHANGE" }).state;
+  assert.equal(closed.phase, "roll");
+  const arrived = transition(beforeEntry(closed, 4), { type: "STEP" });
+  arrived.dice = [5, 6];
+  const ended = assertTransition(arrived, { type: "END_TURN" });
   assert.deepEqual(kinds(ended), ["turn"]);
   assert.equal(ended.events[0].playerId, 1);
   assert.equal(ended.events[0].snapshot.activePlayerId, 1);
@@ -612,7 +608,7 @@ test("a level-100 finishing hit rescues the opponent without winning the game", 
   assert.equal(result.events.at(-1).playerId, 1);
   assert.equal(result.events.at(-1).fromTile, 3);
   assert.equal(result.events.at(-1).tile, 10);
-  assert.equal(result.state.phase, "road");
+  assert.equal(result.state.phase, "turn-end");
   assert.equal(result.state.winner, null);
   assert.ok(validateSave(result.state));
   const noReplay = assertTransition(result.state, { type: "ATTACK", moveId: result.events[0].attack.moveId });
@@ -689,8 +685,6 @@ function nextAction(state) {
     case "roll":
     case "rest-roll":
       return { type: "ROLL" };
-    case "learn-move":
-      return { type: "CHOOSE_MOVE", replaceMoveId: null };
     case "moving":
       return { type: "STEP" };
     case "choose-defender":
@@ -725,7 +719,7 @@ test("eventful games preserve rules, saved replay and RNG across repeated recove
       const saved = JSON.parse(JSON.stringify(state));
       assert.ok(validateSave(saved));
       const action = nextAction(state);
-      const result = assertTransition(state, action, false);
+      const result = assertTransition(state, action);
       assert.notEqual(result.state, state, `No progress in ${state.phase}`);
       assert.deepEqual(transitionWithEvents(saved, action), result);
       const beforeSnapshot = structuredClone(saved);
@@ -774,7 +768,7 @@ test("the final road emits deployment followed by monopoly victory with detached
     if (kind === "road" && tile !== 3)
       initial.roads[tile] = { ownerId: 0, pokemon: pokemon(initial) };
   }
-  const ready = assertTransition(enter(initial, 3), { type: "START_EXCHANGE" }).state;
+  const ready = assertTransition(transition(enter(initial, 3), { type: "END_TURN" }), { type: "START_EXCHANGE" }).state;
   const result = assertTransition(ready, { type: "DEPLOY", pokemonId: ready.players[0].party[0].id });
   assert.deepEqual(kinds(result), ["deploy", "victory"]);
   assert.equal(result.events[1].snapshot.guardians.length, 27);

@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { loadGameSource, pokemonBattleAction, declineNewMoves } from "./game-test-helpers.mjs";
+import { loadGameSource, pokemonBattleAction } from "./game-test-helpers.mjs";
 
 const path = "app/games/_components/pokemon-marble/";
 const { XP_PER_LEVEL, getVictoryExperience, getExperienceGrowth, getCaptureChance } = loadGameSource(`${path}progression.ts`);
 const { sortPartyByLevel, getPartyLeader } = loadGameSource(`${path}party.ts`);
 const { createGame, transition, transitionWithEvents, getStats } = loadGameSource(`${path}engine.ts`);
-const { speciesById, getAvailableMoves } = loadGameSource(`${path}pokemon-data.ts`);
+const catalog = loadGameSource(`${path}pokemon-data.ts`);
+const { speciesById, getAvailableMoves } = catalog;
 const { BOARD_TILES } = loadGameSource(`${path}board.ts`);
 
 function encounter(seed = 9182) {
@@ -103,7 +104,6 @@ test("successful capture awards experience once and transfers the living wild af
   state.rng = 1;
   const wildId = state.battle.wild.id;
   const result = transitionWithEvents(state, { type: "THROW_BALL" });
-  result.state = declineNewMoves(result.state);
   assert.equal(result.state.phase, "evolution");
   assert.deepEqual(result.state.battle.outcome, { kind: "capture" });
   assert.equal(result.state.players[0].party.length, 1);
@@ -116,7 +116,7 @@ test("successful capture awards experience once and transfers the living wild af
   assert.deepEqual(result.state.battle.outcome, { kind: "capture" });
   assert.equal(resultEvent.snapshot.battle.defender.hp, 1);
   assert.equal(result.events.filter((event) => event.kind === "experience-gain").length, 1);
-  const evolved = declineNewMoves(transition(JSON.parse(JSON.stringify(result.state)), { type: "CHOOSE_EVOLUTION", speciesId: 134 }));
+  const evolved = transition(JSON.parse(JSON.stringify(result.state)), { type: "CHOOSE_EVOLUTION", speciesId: 134 });
   assert.equal(evolved.phase, "turn-end");
   assert.equal(evolved.players[0].party[0].xp, xp);
   assert.equal(evolved.players[0].party[0].hp, 10);
@@ -128,7 +128,7 @@ test("successful capture awards experience once and transfers the living wild af
 test("knocked-out wild Pokemon cannot be captured", () => {
   const state = encounter();
   state.battle.wild.hp = 1;
-  const result = declineNewMoves(transition(state, pokemonBattleAction(state)));
+  const result = transition(state, pokemonBattleAction(state));
   assert.equal(result.phase, "turn-end");
   assert.equal(result.battle, null);
   assert.equal(result.players[0].party.length, 1);
@@ -136,15 +136,74 @@ test("knocked-out wild Pokemon cannot be captured", () => {
   assert.equal(transition(result, { type: "CAPTURE", capture: true }), result);
 });
 
-test("grass encounters retain rarity categories while excluding evolved species", () => {
+test("grass encounters retain base-family rarity and evolve fully at the generated level", () => {
   const categories = new Set();
+  let evolvedCount = 0;
   for (let index = 1; index <= 500; index++) {
     const state = encounter(Math.imul(index, 2654435761) >>> 0);
-    const species = speciesById[state.battle.wild.speciesId];
-    assert.equal(species.evolvesFrom, null);
+    const wild = state.battle.wild;
+    let species = speciesById[wild.speciesId];
+    assert.ok(species.evolutions.every(entry => entry.level > wild.level));
+    assert.deepEqual(wild.moveIds, getAvailableMoves(species.id, wild.level).map(move => move.id));
+    if (species.evolvesFrom !== null) evolvedCount++;
+    while (species.evolvesFrom !== null) species = speciesById[species.evolvesFrom];
     categories.add(species.legendary || species.mythical ? "rare" : Object.values(species.stats).reduce((a, b) => a + b, 0) >= 500 ? "strong" : "normal");
   }
   assert.deepEqual([...categories].sort(), ["normal", "rare", "strong"]);
+  assert.ok(evolvedCount > 0);
+});
+
+function spawnWild(engine, seed, maximum = 50) {
+  const initial = engine.createGame([1], [], seed);
+  const player = initial.players[0];
+  player.party[0].level = 1;
+  player.party.push({ ...player.party[0], id: `p${initial.nextPokemonId++}`, level: maximum, hp: 0 });
+  player.box.push({ ...player.party[0], id: `p${initial.nextPokemonId++}`, level: 100 });
+  initial.roads[3] = { ownerId: 0, pokemon: { ...player.box[0], id: `p${initial.nextPokemonId++}` } };
+  player.position = 1;
+  initial.phase = "moving";
+  initial.dice = [1, 2];
+  initial.dicePurpose = "movement";
+  initial.movement = { remaining: 1, encounters: [] };
+  return engine.transition(initial, { type: "STEP" });
+}
+
+test("wild levels span one through the fainted party maximum and ignore box and guardian levels", () => {
+  const engine = { createGame, transition };
+  const counts = Array(10).fill(0);
+  for (let index = 1; index <= 2000; index++) {
+    const seed = Math.imul(index, 2654435761) >>> 0;
+    const state = spawnWild(engine, seed, 10);
+    const level = state.battle.wild.level;
+    assert.ok(level >= 1 && level <= 10);
+    counts[level - 1]++;
+    if (index <= 10) assert.deepEqual(state, spawnWild(engine, seed, 10));
+  }
+  assert.ok(counts.every(count => count >= 140 && count <= 260), String(counts));
+  assert.equal(spawnWild(engine, 1, 1).battle.wild.level, 1);
+});
+
+test("wild evolution honors exact thresholds, chained stages and seeded branching", () => {
+  for (const baseId of [1, 133]) {
+    const engine = loadGameSource(`${path}engine.ts`, {
+      [`${path}pokemon-data.ts`]: { ...catalog, speciesList: [baseId, 127, 150].map(id => speciesById[id]) },
+    });
+    const observed = new Map();
+    for (let index = 1; index <= 800; index++) {
+      const state = spawnWild(engine, Math.imul(index, 2654435761) >>> 0);
+      const wild = state.battle.wild;
+      if ([127, 150].includes(wild.speciesId)) continue;
+      observed.set(wild.level, (observed.get(wild.level) ?? new Set()).add(wild.speciesId));
+      if (baseId === 1) assert.equal(wild.speciesId, wild.level < 16 ? 1 : wild.level < 32 ? 2 : 3);
+      else assert.ok(wild.level < 20 ? wild.speciesId === 133 : speciesById[133].evolutions.some(entry => entry.speciesId === wild.speciesId));
+      assert.equal(wild.hp, getStats(wild).hp);
+    }
+    for (const level of baseId === 1 ? [15, 16, 31, 32] : [19, 20]) assert.ok(observed.has(level));
+    if (baseId === 133) {
+      const branches = new Set([...observed].filter(([level]) => level >= 20).flatMap(([, ids]) => [...ids]));
+      assert.equal(branches.size, 8);
+    }
+  }
 });
 
 test("one player can complete recovery and doubles without an opponent", () => {
@@ -184,10 +243,6 @@ test("a solo adventure wins when the player deploys the last road guardian", () 
   const lastGuardian = nextPokemon();
   initial.players[0].party.push(lastGuardian);
   initial.players[0].position = 1;
-  initial.phase = "road";
-  initial.dice = [1, 2];
-  initial.dicePurpose = "movement";
-  initial.movement = { remaining: 0, encounters: [] };
   let state = transition(initial, { type: "START_EXCHANGE" });
   state = transition(state, { type: "DEPLOY", pokemonId: lastGuardian.id });
   assert.equal(state.phase, "finished");

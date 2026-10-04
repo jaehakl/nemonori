@@ -55,15 +55,17 @@ test("idle turn panel puts the only dice pair inside the player's roll button wi
   assert.match(html, /aria-label="민지 주사위 굴리기"/);
   assert.match(html, /role="img" aria-label="주사위 두 개"/);
   assert.equal((html.match(/data-die=/g) ?? []).length, 2);
-  assert.equal((html.match(/<button/g) ?? []).length, 2);
-  assert.match(html, /다음 포켓몬센터로 이동 · 3턴 휴식/);
+  assert.equal((html.match(/<button/g) ?? []).length, 3);
+  assert.match(html, /aria-label="턴 행동"/);
+  assert.match(html, /포켓몬 교환/);
+  assert.match(html, /포켓몬센터 방문/);
+  assert.match(html, /다음 센터로 이동 · 3턴 휴식/);
   assert.doesNotMatch(html, /TURN \d+|도로 \d+\/27|두 개의 주사위, 새로운 만남|연출 건너뛰기|턴 마치기/);
 });
 
-test("the dice image and next-player label share one button that dispatches exactly one roll action", () => {
+test("only preparation offers the active player's dice button and dispatches one roll", () => {
   const { default: ActionPanel } = loadGameSource("app/games/_components/pokemon-marble/ActionPanel.tsx");
   const { createGame } = loadGameSource("app/games/_components/pokemon-marble/engine.ts");
-  const { PLAYER_COLORS } = loadGameSource("app/games/_components/pokemon-marble/board.ts");
   for (const phase of ["roll", "center", "road", "turn-end"]) {
     const state = createGame([1, 4], ["민지", "준"], 1);
     state.phase = phase;
@@ -75,33 +77,33 @@ test("the dice image and next-player label share one button that dispatches exac
     }))];
     const buttons = nodes.filter((node) => node.type === "button");
     const button = buttons.find((node) => node.props["aria-label"]?.endsWith("주사위 굴리기"));
-    const playerId = phase === "roll" ? 0 : 1;
-    assert.equal(button.props["aria-label"], `${state.players[playerId].name} 주사위 굴리기`);
-    assert.equal(button.props.style["--player-color"], PLAYER_COLORS[playerId]);
+    if (phase !== "roll") {
+      assert.equal(button, undefined);
+      continue;
+    }
+    assert.equal(button.props["aria-label"], "민지 주사위 굴리기");
     const content = [...renderedElements(button)];
     assert.equal(content.filter((node) => node.type === "svg").length, 1);
     assert.equal(content.filter((node) => node.props["data-die"] !== undefined).length, 2);
     assert.equal(content.filter((node) => typeof node.props.onClick === "function").length, 1);
     button.props.onClick();
-    assert.deepEqual(actions, [{ type: phase === "roll" ? "ROLL" : "END_TURN_AND_ROLL" }]);
+    assert.deepEqual(actions, [{ type: "ROLL" }]);
   }
 });
 
-test("the roll button identifies the next resting player for their escape attempt", () => {
+test("the roll button identifies the active resting player for their escape attempt", () => {
   const { default: ActionPanel } = loadGameSource("app/games/_components/pokemon-marble/ActionPanel.tsx");
   const { createGame } = loadGameSource("app/games/_components/pokemon-marble/engine.ts");
-  const { PLAYER_COLORS } = loadGameSource("app/games/_components/pokemon-marble/board.ts");
   const state = createGame([1, 4, 7], ["민지", "준", "하늘"], 1);
-  state.phase = "turn-end";
-  state.dice = [1, 2];
-  state.dicePurpose = "movement";
+  state.activePlayer = 1;
+  state.phase = "rest-roll";
   state.players[1].restTurnsRemaining = 1;
   state.players[1].party[0].hp = 0;
   const original = structuredClone(state);
   const nodes = [...renderedElements(React.createElement(ActionPanel, { state, dispatch() {}, onRestart() {} }))];
   const button = nodes.find((node) => node.type === "button");
   assert.equal(button.props["aria-label"], "준 탈출 주사위 굴리기");
-  assert.equal(button.props.style["--player-color"], PLAYER_COLORS[1]);
+  assert.equal(button.props.disabled, false);
   assert.deepEqual(state, original);
 });
 
@@ -152,7 +154,7 @@ test("setup offers 1–4 local players, accessible search filters and blocks inc
   assert.match(html, /value="bottom" selected=""/);
   assert.match(html, /value="top" selected=""/);
   assert.match(html, /조작자 방향으로 자동 회전/);
-  assert.match(html, /모두 Lv\. 3/);
+  assert.match(html, /모두 Lv\. 5/);
   assert.doesNotMatch(html, /aria-label="3번 트레이너 이름"/);
   assert.match(html, /aria-label="포켓몬 이름 또는 도감 번호 검색"/);
   assert.match(html, /aria-label="세대 필터"/);
@@ -325,7 +327,7 @@ test("the in-game guide explains capture HP, defeat and battle priority", () => 
   assert.match(html, /파티가 6마리면 포획할 수 없습니다/);
   assert.match(html, /박스는 센터에서만 이용/);
   assert.match(html, /스타팅 포켓몬은 레벨 5/);
-  assert.match(html, /최저 레벨/);
+  assert.match(html, /1부터 내 파티의 최고 레벨까지/);
   assert.match(html, /최고 레벨/);
   assert.match(html, /트레이너 배틀은 타일 효과보다 먼저/);
   assert.match(html, /정확히 같은 칸에 멈춰야 배틀/);
@@ -336,7 +338,9 @@ test("the in-game guide explains capture HP, defeat and battle priority", () => 
   assert.match(html, /40칸 탑뷰/);
   assert.doesNotMatch(html, /즉시 탈락|마지막 생존자/);
   assert.match(html, /레벨업과 진화는 HP를 회복하지 않습니다/);
-  assert.match(html, /미진화형 야생 포켓몬/);
+  assert.match(html, /진화한 모습으로 등장/);
+  assert.match(html, /가장 오래된 기술을 잊습니다/);
+  assert.match(html, /자동으로 다음 차례로 넘어갑니다/);
   assert.match(html, /AI 상대가 없습니다/);
   assert.match(html, /파티와 도로 수비 포켓몬 모두/);
   assert.match(html, /교환/);
@@ -407,24 +411,22 @@ test("battle stage HP changes on impact and retains the finishing attack snapsho
 });
 
 
-test("double roll controls wait for tile actions and explain the extra opportunity", () => {
+test("double rolls return to preparation and never expose another player's dice early", () => {
   const { default: ActionPanel } = loadGameSource("app/games/_components/pokemon-marble/ActionPanel.tsx");
-  const { createGame } = loadGameSource("app/games/_components/pokemon-marble/engine.ts");
-  const state = createGame([1, 4], ["민지", "준"], 12);
+  const { createGame, transition } = loadGameSource("app/games/_components/pokemon-marble/engine.ts");
+  const state = createGame([1, 4], [], 12);
   state.dice = [3, 3];
   state.dicePurpose = "movement";
-  const render = () => renderToStaticMarkup(React.createElement(ActionPanel, { state, dispatch: () => {}, onRestart: () => {} }));
-  for (const phase of ["center", "road", "turn-end"]) {
-    state.phase = phase;
-    assert.match(render(), /aria-label="민지 한 번 더 주사위 굴리기"/);
-  }
   state.phase = "turn-end";
-  assert.match(render(), /민지 한 번 더 주사위 굴리기/);
-  state.players[0].restTurnsRemaining = 3;
-  assert.doesNotMatch(render(), /한 번 더 주사위 굴리기/);
-  assert.match(render(), /aria-label="준 주사위 굴리기"/);
-  state.players[0].restTurnsRemaining = 0;
+  const render = current => renderToStaticMarkup(React.createElement(ActionPanel, { state: current, dispatch() {}, onRestart() {} }));
+  assert.doesNotMatch(render(state), /<button|data-die=/);
+  const repeated = transition(state, { type: "END_TURN" });
+  assert.equal(repeated.activePlayer, 0);
+  assert.equal(repeated.phase, "roll");
+  assert.equal((render(repeated).match(/data-die=/g) ?? []).length, 2);
   state.dice = [3, 4];
-  assert.match(render(), /aria-label="준 주사위 굴리기"/);
-  assert.doesNotMatch(render(), /턴 마치기|한 번 더 주사위 굴리기/);
+  const next = transition(state, { type: "END_TURN" });
+  assert.equal(next.activePlayer, 1);
+  assert.equal(next.phase, "roll");
+  assert.equal((render(next).match(/data-die=/g) ?? []).length, 2);
 });

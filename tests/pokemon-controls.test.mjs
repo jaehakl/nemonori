@@ -9,7 +9,6 @@ const Setup = () => null;
 const ActionPanel = () => null;
 const PartySummary = () => null;
 const TabletopControls = () => null;
-const MoveLearningPanel = () => null;
 const Empty = () => null;
 
 function findElement(element, type) {
@@ -74,10 +73,9 @@ function controls(t, state, mode = "auto") {
     },
     [`${path}Setup.tsx`]: { __esModule: true, default: Setup },
     [`${path}ActionPanel.tsx`]: {
-      __esModule: true, default: ActionPanel, MovementPanel: Empty, PartySummary, ExchangeControls: Empty,
+      __esModule: true, default: ActionPanel, MovementPanel: Empty, PartySummary,
     },
     [`${path}TabletopControls.tsx`]: { __esModule: true, default: TabletopControls },
-    [`${path}MoveLearningPanel.tsx`]: { __esModule: true, default: MoveLearningPanel },
   });
   function render() {
     let tree;
@@ -102,26 +100,30 @@ function endedTurn() {
   return state;
 }
 
-test("combined rolling faces the next player immediately and keeps that seat during the roll", (t) => {
+test("handoff shows the next player party and controls without rolling their dice", (t) => {
   const ui = controls(t, endedTurn());
   const initial = ui.render();
   assert.equal(findElement(initial, TabletopControls).props.seatSide, "bottom");
-  findElement(initial, ActionPanel).props.dispatch({ type: "END_TURN_AND_ROLL" });
+  findElement(initial, ActionPanel).props.dispatch({ type: "END_TURN" });
   assert.equal(ui.saves.length, 1);
   assert.equal(ui.saves[0].activePlayer, 1);
-  assert.equal(ui.experience.frame.event.kind, "roll");
-  assert.equal(ui.experience.frame.event.snapshot.activePlayerId, 1);
-  assert.equal(findElement(ui.render(), TabletopControls).props.seatSide, "left");
-  ui.experience.frame.progress = 0.5;
-  assert.equal(findElement(ui.render(), TabletopControls).props.seatSide, "left");
+  assert.equal(ui.saves[0].phase, "roll");
+  assert.equal(ui.saves[0].dice, null);
+  assert.equal(ui.batches.flat().some(event => event.kind === "roll"), false);
+  ui.experience.busy = false;
+  ui.experience.frame.event = null;
+  const next = ui.render();
+  assert.equal(findElement(next, TabletopControls).props.seatSide, "left");
+  assert.equal(findElement(next, ActionPanel).props.state.activePlayer, 1);
+  assert.equal(findElement(next, PartySummary).props.state.activePlayer, 1);
 });
 
-test("fixed mode keeps combined rolling at the bottom while doubles retain their roller", (t) => {
+test("fixed mode stays at the bottom while doubles return their roller to preparation", (t) => {
   const state = endedTurn();
   state.activePlayer = 1;
   state.dice = [2, 2];
   const ui = controls(t, state, "fixed");
-  findElement(ui.render(), ActionPanel).props.dispatch({ type: "END_TURN_AND_ROLL" });
+  findElement(ui.render(), ActionPanel).props.dispatch({ type: "END_TURN" });
   assert.equal(ui.saves[0].activePlayer, 1);
   const panel = findElement(ui.render(), TabletopControls);
   assert.equal(panel.props.mode, "fixed");
@@ -129,10 +131,10 @@ test("fixed mode keeps combined rolling at the bottom while doubles retain their
 });
 
 test("a repeated click cannot roll again during presentation or through a stale callback", (t) => {
-  const ui = controls(t, endedTurn());
+  const ui = controls(t, createGame([1, 4], [], 9182));
   const dispatch = findElement(ui.render(), ActionPanel).props.dispatch;
-  dispatch({ type: "END_TURN_AND_ROLL" });
-  dispatch({ type: "END_TURN_AND_ROLL" });
+  dispatch({ type: "ROLL" });
+  dispatch({ type: "ROLL" });
   // A fresh callback has the committed revision, but presentation still blocks it.
   findElement(ui.render(), PartySummary).props.dispatch({ type: "STEP" });
   assert.equal(ui.saves.length, 1);
@@ -190,14 +192,14 @@ test("reward and evolution overlays follow their owner and block input until the
     assert.equal(presentation.props.event, event);
     assert.equal(presentation.props.progress, 0.5);
     assert.equal(presentation.props.width, 672);
-    dispatch({ type: "END_TURN_AND_ROLL" });
-    findElement(ui.render(), PartySummary).props.dispatch({ type: "END_TURN_AND_ROLL" });
+    dispatch({ type: "END_TURN" });
+    findElement(ui.render(), PartySummary).props.dispatch({ type: "END_TURN" });
     assert.equal(ui.saves.length, 0);
   }
   ui.experience.busy = false;
   ui.experience.frame.event = null;
   assert.equal(findElement(ui.render(), TabletopControls).props.overlay, undefined);
-  dispatch({ type: "END_TURN_AND_ROLL" });
+  dispatch({ type: "END_TURN" });
   assert.equal(ui.saves.length, 1);
 });
 
@@ -221,32 +223,29 @@ test("resuming a saved evolution choice does not enqueue old rewards or animatio
   assert.equal(ui.saves[0].players[0].party[0].xp, saved.players[0].party[0].xp);
 });
 
-test("a combined handoff faces the next resting player during their escape dice", (t) => {
+test("handoff gives the next resting player a separate escape roll", (t) => {
   const state = endedTurn();
   state.players[1].restTurnsRemaining = 2;
   state.players[1].party[0].hp = 0;
   const ui = controls(t, state);
-  findElement(ui.render(), ActionPanel).props.dispatch({ type: "END_TURN_AND_ROLL" });
+  findElement(ui.render(), ActionPanel).props.dispatch({ type: "END_TURN" });
   assert.equal(ui.saves[0].activePlayer, 1);
-  assert.equal(ui.saves[0].dicePurpose, "rest");
-  assert.equal(ui.experience.frame.event.kind, "roll");
+  assert.equal(ui.saves[0].dicePurpose, null);
+  assert.equal(ui.saves[0].phase, "rest-roll");
+  assert.equal(ui.saves[0].players[1].restTurnsRemaining, 2);
+  ui.experience.busy = false;
+  ui.experience.frame.event = null;
   assert.equal(findElement(ui.render(), TabletopControls).props.seatSide, "left");
 });
 
-test("saved move learning opens a full comparison facing its owner without replaying rewards", (t) => {
-  const state = endedTurn();
-  const pokemon = state.players[1].party[0];
-  pokemon.moveIds = [33, 52, 53];
-  state.phase = "learn-move";
-  state.growth = { resume: "movement", queue: [{ ownerId: 1, pokemonId: pokemon.id,
-    pendingMoveIds: [83], consideredMoveIds: [] }] };
+test("resumed preparation shows its owner without an overlay or old rewards", (t) => {
+  const state = createGame([1, 4], [], 9182, ["bottom", "left"]);
+  state.activePlayer = 1;
   const ui = controls(t, state);
   const tabletop = findElement(ui.render(), TabletopControls);
   assert.equal(tabletop.props.seatSide, "left");
-  assert.equal(tabletop.props.overlay.seatSide, "left");
-  const learning = tabletop.props.overlay.render({ width: 672, height: 1024 });
-  assert.equal(learning.type, MoveLearningPanel);
-  assert.deepEqual(learning.props.state.growth, state.growth);
+  assert.equal(tabletop.props.overlay, undefined);
+  assert.equal(findElement(ui.render(), PartySummary).props.state.activePlayer, 1);
   assert.equal(ui.batches.length, 0);
   assert.equal(ui.saves.length, 0);
 });

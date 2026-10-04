@@ -1,11 +1,12 @@
+/** Frozen v5 validation and v2-v4 conversion. Validate before applying current rules. */
 import { getStats } from "./battle";
 import { BOARD_SIZE, BOARD_TILES } from "./board";
-import { speciesById, movesById, isStarter, getLearnableMoves } from "./pokemon-data";
-import type { GameState, Pokemon } from "./types";
+import { speciesById, movesById, isStarter, getLearnableMoves, MOVE_SLOT_LIMIT, LEGACY_MOVE_SLOT_LIMIT } from "./pokemon-data";
+import type { GameState, Pokemon } from "./save-v5-types";
+import { getLegacyAvailableMoves } from "./legacy-moves";
 import { XP_PER_LEVEL } from "./progression";
-import { parseV5GameSave } from "./save-v5";
-import { resumePendingGrowth } from "./engine";
-export { getLegacyTileMapping } from "./save-v5";
+import { parseLegacyGameSave } from "./save-legacy";
+import { BOARD_TILES as LEGACY_BOARD_TILES } from "./save-legacy-board";
 import { validateCombat, validateBattleAction, validateMoveIds } from "./combat-save";
 
 const phases = new Set([
@@ -17,6 +18,7 @@ const phases = new Set([
   "choose-attacker",
   "attack",
   "evolution",
+  "learn-move",
   "capture",
   "road",
   "center",
@@ -28,6 +30,7 @@ const battlePhases = new Set([
   "choose-attacker",
   "attack",
   "evolution",
+  "learn-move",
   "capture",
 ]);
 const record = (value: unknown): value is Record<string, unknown> =>
@@ -65,7 +68,7 @@ function matchesEvolution(
 }
 
 /** Validate references and phase invariants before resuming any stored state. */
-export function validateSave(value: unknown): value is GameState {
+export function validateV5Save(value: unknown): value is GameState {
   try {
     return validate(value);
   } catch {
@@ -76,7 +79,7 @@ export function validateSave(value: unknown): value is GameState {
 function validate(value: unknown): value is GameState {
   if (
     !record(value) ||
-    value.version !== 6 ||
+    value.version !== 5 ||
     !integer(value.revision) ||
     !integer(value.rng, 1, 0xffffffff) ||
     !integer(value.nextPokemonId, 1) ||
@@ -171,7 +174,7 @@ function validate(value: unknown): value is GameState {
         return false;
     } else if (!hasHealthyPokemon) {
       // Rescue follows the winner's branching evolution, before play continues.
-      if (value.phase !== "evolution") return false;
+      if (value.phase !== "evolution" && value.phase !== "learn-move") return false;
       pendingRecovery.push(index);
     }
   }
@@ -204,15 +207,9 @@ function validate(value: unknown): value is GameState {
     return false;
   const active = state.players[state.activePlayer];
   if (state.exchangeActive !== undefined && typeof state.exchangeActive !== "boolean") return false;
-  if (state.exchangeActive && !["roll", "center", "road"].includes(state.phase)) return false;
-  if (state.exchangeActive && state.phase === "roll" &&
-    BOARD_TILES[active.position] !== "center" &&
-    !(BOARD_TILES[active.position] === "road" &&
-      (state.roads[active.position] === null || state.roads[active.position]?.ownerId === active.id))) return false;
-  // These phases only survive while a validated older exchange is being completed.
-  if (["center", "road"].includes(state.phase) && !state.exchangeActive) return false;
+  if (state.exchangeActive && !["center", "road"].includes(state.phase)) return false;
   // A temporary seventh party member must be returned before leaving exchange.
-  if (active.party.length === 7 && BOARD_TILES[active.position] === "road" && state.roads[active.position]) return false;
+  if (active.party.length === 7 && state.phase === "road" && state.roads[active.position]) return false;
 
   if (active.restTurnsRemaining > 0 && !["turn-end", "rest-roll", "rest-end"].includes(state.phase))
     return false;
@@ -264,7 +261,7 @@ function validate(value: unknown): value is GameState {
       )))) return false;
   if (state.dicePurpose === "rest" && state.phase !== "rest-end" &&
     (!state.dice || state.dice[0] !== state.dice[1])) return false;
-  if (!["roll", "rest-roll", "finished"].includes(state.phase) && state.dice === null &&
+  if (!["roll", "rest-roll"].includes(state.phase) && state.dice === null &&
     !(state.phase === "turn-end" && active.restTurnsRemaining > 0)) return false;
   if (state.phase === "finished" && state.movement !== null) return false;
   if (
@@ -309,7 +306,7 @@ function validate(value: unknown): value is GameState {
   // Every reward is already committed; this queue stores only unresolved choices.
   if (state.lapGrowth !== undefined && state.lapGrowth !== null) return false;
   const growth = state.growth;
-  const choosingGrowth = state.phase === "evolution";
+  const choosingGrowth = state.phase === "learn-move" || state.phase === "evolution";
   if (choosingGrowth !== (growth !== null)) return false;
   if (growth !== null) {
     if (!record(growth) || !["battle", "movement"].includes(growth.resume) ||
@@ -345,7 +342,11 @@ function validate(value: unknown): value is GameState {
     }
     const first = growth.queue[0];
     const learner = ownedPokemon.get(first.pokemonId)!;
-    if (first.pendingMoveIds.length !== 0 ||
+    if (state.phase === "learn-move") {
+      // Earlier v5 saves may be paused at the former three-slot limit.
+      if (state.evolution !== null || first.pendingMoveIds.length < 1 ||
+        ![LEGACY_MOVE_SLOT_LIMIT, MOVE_SLOT_LIMIT].includes(learner.pokemon.moveIds.length)) return false;
+    } else if (first.pendingMoveIds.length !== 0 ||
       !matchesEvolution(state.evolution, learner.pokemon, first.ownerId)) return false;
     if (growth.resume === "movement") {
       if (state.battle !== null || active.position !== 0 || !state.movement || pendingRecovery.length > 0) return false;
@@ -480,7 +481,7 @@ function validate(value: unknown): value is GameState {
       return false;
   } else if (outcome?.kind === "capture") {
     if (
-      state.phase !== "evolution" || battle.turn !== "attacker" ||
+      !["evolution", "learn-move"].includes(state.phase) || battle.turn !== "attacker" ||
       attacker!.pokemon.hp <= 0 || defender!.pokemon.hp <= 0 ||
       active.party.length >= 6 || pendingRecovery.length > 0 ||
       growth?.queue[0].ownerId !== active.id || growth?.queue[0].pokemonId !== attacker!.pokemon.id
@@ -510,7 +511,7 @@ function validate(value: unknown): value is GameState {
         state.evolution !== null)
     )
       return false;
-    if (state.phase === "evolution") {
+    if (state.phase === "evolution" || state.phase === "learn-move") {
       if (
         winner.ownerId === null || growth?.queue[0].ownerId !== winner.ownerId ||
         growth?.queue[0].pokemonId !== winner.pokemon.id
@@ -542,21 +543,69 @@ function validLearningList(value: unknown): value is number[] {
     );
 }
 
-/** Older move choices are resolved once after the original save passes frozen validation. */
-export function parseGameSave(value: unknown): GameState | null {
-  if (validateSave(value)) return structuredClone(value);
-  const legacy = parseV5GameSave(value);
+/** Match old and new cells by kind and order, preserving guardians and encounters. */
+export function getLegacyTileMapping(): number[] {
+  const mapping: number[] = [];
+  for (const kind of ["center", "grass", "road"] as const) {
+    const oldTiles = LEGACY_BOARD_TILES.flatMap((tileKind, tile) => tileKind === kind ? [tile] : []);
+    const newTiles = BOARD_TILES.flatMap((tileKind, tile) => tileKind === kind ? [tile] : []);
+    oldTiles.forEach((tile, index) => { mapping[tile] = newTiles[index]; });
+  }
+  return mapping;
+}
+
+export function parseV5GameSave(value: unknown): GameState | null {
+  if (validateV5Save(value)) return structuredClone(value);
+  const legacy = parseLegacyGameSave(value);
   if (!legacy) return null;
-  const pendingLearning = legacy.phase === "learn-move";
-  let migrated: GameState = {
+  const mapping = getLegacyTileMapping();
+  const withMoves = (pokemon: Omit<Pokemon, "moveIds">): Pokemon => ({
+    ...pokemon,
+    moveIds: getLegacyAvailableMoves(pokemon.speciesId, pokemon.level).map((move) => move.id),
+  });
+  const migrated: GameState = {
     ...legacy,
-    version: 6,
-    phase: legacy.phase === "learn-move"
-      ? legacy.growth!.resume === "movement" ? "moving" : "attack"
-      : legacy.phase,
+    version: 5,
+    dicePurpose: legacy.dice ? "movement" : null,
+    growth: null,
+    lapGrowth: null,
+    log: [...legacy.log.slice(-23), "저장한 모험을 새 보드 배치로 업데이트했습니다. 위치와 수비 포켓몬은 같은 종류의 칸 순서에 맞췄습니다."],
+    players: legacy.players.map((player) => ({
+      ...player,
+      position: mapping[player.position],
+      party: player.party.map(withMoves),
+      box: player.box.map(withMoves),
+    })),
+    roads: Array.from({ length: BOARD_SIZE }, () => null),
+    battle: legacy.battle ? {
+      ...legacy.battle,
+      wild: legacy.battle.wild ? withMoves(legacy.battle.wild) : null,
+      combat: {
+        ...legacy.battle.combat,
+        delayed: legacy.battle.combat.delayed.map((entry) => ({ ...entry, pokemon: withMoves(entry.pokemon) })),
+      },
+    } : null,
   };
-  if (pendingLearning) migrated = resumePendingGrowth(migrated);
-  if (["road", "center"].includes(migrated.phase) && !migrated.exchangeActive)
-    migrated.phase = "turn-end";
-  return validateSave(migrated) ? migrated : null;
+  legacy.roads.forEach((guardian, tile) => {
+    if (guardian) migrated.roads[mapping[tile]] = { ...guardian, pokemon: withMoves(guardian.pokemon) };
+  });
+  if (legacy.evolution) {
+    const ownerId = legacy.evolution.ownerId;
+    const ids = [legacy.evolution.pokemonId, ...(legacy.lapGrowth?.remainingPokemonIds ?? [])];
+    const owned = [
+      ...migrated.players[ownerId].party,
+      ...migrated.roads.flatMap((guardian) => guardian?.ownerId === ownerId ? [guardian.pokemon] : []),
+    ];
+    migrated.growth = {
+      resume: legacy.lapGrowth ? "movement" : "battle",
+      ...(legacy.lapGrowth?.legacyPartyOnly ? { legacyPartyOnly: true as const } : {}),
+      queue: ids.map((pokemonId) => {
+        const pokemon = owned.find((entry) => entry.id === pokemonId)!;
+        return { ownerId, pokemonId, pendingMoveIds: [],
+          consideredMoveIds: [...new Set(getLearnableMoves(pokemon.speciesId, pokemon.level).map((move) => move.id))],
+        };
+      }),
+    };
+  }
+  return validateV5Save(migrated) ? migrated : null;
 }

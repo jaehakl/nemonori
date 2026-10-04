@@ -11,6 +11,7 @@ import {
   speciesList,
   getAvailableMoves,
   getLearnableMoves,
+  learnMove,
   MOVE_SLOT_LIMIT,
 } from "./pokemon-data";
 import type {
@@ -91,7 +92,7 @@ export function createGame(
   )
     throw new Error("각 플레이어의 자리 방향을 골라 주세요.");
   const state: GameState = {
-    version: 5,
+    version: 6,
     revision: 0,
     rng: seed >>> 0 || 0x9e3779b9,
     nextPokemonId: 1,
@@ -210,7 +211,6 @@ export function snapshotForPresentation(
 }
 
 export function getActingPlayer(state: GameState): number | null {
-  if (state.phase === "learn-move") return state.growth!.queue[0].ownerId;
   if (state.phase === "evolution") return state.evolution!.ownerId;
   if (state.phase === "choose-defender") return state.battle!.defenderOwner;
   if (state.phase === "attack" && state.battle!.turn === "defender")
@@ -255,7 +255,7 @@ function startBattle(
   });
 }
 
-// Only base species appear; stronger and legendary base species remain rare.
+// Pick a base family first so evolution does not change its rarity category.
 const wildPools = [
   speciesList.filter(
     (species) =>
@@ -274,6 +274,18 @@ const wildPools = [
   speciesList.filter((species) => species.evolvesFrom === null && (species.legendary || species.mythical)),
 ];
 
+function getWildSpecies(state: GameState, speciesId: number, level: number): number {
+  const visited = new Set<number>();
+  while (!visited.has(speciesId)) {
+    visited.add(speciesId);
+    const options = byId[speciesId].evolutions.filter((entry) => entry.level <= level);
+    if (options.length === 0) break;
+    const choice = options.length === 1 ? options[0] : options[random(state, options.length)];
+    speciesId = choice.speciesId;
+  }
+  return speciesId;
+}
+
 function healPlayer(player: Player) {
   for (const pokemon of [...player.party, ...player.box])
     pokemon.hp = getStats(pokemon).hp;
@@ -284,7 +296,7 @@ function arrive(state: GameState, events?: EventSink) {
   const tile = BOARD_TILES[player.position];
   if (tile === "center") {
     healPlayer(player);
-    state.phase = "center";
+    state.phase = "turn-end";
     addLog(state, `${player.name}의 파티와 박스를 모두 회복했습니다.`);
     events?.(state, {
       kind: "heal",
@@ -294,23 +306,20 @@ function arrive(state: GameState, events?: EventSink) {
     const roll = random(state, 100);
     const pool = wildPools[roll < 90 ? 0 : roll < 99 ? 1 : 2];
     const species = pool[random(state, pool.length)];
-    const levels = player.party.filter((pokemon) => pokemon.hp > 0).map((pokemon) => pokemon.level);
-    const maximum = Math.max(1, Math.max(...levels) - random(state, 3));
-    // A single-level party can still encounter opponents up to two levels below it.
-    const minimum = Math.min(Math.min(...levels), maximum);
-    const level = minimum + random(state, maximum - minimum + 1);
+    const maximum = Math.max(1, ...player.party.map((pokemon) => pokemon.level));
+    const level = 1 + random(state, maximum);
     startBattle(
       state,
       "wild",
       null,
-      makePokemon(state, species.id, level),
+      makePokemon(state, getWildSpecies(state, species.id, level), level),
       events,
     );
   } else {
     const guardian = state.roads[player.position];
     if (guardian && guardian.ownerId !== player.id)
       startBattle(state, "road", guardian.ownerId, guardian.pokemon, events);
-    else state.phase = "road";
+    else state.phase = "turn-end";
   }
 }
 
@@ -349,7 +358,7 @@ export function getNextCenter(position: number): number {
 
 export function canMoveToCenter(state: GameState): boolean {
   const player = state.players[state.activePlayer];
-  return ["roll", "road", "center", "turn-end"].includes(state.phase) &&
+  return state.phase === "roll" &&
     !state.exchangeActive && !state.battle && !state.growth && !state.evolution &&
     player.restTurnsRemaining === 0 && player.party.length <= 6;
 }
@@ -421,11 +430,7 @@ function finishBattle(state: GameState, events?: EventSink) {
     return;
   }
   if (battle.kind === "trainer") continueMovement(state, events);
-  else
-    state.phase =
-      battle.kind === "road" && knockout?.winner === "attacker"
-        ? "road"
-        : "turn-end";
+  else state.phase = "turn-end";
 }
 
 function evolve(
@@ -489,7 +494,7 @@ function queueEvolutionMoves(pokemon: Pokemon, growth: PendingPokemonGrowth) {
   }
 }
 
-/** One queue owns all post-reward choices, so resuming never grants XP twice. */
+/** Process new moves immediately; only branching evolution needs a choice. */
 function continueGrowth(state: GameState, events?: EventSink) {
   const growth = state.growth!;
   state.evolution = null;
@@ -502,13 +507,13 @@ function continueGrowth(state: GameState, events?: EventSink) {
         current.pendingMoveIds.shift();
         continue;
       }
-      if (pokemon.moveIds.length === MOVE_SLOT_LIMIT) {
-        state.phase = "learn-move";
-        return;
-      }
-      pokemon.moveIds.push(moveId);
+      const forgottenMoveId = pokemon.moveIds.length === MOVE_SLOT_LIMIT ? pokemon.moveIds[0] : null;
+      pokemon.moveIds = learnMove(pokemon.moveIds, moveId);
       current.pendingMoveIds.shift();
-      addLog(state, `${byId[pokemon.speciesId].name}, ${movesById[moveId].name}을(를) 배웠습니다!`);
+      const detail = forgottenMoveId === null
+        ? `${movesById[moveId].name}을(를) 배웠습니다!`
+        : `${movesById[forgottenMoveId].name} 대신 ${movesById[moveId].name}을(를) 배웠습니다!`;
+      addLog(state, `${byId[pokemon.speciesId].name}, ${detail}`);
     }
     const options = byId[pokemon.speciesId].evolutions
       .filter((entry) => pokemon.level >= entry.level)
@@ -529,6 +534,14 @@ function continueGrowth(state: GameState, events?: EventSink) {
   state.lapGrowth = null;
   if (growth.resume === "movement") continueMovement(state, events);
   else finishBattle(state, events);
+}
+
+/** Finish a legacy learning queue without awarding its experience again. */
+export function resumePendingGrowth(previous: GameState): GameState {
+  if (!previous.growth) return previous;
+  const state = structuredClone(previous);
+  continueGrowth(state);
+  return state;
 }
 
 function grantExperience(
@@ -788,7 +801,7 @@ export function hasExtraRoll(state: GameState): boolean {
     state.dice !== null && state.dice[0] === state.dice[1];
 }
 
-function canEndTurn(state: GameState): boolean {
+export function canEndTurn(state: GameState): boolean {
   return (
     !state.exchangeActive &&
     state.players[state.activePlayer].party.length <= 6 &&
@@ -819,13 +832,11 @@ function nextTurn(state: GameState, events?: EventSink) {
   });
 }
 
-/** Preview the same rest and extra-roll rules without changing the game or RNG. */
+/** Dice always belong to the player whose pre-roll actions are currently open. */
 export function getNextRollPlayer(state: GameState): Player | null {
-  if (state.phase === "roll" || state.phase === "rest-roll") return state.players[state.activePlayer];
-  if (!canEndTurn(state)) return null;
-  const preview = structuredClone(state);
-  nextTurn(preview);
-  return preview.players[preview.activePlayer];
+  return ["roll", "rest-roll"].includes(state.phase) && !state.exchangeActive &&
+    state.players[state.activePlayer].party.length <= 6
+    ? state.players[state.activePlayer] : null;
 }
 
 function rollDice(state: GameState, events?: EventSink) {
@@ -895,7 +906,7 @@ function applyTransition(
   const guardian = state.roads[player.position];
   switch (action.type) {
     case "ROLL": {
-      if (state.phase !== "roll" && state.phase !== "rest-roll") return previous;
+      if (!getNextRollPlayer(state)) return previous;
       rollDice(state, events);
       break;
     }
@@ -1065,29 +1076,6 @@ function applyTransition(
       continueGrowth(state, events);
       break;
     }
-    case "LEARN_MOVE":
-    case "CHOOSE_MOVE": {
-      if (state.phase !== "learn-move" || !state.growth) return previous;
-      const current = state.growth.queue[0];
-      const pokemon = findOwnedPokemon(state, current.ownerId, current.pokemonId);
-      const moveId = current.pendingMoveIds[0];
-      if (!pokemon || !moveId || pokemon.moveIds.includes(moveId)) return previous;
-      if (action.type === "LEARN_MOVE") {
-        if (pokemon.moveIds.length >= MOVE_SLOT_LIMIT) return previous;
-        pokemon.moveIds.push(moveId);
-        addLog(state, `${byId[pokemon.speciesId].name}, ${movesById[moveId].name}을(를) 배웠습니다!`);
-      } else if (action.replaceMoveId !== null) {
-        const index = pokemon.moveIds.indexOf(action.replaceMoveId);
-        if (index < 0) return previous;
-        pokemon.moveIds[index] = moveId;
-        addLog(state, `${byId[pokemon.speciesId].name}, ${movesById[action.replaceMoveId].name} 대신 ${movesById[moveId].name}을(를) 배웠습니다!`);
-      } else {
-        addLog(state, `${byId[pokemon.speciesId].name}, ${movesById[moveId].name}을(를) 배우지 않았습니다.`);
-      }
-      current.pendingMoveIds.shift();
-      continueGrowth(state, events);
-      break;
-    }
     case "CAPTURE": {
       if (
         state.phase !== "capture" || typeof action.capture !== "boolean" ||
@@ -1113,22 +1101,22 @@ function applyTransition(
       break;
     }
     case "START_EXCHANGE": {
-      if (state.exchangeActive || player.restTurnsRemaining > 0) return previous;
+      if (state.phase !== "roll" || state.exchangeActive || player.restTurnsRemaining > 0) return previous;
       const roadAvailable = BOARD_TILES[player.position] === "road" &&
         (!guardian || guardian.ownerId === player.id);
-      if (state.phase !== "center" && !(roadAvailable && ["road", "turn-end"].includes(state.phase)))
-        return previous;
-      if (roadAvailable) state.phase = "road";
+      if (BOARD_TILES[player.position] !== "center" && !roadAvailable) return previous;
       state.exchangeActive = true;
       break;
     }
     case "END_EXCHANGE": {
-      if (!state.exchangeActive || !["center", "road"].includes(state.phase) || player.party.length > 6) return previous;
+      if (!state.exchangeActive || !["roll", "center", "road"].includes(state.phase) || player.party.length > 6) return previous;
       state.exchangeActive = false;
+      if (state.phase !== "roll") state.phase = "turn-end";
       break;
     }
     case "DEPLOY": {
-      if (state.phase !== "road" || !state.exchangeActive || guardian) return previous;
+      if (!["roll", "road"].includes(state.phase) || BOARD_TILES[player.position] !== "road" ||
+        !state.exchangeActive || guardian) return previous;
       const pokemon = player.party.find(
         (candidate) => candidate.id === action.pokemonId && candidate.hp > 0,
       );
@@ -1147,7 +1135,8 @@ function applyTransition(
       break;
     }
     case "RETRIEVE": {
-      if (state.phase !== "road" || !state.exchangeActive || !guardian ||
+      if (!["roll", "road"].includes(state.phase) || BOARD_TILES[player.position] !== "road" ||
+        !state.exchangeActive || !guardian ||
         guardian.ownerId !== player.id || player.party.length >= 7) return previous;
       player.party.push(guardian.pokemon);
       state.roads[player.position] = null;
@@ -1160,7 +1149,7 @@ function applyTransition(
     }
     case "CENTER_TRANSFER": {
       if (
-        state.phase !== "center" || !state.exchangeActive ||
+        !["roll", "center"].includes(state.phase) || BOARD_TILES[player.position] !== "center" || !state.exchangeActive ||
         (action.to !== "party" && action.to !== "box")
       )
         return previous;
@@ -1183,13 +1172,9 @@ function applyTransition(
       destination.push(pokemon);
       break;
     }
-    case "END_TURN":
-    case "END_TURN_AND_ROLL": {
+    case "END_TURN": {
       if (!canEndTurn(state)) return previous;
-      const rollImmediately = action.type === "END_TURN_AND_ROLL";
-      // Keep rest/heal/turn logs, but let the dice be the first visible event.
-      nextTurn(state, rollImmediately ? undefined : events);
-      if (rollImmediately) rollDice(state, events);
+      nextTurn(state, events);
       break;
     }
     default:

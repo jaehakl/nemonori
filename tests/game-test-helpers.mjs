@@ -103,14 +103,3 @@ export function pokemonBattleAction(state) {
   if (!options.length) throw new Error("No usable move in integration fixture");
   return { type: "ATTACK", moveId: options[0].id };
 }
-
-/** Older battle/evolution scenarios decline new moves; learning has dedicated tests. */
-export function declineNewMoves(state) {
-  pokemonEngine ??= loadGameSource("app/games/_components/pokemon-marble/engine.ts");
-  while (state.phase === "learn-move") {
-    const next = pokemonEngine.transition(state, { type: "CHOOSE_MOVE", replaceMoveId: null });
-    if (next === state) throw new Error("Move learning did not advance");
-    state = next;
-  }
-  return state;
-}

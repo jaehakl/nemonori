@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { loadGameSource, pokemonBattleAction, declineNewMoves } from "./game-test-helpers.mjs";
+import { loadGameSource, pokemonBattleAction } from "./game-test-helpers.mjs";
 
 const path = "app/games/_components/pokemon-marble/";
 const { resolveControlLayout } = loadGameSource(`${path}control-orientation.ts`);
@@ -63,16 +63,10 @@ test("branch evolution faces its owner, then recovery returns controls to the tu
   defender.hp = getStats(defender).hp;
   let state = choose(choose(enter(initial, 2), 1), 0);
   state = transition(state, pokemonBattleAction(state));
-  assert.equal(state.phase, "learn-move");
-  assert.equal(seat(state), "left");
-  state = declineNewMoves(state);
   assert.equal(state.phase, "evolution");
   assert.equal(state.evolution.ownerId, 1);
   assert.equal(seat(state), "left");
   state = transition(state, { type: "CHOOSE_EVOLUTION", speciesId: 134 });
-  assert.equal(state.phase, "learn-move");
-  assert.equal(seat(state), "left");
-  state = declineNewMoves(state);
   assert.equal(state.phase, "turn-end");
   assert.equal(seat(state), "bottom");
 });
@@ -151,16 +145,15 @@ test("lap evolution choices keep the moving player's seat through the queue and 
   initial.players[3].position = 30;
   const facing = Object.freeze({ mode: "auto", seatSide: "top" });
   let state = transition(initial, { type: "STEP" });
-  assert.equal(state.phase, "learn-move");
+  assert.equal(state.phase, "evolution");
   assert.equal(seat(state), "top");
-  state = declineNewMoves(state);
   for (const selected of [134, 135]) {
     assert.equal(state.phase, "evolution");
     assert.equal(state.evolution.ownerId, 2);
     assert.equal(state.battle, null);
     assert.equal(resolveControlLayout(state, "auto", facing, true), facing);
     assert.equal(resolveControlLayout(state, "auto", facing, false), facing);
-    state = declineNewMoves(transition(state, { type: "CHOOSE_EVOLUTION", speciesId: selected }));
+    state = transition(state, { type: "CHOOSE_EVOLUTION", speciesId: selected });
   }
   assert.equal(state.phase, "moving");
   assert.equal(state.movement.remaining, 1);

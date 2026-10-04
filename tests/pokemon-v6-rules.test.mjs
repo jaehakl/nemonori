@@ -115,7 +115,7 @@ test("grass encounter bounds include fainted party members but exclude boxed and
   assert.deepEqual([...observed].sort((a, b) => a - b), Array.from({ length: 15 }, (_, i) => i + 1));
 });
 
-test("voluntary rescue always goes forward, cancels doubles and never grants lap rewards", () => {
+test("voluntary rescue goes forward, heals immediately and rewards only a return to start", () => {
   for (let position = 0; position < 40; position++)
     assert.equal(getNextCenter(position), ((Math.floor(position / 10) + 1) * 10) % 40);
   for (const position of [0, 10, 30, 39]) {
@@ -128,17 +128,19 @@ test("voluntary rescue always goes forward, cancels doubles and never grants lap
     assert.equal(rescued.players[0].restTurnsRemaining, 3);
     assert.equal(rescued.phase, "turn-end");
     assert.equal(rescued.movement, null);
-    assert.deepEqual(rescued.players[0].party, state.players[0].party);
+    assert.equal(rescued.players[0].party[0].hp, getStats(rescued.players[0].party[0]).hp);
+    assert.equal(rescued.players[0].party[0].level > state.players[0].party[0].level, position >= 30);
     assert.equal(rescued.rng, state.rng);
     assert.equal(hasExtraRoll(rescued), false);
-    assert.ok(events.every(event => !["lap", "experience-gain", "encounter"].includes(event.kind)));
+    assert.equal(events.filter(event => event.kind === "lap").length, position >= 30 ? 1 : 0);
+    assert.ok(events.every(event => !["experience-gain", "encounter"].includes(event.kind)));
     assert.ok(validateSave(rescued));
     assert.deepEqual(state, before);
     assert.equal(transition(rescued, { type: "MOVE_TO_CENTER" }), rescued);
   }
 });
 
-test("three failed rest rolls heal only at the end and block any action until the next turn", () => {
+test("three failed rest rolls keep the arrival healing and end each rest turn", () => {
   let state = createGame([1], [], 12345);
   state.players[0].party[0].hp = 1;
   state.players[0].box.push(pokemon(state, 12, 1));
@@ -158,7 +160,7 @@ test("three failed rest rolls heal only at the end and block any action until th
     assert.equal(state.movement, null);
     assert.equal(state.players[0].position, 10);
     for (const member of [...state.players[0].party, ...state.players[0].box])
-      assert.equal(member.hp, remaining === 0 ? getStats(member).hp : 1);
+      assert.equal(member.hp, getStats(member).hp);
     assert.equal(state.roads[4].pokemon.hp, 1);
     for (const type of ["ROLL", "MOVE_TO_CENTER", "START_EXCHANGE"])
       assert.equal(transition(state, { type }), state);

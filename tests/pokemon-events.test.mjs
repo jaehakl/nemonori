@@ -136,7 +136,7 @@ test("the finishing attack survives battle cleanup with detached HP snapshots", 
   initial.players[1].position = 3;
   const previous = readyForFinishingHit(enter(initial, 3));
   const result = assertTransition(previous, pokemonBattleAction(previous));
-  assert.deepEqual(kinds(result), ["attack", "faint", "experience-gain", "rescue"]);
+  assert.deepEqual(kinds(result), ["attack", "faint", "experience-gain", "rescue", "heal"]);
   assert.equal(result.state.battle, null);
   assert.equal(result.state.phase, "turn-end");
   const hit = result.events[0];
@@ -176,6 +176,7 @@ test("one finishing attack can queue the next trainer without replacing its hist
     "faint",
     "experience-gain",
     "rescue",
+    "heal",
     "encounter",
   ]);
   assert.equal(
@@ -213,6 +214,7 @@ test("automatic evolution follows level gain without rewriting the attack specie
     "level-up",
     "evolution",
     "rescue",
+    "heal",
   ]);
   const evolved = result.events.find((event) => event.kind === "evolution");
   assert.equal(result.events[0].snapshot.battle.attacker.speciesId, 1);
@@ -386,7 +388,7 @@ test("a lap awards party and guardians once, queues all branch choices and resum
   assert.equal(continued.state.movement.remaining, 1);
 });
 
-test("landing on the start center shows lap growth before healing, while a rescue gives no lap reward", () => {
+test("landing on start shows lap growth before healing, while rescue to another center gives no lap reward", () => {
   const initial = game();
   initial.players[1].position = 10;
   initial.players[2].position = 20;
@@ -571,7 +573,7 @@ test("deployment, replacement, retrieval and next turn expose the resulting boar
   assert.deepEqual(deployed.events[0].snapshot.guardians, [
     { tile: 3, ownerId: 0, speciesId: 1 },
   ]);
-  const replacement = structuredClone(deployed.state);
+  const replacement = transition(deployed.state, { type: "START_EXCHANGE" });
   replacement.phase = "roll";
   const removed = assertTransition(replacement, { type: "RETRIEVE" });
   const swapped = assertTransition(removed.state, {
@@ -579,7 +581,7 @@ test("deployment, replacement, retrieval and next turn expose the resulting boar
   });
   assert.deepEqual(kinds(swapped), ["deploy"]);
   assert.equal(swapped.events[0].snapshot.guardians[0].speciesId, 7);
-  const retrieving = structuredClone(swapped.state);
+  const retrieving = transition(swapped.state, { type: "START_EXCHANGE" });
   retrieving.phase = "roll";
   const retrieved = assertTransition(retrieving, { type: "RETRIEVE" });
   assert.deepEqual(kinds(retrieved), ["retrieve"]);
@@ -601,12 +603,12 @@ test("a level-100 finishing hit rescues the opponent without winning the game", 
   initial.players[1].position = 3;
   const previous = readyForFinishingHit(enter(initial, 3));
   const result = assertTransition(previous, pokemonBattleAction(previous));
-  assert.deepEqual(kinds(result), ["attack", "faint", "rescue"]);
+  assert.deepEqual(kinds(result), ["attack", "faint", "rescue", "heal"]);
   assert.equal(result.events[0].snapshot.battle.defender.hp, 0);
   assert.equal(result.events.at(-1).snapshot.battle, null);
   assert.equal(result.events.at(-1).snapshot.players[1].restTurnsRemaining, 3);
   assert.equal(result.events.at(-1).playerId, 1);
-  assert.equal(result.events.at(-1).fromTile, 3);
+  assert.equal(result.events.find((event) => event.kind === "rescue").fromTile, 3);
   assert.equal(result.events.at(-1).tile, 10);
   assert.equal(result.state.phase, "turn-end");
   assert.equal(result.state.winner, null);
@@ -634,7 +636,7 @@ test("rescue waits for the defender's chosen evolution and keeps the original at
     type: "CHOOSE_EVOLUTION",
     speciesId: 134,
   });
-  assert.deepEqual(kinds(evolved), ["evolution", "rescue"]);
+  assert.deepEqual(kinds(evolved), ["evolution", "rescue", "heal"]);
   assert.equal(evolved.events[0].snapshot.battle.defender.speciesId, 134);
   assert.equal(evolved.events[1].playerId, 0);
   assert.equal(evolved.events[1].snapshot.activePlayerId, 0);
@@ -737,7 +739,7 @@ test("eventful games preserve rules, saved replay and RNG across repeated recove
   }
 });
 
-test("rest countdown follows the explicit failed roll and heals only when the third completes", () => {
+test("legacy rest countdown preserves recovery without replaying the arrival healing cue", () => {
   for (const remaining of [2, 1]) {
     const initial = game();
     initial.players[1].party[0].hp = 0;
@@ -752,7 +754,7 @@ test("rest countdown follows the explicit failed roll and heals only when the th
     assert.equal(waiting.state.players[1].restTurnsRemaining, remaining);
     waiting.state.rng = 12345;
     const result = assertTransition(waiting.state, { type: "ROLL" });
-    assert.deepEqual(kinds(result), remaining === 1 ? ["roll", "rest", "heal"] : ["roll", "rest"]);
+    assert.deepEqual(kinds(result), ["roll", "rest"]);
     assert.equal(result.events[0].playerId, 1);
     assert.equal(result.events[0].snapshot.players[1].restTurnsRemaining, remaining - 1);
     assert.equal(result.events.at(-1).playerId, 1);

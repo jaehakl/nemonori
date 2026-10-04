@@ -57,7 +57,7 @@ test("rest rolls show escape feedback without movement progress, then retain a f
       assert.doesNotMatch(settled, /턴만 마치기|주사위 굴리기/);
       assert.doesNotMatch(settled, /다음 포켓몬센터로 이동/);
     } else {
-      assert.match(render(1), /더블! 모두 회복하고/);
+      assert.match(render(1), /더블! 탈출하여/);
     }
   }
 });

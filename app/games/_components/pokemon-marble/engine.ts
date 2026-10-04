@@ -377,17 +377,24 @@ function moveToCenter(state: GameState, player: Player, voluntary: boolean, even
     : `${player.name}의 파티가 모두 행동불능입니다. 앞의 포켓몬센터에서 3턴 쉬며 더블로 탈출할 수 있습니다.`;
   addLog(state, message);
   events?.(state, { kind: "rescue", playerId: player.id, tile: player.position, fromTile, message });
+  healPlayer(player);
+  const healed = `${player.name}의 파티와 박스를 모두 회복했습니다.`;
+  addLog(state, healed);
+  events?.(state, { kind: "heal", playerId: player.id, tile: player.position, message: healed });
 }
 
 function rescueDefeatedPlayers(state: GameState, events?: EventSink) {
+  const rescued: Player[] = [];
   for (const player of state.players) {
     if (
       player.restTurnsRemaining === 0 &&
       !player.party.some((pokemon) => pokemon.hp > 0)
     ) {
       moveToCenter(state, player, false, events);
+      rescued.push(player);
     }
   }
+  return rescued;
 }
 
 function finishBattle(state: GameState, events?: EventSink) {
@@ -418,7 +425,10 @@ function finishBattle(state: GameState, events?: EventSink) {
   }
   // Keep the defeated Pokemon and battlefield intact until branching evolution ends.
   state.battle = null;
-  rescueDefeatedPlayers(state, events);
+  const rescued = rescueDefeatedPlayers(state, events);
+  const resume = battle.kind === "trainer" && state.players[state.activePlayer].restTurnsRemaining === 0
+    ? "movement" : "turn-end";
+  if (awardCenterReturnGrowth(state, rescued, resume, events)) return;
   if (state.players[state.activePlayer].restTurnsRemaining > 0) {
     state.phase = "turn-end";
     state.movement = null;
@@ -445,6 +455,10 @@ function evolve(
   pokemon.speciesId = speciesId;
   // Evolution can lower a species' HP; clamp without granting any healing.
   pokemon.hp = Math.min(pokemon.hp, getStats(pokemon).hp);
+  if (state.growth?.resume === "center-return" &&
+    state.growth.centerReturn!.playerIds.includes(ownerId) &&
+    state.players[ownerId].party.some((member) => member.id === pokemon.id))
+    pokemon.hp = getStats(pokemon).hp;
   addLog(
     state,
     `${previous}이(가) ${byId[speciesId].name}(으)로 진화했습니다!`,
@@ -532,7 +546,11 @@ function continueGrowth(state: GameState, events?: EventSink) {
   }
   state.growth = null;
   state.lapGrowth = null;
-  if (growth.resume === "movement") continueMovement(state, events);
+  if (growth.resume === "center-return") {
+    for (const id of growth.centerReturn!.playerIds) healPlayer(state.players[id]);
+    if (growth.centerReturn!.resume === "movement") continueMovement(state, events);
+    else state.phase = "turn-end";
+  } else if (growth.resume === "movement") continueMovement(state, events);
   else finishBattle(state, events);
 }
 
@@ -590,8 +608,7 @@ function awardVictory(
   }
 }
 
-function awardLapGrowth(state: GameState, events?: EventSink) {
-  const player = state.players[state.activePlayer];
+function appendLapGrowth(state: GameState, player: Player, events?: EventSink) {
   const message = `${player.name}, 한 바퀴 완주! 파티와 수비 포켓몬이 경험치를 얻습니다.`;
   addLog(state, message);
   const participants = [
@@ -600,16 +617,41 @@ function awardLapGrowth(state: GameState, events?: EventSink) {
       ? [{ pokemon: guardian.pokemon, location: { kind: "road" as const, tile } }]
       : []),
   ];
-  state.growth = { resume: "movement", queue: [] };
   const growth: LapGrowthView[] = participants.map(({ pokemon, location }) => {
     const before = pokemonView(pokemon);
     // Apply every reward once; a single event presents them together before evolution.
     const amount = grantExperience(state, pokemon, player.id, pokemon.level);
+    if (state.growth!.resume === "center-return" && location.kind === "party")
+      pokemon.hp = getStats(pokemon).hp;
     state.growth!.queue.push(createGrowthRecipient(pokemon, player.id, before.level));
     return { before, after: pokemonView(pokemon), amount, location };
   });
-  events?.(state, { kind: "lap", message, growth });
+  events?.(state, { kind: "lap", playerId: player.id, tile: player.position, message, growth });
+}
+
+function awardLapGrowth(state: GameState, events?: EventSink) {
+  state.growth = { resume: "movement", queue: [] };
+  appendLapGrowth(state, state.players[state.activePlayer], events);
   continueGrowth(state, events);
+}
+
+/** Commit all rescue rewards before processing any branching evolution. */
+function awardCenterReturnGrowth(
+  state: GameState,
+  rescued: Player[],
+  resume: "movement" | "turn-end",
+  events?: EventSink,
+): boolean {
+  const recipients = rescued.filter((player) => player.position === 0);
+  if (recipients.length === 0) return false;
+  state.growth = {
+    resume: "center-return",
+    centerReturn: { playerIds: recipients.map((player) => player.id), resume },
+    queue: [],
+  };
+  for (const player of recipients) appendLapGrowth(state, player, events);
+  continueGrowth(state, events);
+  return true;
 }
 
 export function getBattleContext(state: GameState, side = state.battle!.turn) {
@@ -847,22 +889,18 @@ function rollDice(state: GameState, events?: EventSink) {
   if (resting) {
     const escaped = state.dice[0] === state.dice[1];
     player.restTurnsRemaining = escaped ? 0 : player.restTurnsRemaining - 1;
+    // Older saves can still contain injured parties waiting for their rest to end.
     if (player.restTurnsRemaining === 0) healPlayer(player);
     state.movement = escaped ? { remaining: state.dice[0] + state.dice[1], encounters: [] } : null;
     state.phase = escaped ? "moving" : "rest-end";
     const message = escaped
-      ? `${player.name}: ${state.dice.join(" + ")}, 더블! 모두 회복하고 ${state.movement!.remaining}칸 이동합니다.`
+      ? `${player.name}: ${state.dice.join(" + ")}, 더블! 탈출하여 ${state.movement!.remaining}칸 이동합니다.`
       : `${player.name}: ${state.dice.join(" + ")}, 남은 휴식 ${player.restTurnsRemaining}턴`;
     addLog(state, message);
     events?.(state, { kind: "roll", message });
     if (!escaped) events?.(state, { kind: "rest", message });
-    if (player.restTurnsRemaining === 0) {
-      const healed = escaped
-        ? `${player.name}, 더블로 탈출! 파티와 박스를 모두 회복했습니다.`
-        : `${player.name}의 휴식이 끝나 모두 회복했습니다. 다음 자기 차례부터 이동합니다.`;
-      addLog(state, healed);
-      events?.(state, { kind: "heal", message: healed });
-    }
+    if (player.restTurnsRemaining === 0 && !escaped)
+      addLog(state, `${player.name}의 휴식이 끝났습니다. 다음 자기 차례부터 이동합니다.`);
     return;
   }
   state.movement = {
@@ -913,7 +951,7 @@ function applyTransition(
     case "MOVE_TO_CENTER": {
       if (!canMoveToCenter(state)) return previous;
       moveToCenter(state, player, true, events);
-      state.phase = "turn-end";
+      if (!awardCenterReturnGrowth(state, [player], "turn-end", events)) state.phase = "turn-end";
       break;
     }
     case "STEP": {
@@ -1101,7 +1139,8 @@ function applyTransition(
       break;
     }
     case "START_EXCHANGE": {
-      if (state.phase !== "roll" || state.exchangeActive || player.restTurnsRemaining > 0) return previous;
+      if (!["roll", "rest-roll"].includes(state.phase) || state.exchangeActive) return previous;
+      if (state.phase === "rest-roll" && BOARD_TILES[player.position] !== "center") return previous;
       const roadAvailable = BOARD_TILES[player.position] === "road" &&
         (!guardian || guardian.ownerId === player.id);
       if (BOARD_TILES[player.position] !== "center" && !roadAvailable) return previous;
@@ -1109,9 +1148,9 @@ function applyTransition(
       break;
     }
     case "END_EXCHANGE": {
-      if (!state.exchangeActive || !["roll", "center", "road"].includes(state.phase) || player.party.length > 6) return previous;
+      if (!state.exchangeActive || !["roll", "rest-roll", "center", "road"].includes(state.phase) || player.party.length > 6) return previous;
       state.exchangeActive = false;
-      if (state.phase !== "roll") state.phase = "turn-end";
+      if (!["roll", "rest-roll"].includes(state.phase)) state.phase = "turn-end";
       break;
     }
     case "DEPLOY": {
@@ -1125,6 +1164,8 @@ function applyTransition(
       if (!remaining.some((candidate) => candidate.hp > 0)) return previous;
       player.party = remaining;
       state.roads[player.position] = { ownerId: player.id, pokemon };
+      state.exchangeActive = false;
+      if (state.phase === "road") state.phase = "turn-end";
       addLog(state, `${byId[pokemon.speciesId].name}을(를) 도로에 배치했습니다.`);
       events?.(state, {
         kind: "deploy",
@@ -1149,7 +1190,7 @@ function applyTransition(
     }
     case "CENTER_TRANSFER": {
       if (
-        !["roll", "center"].includes(state.phase) || BOARD_TILES[player.position] !== "center" || !state.exchangeActive ||
+        !["roll", "rest-roll", "center"].includes(state.phase) || BOARD_TILES[player.position] !== "center" || !state.exchangeActive ||
         (action.to !== "party" && action.to !== "box")
       )
         return previous;

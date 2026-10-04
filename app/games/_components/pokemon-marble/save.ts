@@ -203,8 +203,10 @@ function validate(value: unknown): value is GameState {
   if ((state.phase === "finished") !== (state.winner !== null))
     return false;
   const active = state.players[state.activePlayer];
+  const centerGrowth = state.phase === "evolution" && state.growth?.resume === "center-return";
   if (state.exchangeActive !== undefined && typeof state.exchangeActive !== "boolean") return false;
-  if (state.exchangeActive && !["roll", "center", "road"].includes(state.phase)) return false;
+  if (state.exchangeActive && !["roll", "rest-roll", "center", "road"].includes(state.phase)) return false;
+  if (state.exchangeActive && state.phase === "rest-roll" && BOARD_TILES[active.position] !== "center") return false;
   if (state.exchangeActive && state.phase === "roll" &&
     BOARD_TILES[active.position] !== "center" &&
     !(BOARD_TILES[active.position] === "road" &&
@@ -214,7 +216,7 @@ function validate(value: unknown): value is GameState {
   // A temporary seventh party member must be returned before leaving exchange.
   if (active.party.length === 7 && BOARD_TILES[active.position] === "road" && state.roads[active.position]) return false;
 
-  if (active.restTurnsRemaining > 0 && !["turn-end", "rest-roll", "rest-end"].includes(state.phase))
+  if (active.restTurnsRemaining > 0 && !["turn-end", "rest-roll", "rest-end"].includes(state.phase) && !centerGrowth)
     return false;
 
   if (
@@ -265,7 +267,7 @@ function validate(value: unknown): value is GameState {
   if (state.dicePurpose === "rest" && state.phase !== "rest-end" &&
     (!state.dice || state.dice[0] !== state.dice[1])) return false;
   if (!["roll", "rest-roll", "finished"].includes(state.phase) && state.dice === null &&
-    !(state.phase === "turn-end" && active.restTurnsRemaining > 0)) return false;
+    !(state.phase === "turn-end" && active.restTurnsRemaining > 0) && !centerGrowth) return false;
   if (state.phase === "finished" && state.movement !== null) return false;
   if (
     state.phase === "moving" &&
@@ -312,9 +314,10 @@ function validate(value: unknown): value is GameState {
   const choosingGrowth = state.phase === "evolution";
   if (choosingGrowth !== (growth !== null)) return false;
   if (growth !== null) {
-    if (!record(growth) || !["battle", "movement"].includes(growth.resume) ||
+    if (!record(growth) || !["battle", "movement", "center-return"].includes(growth.resume) ||
       !Array.isArray(growth.queue) || growth.queue.length < 1 ||
       (growth.legacyPartyOnly !== undefined && growth.legacyPartyOnly !== true)) return false;
+    if (growth.resume !== "center-return" && growth.centerReturn !== undefined) return false;
     const queuedIds = new Set<string>();
     for (const item of growth.queue) {
       if (!record(item) || !integer(item.ownerId, 0, state.players.length - 1) ||
@@ -347,6 +350,31 @@ function validate(value: unknown): value is GameState {
     const learner = ownedPokemon.get(first.pokemonId)!;
     if (first.pendingMoveIds.length !== 0 ||
       !matchesEvolution(state.evolution, learner.pokemon, first.ownerId)) return false;
+    if (growth.resume === "center-return") {
+      const recovery = growth.centerReturn;
+      if (!record(recovery) || !["movement", "turn-end"].includes(recovery.resume as string) ||
+        !Array.isArray(recovery.playerIds) || recovery.playerIds.length === 0 ||
+        growth.legacyPartyOnly !== undefined || state.battle !== null || pendingRecovery.length > 0 ||
+        state.exchangeActive || recovery.playerIds.some((id, index) =>
+          !integer(id, 0, state.players.length - 1) ||
+          (index > 0 && id <= recovery.playerIds[index - 1]) ||
+          state.players[id].position !== 0 || state.players[id].restTurnsRemaining !== 3 ||
+          [...state.players[id].party, ...state.players[id].box].some(
+            (pokemon) => pokemon.hp !== getStats(pokemon).hp,
+          ))) return false;
+      if (recovery.resume === "turn-end") {
+        if (!recovery.playerIds.includes(active.id) || state.movement !== null || state.dice !== null) return false;
+      } else if (active.restTurnsRemaining !== 0 || !state.movement || state.dice === null) return false;
+      const recipients = recovery.playerIds.flatMap((id: number) => [
+        ...state.players[id].party.map((pokemon) => ({ ownerId: id, pokemon })),
+        ...state.roads.flatMap((guardian) => guardian?.ownerId === id ? [{ ownerId: id, pokemon: guardian.pokemon }] : []),
+      ]);
+      const firstIndex = recipients.findIndex(({ pokemon }) => pokemon.id === first.pokemonId);
+      const remaining = recipients.slice(firstIndex);
+      return firstIndex >= 0 && remaining.length === growth.queue.length &&
+        remaining.every(({ ownerId, pokemon }, index) =>
+          growth.queue[index].ownerId === ownerId && growth.queue[index].pokemonId === pokemon.id);
+    }
     if (growth.resume === "movement") {
       if (state.battle !== null || active.position !== 0 || !state.movement || pendingRecovery.length > 0) return false;
       const recipients = growth.legacyPartyOnly ? active.party : [

@@ -108,7 +108,7 @@ export default function ActionPanel({
         <h3>진화의 순간!</h3>
         <p className={styles.actionCopy}>
           {state.players[evolution.ownerId].name}, 진화할 모습을 선택하세요.
-          현재 체력은 회복되지 않습니다.
+          {state.growth?.resume === "center-return" ? "센터의 파티는 진화 후에도 모두 회복됩니다." : "현재 체력은 회복되지 않습니다."}
         </p>
         <div className={styles.selectionList}>
           {evolution.options.map((id) => (
@@ -179,13 +179,13 @@ export default function ActionPanel({
       ) : (
         <div className={styles.journeyCenter}>
           {state.phase === "rest-roll" && (
-            <p className={styles.journeyHint}>남은 휴식 {player.restTurnsRemaining}턴 · 더블이면 즉시 회복하고 나온 눈의 합만큼 이동해요.</p>
+            <p className={styles.journeyHint}>남은 휴식 {player.restTurnsRemaining}턴 · 박스 교환을 할 수 있어요. 더블이면 탈출하여 나온 눈의 합만큼 이동해요.</p>
           )}
           {state.phase === "rest-end" && (
             <p className={styles.journeyHint} role="status">
               {state.dice?.join(" · ")} · 더블이 아니에요. {player.restTurnsRemaining > 0
                 ? `남은 휴식 ${player.restTurnsRemaining}턴`
-                : "회복이 끝났어요. 다음 내 차례부터 이동할 수 있어요."}
+                : "휴식이 끝났어요. 다음 내 차례부터 이동할 수 있어요."}
             </p>
           )}
           {state.phase === "turn-end" && player.restTurnsRemaining > 0 && (
@@ -232,10 +232,10 @@ export function MovementPanel({
   const remaining = state.movement?.remaining ?? 0;
   const restRoll = presentation?.event.kind === "roll" && presentation.event.snapshot.dicePurpose === "rest";
   const restMessage = rolling ? "탈출 주사위를 굴리고 있어요!"
-    : state.dice?.[0] === state.dice?.[1] ? `더블! 모두 회복하고 ${total}칸 이동해요.`
+    : state.dice?.[0] === state.dice?.[1] ? `더블! 탈출하여 ${total}칸 이동해요.`
     : `더블이 아니에요. ${state.players[state.activePlayer].restTurnsRemaining > 0
       ? `남은 휴식 ${state.players[state.activePlayer].restTurnsRemaining}턴`
-      : "회복 완료 · 다음 내 차례부터 이동해요."}`;
+      : "휴식 완료 · 다음 내 차례부터 이동해요."}`;
   return (
     <section className={`${styles.actionPanel} ${styles.movementPanel} ${styles.journeyPanel}`} aria-label={restRoll ? "탈출 주사위" : "주사위와 이동"}>
       <TurnHeading state={state} />

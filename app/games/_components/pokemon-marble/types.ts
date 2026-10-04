@@ -75,7 +75,9 @@ export interface PendingPokemonGrowth {
 }
 
 export interface PendingGrowth {
-  resume: "battle" | "movement";
+  resume: "battle" | "movement" | "center-return";
+  /** Center rewards can belong to several rescued players, including opponents. */
+  centerReturn?: { playerIds: number[]; resume: "movement" | "turn-end" };
   /** Version-2 lap rewards did not include deployed guardians. */
   legacyPartyOnly?: true;
   /** Experience is already awarded; only automatic learning and evolution choices remain. */

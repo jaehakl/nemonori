@@ -130,6 +130,10 @@ test("v5 exchanges keep seven Pokemon and their location until the user finishes
       ? { type: "CENTER_TRANSFER", pokemonId, to: "box" }
       : { type: "DEPLOY", pokemonId }));
     assert.equal(next.players[0].party.length, 6);
+    if (kind === "road") {
+      assert.equal(next.exchangeActive, false);
+      assert.equal(next.phase, "turn-end");
+    }
     next = snapshot(transition(next, { type: "END_EXCHANGE" }));
     assert.equal(next.phase, "turn-end");
     assert.equal(next.exchangeActive, false);

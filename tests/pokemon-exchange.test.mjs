@@ -64,7 +64,7 @@ test("box exchange supports repeated 6–7–6 transfers and preserves unfinishe
   assert.equal(transition(state, { type: "ROLL" }).phase, "moving");
 });
 
-test("road exchange repeatedly retrieves and deploys without ending the turn or healing", () => {
+test("road deployment closes exchange without ending the turn or healing", () => {
   let state = landed(3);
   state.roads[3] = { ownerId: 0, pokemon: pokemon(state, 2) };
   const original = state.roads[3].pokemon.id;
@@ -80,7 +80,9 @@ test("road exchange repeatedly retrieves and deploys without ending the turn or 
   for (const id of [replacement, original, replacement]) {
     state = resume(transition(state, { type: "DEPLOY", pokemonId: id }));
     assert.equal(state.phase, "roll");
-    assert.equal(state.exchangeActive, true);
+    assert.equal(state.exchangeActive, false);
+    assert.equal(transition(state, { type: "RETRIEVE" }), state);
+    state = resume(transition(state, { type: "START_EXCHANGE" }));
     state = resume(transition(state, { type: "RETRIEVE" }));
   }
   state = resume(transition(state, { type: "DEPLOY", pokemonId: original }));
@@ -116,7 +118,7 @@ test("exchange validation rejects overflow outside exchange and forged destinati
   }
 });
 
-test("exchange is available before rolling but never after movement, during rest or on enemy roads", () => {
+test("exchange is available before movement and rest rolls but not on enemy roads", () => {
   for (const occupied of [false, true]) {
     const ready = landed(3);
     if (occupied) ready.roads[3] = { ownerId: 0, pokemon: pokemon(ready) };
@@ -131,7 +133,7 @@ test("exchange is available before rolling but never after movement, during rest
   const resting = landed(10);
   resting.phase = "rest-roll";
   resting.players[0].restTurnsRemaining = 2;
-  assert.equal(transition(resting, { type: "START_EXCHANGE" }), resting);
+  assert.equal(resume(transition(resting, { type: "START_EXCHANGE" })).exchangeActive, true);
 });
 
 test("one turn menu keeps the dice visible and disabled while exchanging", () => {

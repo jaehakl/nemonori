@@ -245,14 +245,14 @@ test("a rescued trainer keeps owned roads and its destination guardian still fig
   assert.ok(validateSave(state));
 });
 
-test("fainting at a center starts rest without immediate healing or ending the game", () => {
+test("fainting at a center moves to the next center and heals without ending the game", () => {
   const initial = game(2);
   initial.players[1].position = 10;
   initial.players[1].party[0] = pokemon(initial, 4, 80);
   initial.players[0].box.push(pokemon(initial, 7, 50));
   let state = selectBoth(enter(initial, 10));
   state = transition(state, pokemonBattleAction(state));
-  assert.equal(state.players[0].party[0].hp, 0);
+  assert.equal(state.players[0].party[0].hp, getStats(state.players[0].party[0]).hp);
   assert.equal(state.players[0].restTurnsRemaining, 3);
   assert.equal(state.players[0].position, 20);
   assert.equal(state.phase, "turn-end");
@@ -350,6 +350,7 @@ test("road deployment cannot remove the last healthy party member; retrieval and
   assert.equal(state.players[0].party.length, 1);
   state.phase = "roll";
   const nextId = state.players[0].party[0].id;
+  state = transition(state, { type: "START_EXCHANGE" });
   state = transition(state, { type: "RETRIEVE" });
   state = transition(state, { type: "DEPLOY", pokemonId: nextId });
   assert.equal(state.players[0].party[0].id, starterId);
@@ -358,6 +359,7 @@ test("road deployment cannot remove the last healthy party member; retrieval and
   while (state.players[0].party.length < 6)
     state.players[0].party.push(pokemon(state));
   assert.equal(state.players[0].box.length, 0);
+  state = transition(state, { type: "START_EXCHANGE" });
   state = transition(state, { type: "RETRIEVE" });
   assert.equal(state.players[0].party.find((entry) => entry.id === nextId).hp, 2);
   assert.equal(state.players[0].box.length, 0);
@@ -498,7 +500,7 @@ function finishCurrentTurn(state) {
   return next;
 }
 
-test("recovery consumes three failed future own rolls and heals party and box after the third", () => {
+test("recovery heals party and box immediately and consumes three failed future own rolls", () => {
   const initial = game(2);
   initial.players[0].party[0].hp = 1;
   initial.players[0].box.push(pokemon(initial, 7, 20, 0));
@@ -506,8 +508,8 @@ test("recovery consumes three failed future own rolls and heals party and box af
   initial.roads[3] = { ownerId: 1, pokemon: pokemon(initial, 128, 80) };
   let state = transition(selectBoth(enter(initial, 3)), pokemonBattleAction(selectBoth(enter(initial, 3))));
   assert.equal(state.players[0].restTurnsRemaining, 3);
-  assert.equal(state.players[0].party[0].hp, 0);
-  assert.equal(state.players[0].box[0].hp, 0);
+  assert.equal(state.players[0].party[0].hp, getStats(state.players[0].party[0]).hp);
+  assert.equal(state.players[0].box[0].hp, getStats(state.players[0].box[0]).hp);
   assert.equal(state.players[0].position, 10);
   assert.ok(validateSave(state));
   state = transition(state, { type: "END_TURN" });
@@ -521,8 +523,8 @@ test("recovery consumes three failed future own rolls and heals party and box af
     state = transition(state, { type: "ROLL" });
     assert.equal(state.phase, "rest-end");
     assert.equal(state.players[0].restTurnsRemaining, remaining);
-    assert.equal(state.players[0].party[0].hp, remaining ? 0 : getStats(state.players[0].party[0]).hp);
-    assert.equal(state.players[0].box[0].hp, remaining ? 0 : getStats(state.players[0].box[0]).hp);
+    assert.equal(state.players[0].party[0].hp, getStats(state.players[0].party[0]).hp);
+    assert.equal(state.players[0].box[0].hp, getStats(state.players[0].box[0]).hp);
     assert.equal(state.roads[4].pokemon.hp, 1);
     state = transition(state, { type: "END_TURN" });
     assert.equal(state.activePlayer, 1);
@@ -658,14 +660,14 @@ test("lap growth completes before contact battles and a center stop heals after 
   }
 });
 
-test("rescue teleports and starting at the center do not award lap levels", () => {
+test("rescue to start awards lap levels, while starting a new game does not", () => {
   const initial = game(2);
   initial.players[0].party[0].hp = 1;
   initial.roads[39] = { ownerId: 1, pokemon: pokemon(initial, 128, 80) };
   const state = transition(selectBoth(enter(initial, 39)), pokemonBattleAction(selectBoth(enter(initial, 39))));
   assert.equal(state.players[0].position, 0);
   assert.equal(state.players[0].restTurnsRemaining, 3);
-  assert.equal(state.players[0].party[0].level, 5);
+  assert.equal(state.players[0].party[0].level, 5 + Math.floor(getVictoryExperience(5, 5) / 1000));
   assert.equal(state.growth, null);
   assert.equal(game(2).players[0].party[0].level, 5);
 });
@@ -684,7 +686,7 @@ test("a victorious guardian gains XP and heals to its evolved maximum", () => {
   }
 });
 
-test("box controls cannot be used outside a center or while recovering", () => {
+test("box controls require active exchange and stay unavailable on the rescue turn", () => {
   const initial = game();
   initial.players[0].party.push(pokemon(initial, 7));
   initial.players[0].box.push(pokemon(initial, 4));

@@ -28,5 +28,5 @@ export function getAudioScene(
     }
     return battle.kind;
   }
-  return view.phase === "center" ? "center" : "adventure";
+  return ["center", "rest-roll", "rest-end"].includes(view.phase) ? "center" : "adventure";
 }

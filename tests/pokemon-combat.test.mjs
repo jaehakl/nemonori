@@ -27,7 +27,8 @@ const {
 const { parseGameSave, validateSave } = loadGameSource(`${root}save.ts`);
 const safeRandom = (limit) => (limit === 10000 ? 5000 : limit - 1);
 const pokemon = (speciesId = 1, level = 30, hp) => {
-  const p = { id: `p${speciesId}`, speciesId, level, hp: 0, xp: 0 };
+  const p = { id: `p${speciesId}`, speciesId, level, hp: 0, xp: 0,
+    moveIds: getAvailableMoves(speciesId, level).map(move => move.id) };
   p.hp = hp ?? getStats(p).hp;
   return p;
 };
@@ -62,6 +63,7 @@ function trainerBattle(species = [1, 4], level = 30) {
   state.players[1].position = 2;
   state.phase = "moving";
   state.dice = [1, 2];
+  state.dicePurpose = "movement";
   state.movement = { remaining: 1, encounters: [] };
   state = transition(state, { type: "STEP" });
   for (const i of [1, 0])
@@ -341,7 +343,7 @@ test("status immunity, capped stages, sleep, thawing and residual damage are exp
   assert.equal(d.hp, before[1] - Math.max(1, Math.floor(getStats(d).hp / 8)));
 });
 
-test("real reducer preserves forced actions, status and RNG across version-4 saves", () => {
+test("real reducer preserves forced actions, status and RNG across version-5 saves", () => {
   let state = trainerBattle([1, 1], 30);
   state.battle.combat.defender.charging = 76;
   state.battle.combat.attacker.status = "tox";
@@ -355,7 +357,7 @@ test("real reducer preserves forced actions, status and RNG across version-4 sav
   );
   state = transition(state, action);
   assert.ok(validateSave(state));
-  assert.equal(state.version, 4);
+  assert.equal(state.version, 5);
 });
 
 test("Struggle recoil resolves self knockout and simultaneous knockout without duplicated XP", () => {
@@ -423,7 +425,7 @@ test("legacy v3 saves preserve HP and RNG, mark old basic attacks and forbid new
   const migrated = parseGameSave(old);
   assert.ok(migrated);
   assert.equal(migrated.rng, old.rng);
-  assert.deepEqual(migrated.players, old.players);
+  assert.deepEqual(migrated.players, old.players.map(player => ({ ...player, position: 1 })));
   assert.equal(migrated.battle.lastAttack.legacy, true);
   assert.equal(transition(migrated, { type: "ATTACK", moveId: 0 }), migrated);
   const corrupted = structuredClone(state);

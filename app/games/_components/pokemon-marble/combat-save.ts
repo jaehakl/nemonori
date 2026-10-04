@@ -100,7 +100,15 @@ function validCombatant(v: unknown): boolean {
   );
 }
 
-export function validateCombat(v: unknown): v is CombatState {
+/** Learned slots exclude Struggle, which remains a contextual battle fallback. */
+export function validateMoveIds(value: unknown): value is number[] {
+  return Array.isArray(value) && value.length <= 3 &&
+    new Set(value).size === value.length && value.every((id) =>
+      moveId(id) && id !== 165 && movesById[id].effects.support !== "excluded",
+    );
+}
+
+export function validateCombat(v: unknown, legacy = false): v is CombatState {
   if (
     !record(v) ||
     !integer(v.round, 1) ||
@@ -132,7 +140,8 @@ export function validateCombat(v: unknown): v is CombatState {
       integer(p.speciesId, 1, 1025) &&
       !!speciesById[p.speciesId as number] &&
       integer(p.level, 1, 100) &&
-      integer(p.xp, 0, 999) &&
+      integer(p.xp, 0, legacy ? 999 : p.level === 100 ? 0 : 999) &&
+      (legacy || validateMoveIds(p.moveIds)) &&
       integer(p.hp, 1, getStats(p as never).hp)
     );
   });

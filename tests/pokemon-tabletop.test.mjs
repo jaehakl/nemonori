@@ -78,13 +78,13 @@ test("the board preserves accessible tile controls without a separate tile list"
   const html = renderToStaticMarkup(React.createElement(GameBoard, {
     dice: null, rolling: false, activePlayerId: 0,
     tokens,
-    guardians: [{ tile: 2, ownerId: 1, speciesId: 25 }],
+    guardians: [{ tile: 3, ownerId: 1, speciesId: 25 }],
     selectedTile: 39,
     onTileSelect() {},
   }));
   assert.equal((html.match(/data-tile="/g) ?? []).length, 40);
   assert.match(html, /aria-label="1번 포켓몬센터 · 지우 · 휴식 3턴"/);
-  assert.match(html, /aria-label="3번 도로 · 지우의 피카츄 수비"/);
+  assert.match(html, /aria-label="4번 도로 · 지우의 피카츄 수비"/);
   assert.match(html, /aria-label="40번 도로 · 민준" aria-pressed="true"/);
   assert.doesNotMatch(html, /칸 목록/);
 });

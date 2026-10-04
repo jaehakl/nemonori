@@ -34,6 +34,7 @@ export interface PresentationSnapshot {
   guardians: { tile: number; ownerId: number; speciesId: number }[];
   activePlayerId: number;
   dice: [number, number] | null;
+  dicePurpose: "movement" | "rest" | null;
   battle: BattleView | null;
 }
 

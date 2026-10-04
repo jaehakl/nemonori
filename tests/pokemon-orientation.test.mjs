@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { loadGameSource, pokemonBattleAction } from "./game-test-helpers.mjs";
+import { loadGameSource, pokemonBattleAction, declineNewMoves } from "./game-test-helpers.mjs";
 
 const path = "app/games/_components/pokemon-marble/";
 const { resolveControlLayout } = loadGameSource(`${path}control-orientation.ts`);
 const { createGame, transition, getStats } = loadGameSource(`${path}engine.ts`);
 const { BOARD_SIZE } = loadGameSource(`${path}board.ts`);
+const { getAvailableMoves } = loadGameSource(`${path}pokemon-data.ts`);
 const previous = { mode: "fixed", seatSide: "bottom" };
 
 function game() {
@@ -16,6 +17,7 @@ function enter(state, tile) {
   state.players[state.activePlayer].position = (tile + BOARD_SIZE - 1) % BOARD_SIZE;
   state.phase = "moving";
   state.dice = [1, 1];
+  state.dicePurpose = "movement";
   state.movement = { remaining: 1, encounters: [] };
   return transition(state, { type: "STEP" });
 }
@@ -56,14 +58,21 @@ test("branch evolution faces its owner, then recovery returns controls to the tu
   const defender = initial.players[1].party[0];
   defender.speciesId = 133;
   defender.level = 19;
+  defender.moveIds = getAvailableMoves(133, 19).map(move => move.id);
   defender.xp = 900;
   defender.hp = getStats(defender).hp;
   let state = choose(choose(enter(initial, 2), 1), 0);
   state = transition(state, pokemonBattleAction(state));
+  assert.equal(state.phase, "learn-move");
+  assert.equal(seat(state), "left");
+  state = declineNewMoves(state);
   assert.equal(state.phase, "evolution");
   assert.equal(state.evolution.ownerId, 1);
   assert.equal(seat(state), "left");
   state = transition(state, { type: "CHOOSE_EVOLUTION", speciesId: 134 });
+  assert.equal(state.phase, "learn-move");
+  assert.equal(seat(state), "left");
+  state = declineNewMoves(state);
   assert.equal(state.phase, "turn-end");
   assert.equal(seat(state), "bottom");
 });
@@ -72,7 +81,7 @@ test("wild automation, normal phases and the winner retain the active player's s
   const initial = game();
   initial.activePlayer = 2;
   assert.equal(seat(initial), "top");
-  let state = choose(enter(initial, 1), 2);
+  let state = choose(enter(initial, 2), 2);
   assert.equal(state.battle.kind, "wild");
   assert.equal(state.battle.turn, "defender");
   assert.equal(seat(state), "top");
@@ -130,23 +139,28 @@ test("lap evolution choices keep the moving player's seat through the queue and 
   const first = initial.players[2].party[0];
   first.speciesId = 133;
   first.level = 19;
+  first.moveIds = getAvailableMoves(133, 19).map(move => move.id);
   first.hp = getStats(first).hp;
   initial.players[2].party.push({ ...first, id: `p${initial.nextPokemonId++}` });
   initial.players[2].position = 39;
   initial.phase = "moving";
   initial.dice = [1, 1];
+  initial.dicePurpose = "movement";
   initial.movement = { remaining: 2, encounters: [] };
   // Keep the start center empty so the completed growth queue resumes movement.
   initial.players[3].position = 30;
   const facing = Object.freeze({ mode: "auto", seatSide: "top" });
   let state = transition(initial, { type: "STEP" });
+  assert.equal(state.phase, "learn-move");
+  assert.equal(seat(state), "top");
+  state = declineNewMoves(state);
   for (const selected of [134, 135]) {
     assert.equal(state.phase, "evolution");
     assert.equal(state.evolution.ownerId, 2);
     assert.equal(state.battle, null);
     assert.equal(resolveControlLayout(state, "auto", facing, true), facing);
     assert.equal(resolveControlLayout(state, "auto", facing, false), facing);
-    state = transition(state, { type: "CHOOSE_EVOLUTION", speciesId: selected });
+    state = declineNewMoves(transition(state, { type: "CHOOSE_EVOLUTION", speciesId: selected }));
   }
   assert.equal(state.phase, "moving");
   assert.equal(state.movement.remaining, 1);

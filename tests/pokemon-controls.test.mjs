@@ -9,6 +9,7 @@ const Setup = () => null;
 const ActionPanel = () => null;
 const PartySummary = () => null;
 const TabletopControls = () => null;
+const MoveLearningPanel = () => null;
 const Empty = () => null;
 
 function findElement(element, type) {
@@ -76,6 +77,7 @@ function controls(t, state, mode = "auto") {
       __esModule: true, default: ActionPanel, MovementPanel: Empty, PartySummary, ExchangeControls: Empty,
     },
     [`${path}TabletopControls.tsx`]: { __esModule: true, default: TabletopControls },
+    [`${path}MoveLearningPanel.tsx`]: { __esModule: true, default: MoveLearningPanel },
   });
   function render() {
     let tree;
@@ -96,6 +98,7 @@ function endedTurn() {
   const state = createGame([1, 4], ["민준", "지우"], 9182, ["bottom", "left"]);
   state.phase = "turn-end";
   state.dice = [1, 2];
+  state.dicePurpose = "movement";
   return state;
 }
 
@@ -148,6 +151,7 @@ test("attack presentation keeps its initiating seat, then faces the next attacke
   state.players[1].position = 2;
   state.phase = "moving";
   state.dice = [1, 1];
+  state.dicePurpose = "movement";
   state.movement = { remaining: 1, encounters: [] };
   state = transition(state, { type: "STEP" });
   for (const owner of [1, 0]) {
@@ -203,6 +207,7 @@ test("resuming a saved evolution choice does not enqueue old rewards or animatio
   state.players[0].position = 39;
   state.phase = "moving";
   state.dice = [1, 2];
+  state.dicePurpose = "movement";
   state.movement = { remaining: 2, encounters: [] };
   const saved = JSON.parse(JSON.stringify(transition(state, { type: "STEP" })));
   assert.equal(saved.phase, "evolution");
@@ -214,4 +219,34 @@ test("resuming a saved evolution choice does not enqueue old rewards or animatio
   choice.props.dispatch({ type: "CHOOSE_EVOLUTION", speciesId: 134 });
   assert.deepEqual(ui.batches[0].map((entry) => entry.kind), ["evolution"]);
   assert.equal(ui.saves[0].players[0].party[0].xp, saved.players[0].party[0].xp);
+});
+
+test("a combined handoff faces the next resting player during their escape dice", (t) => {
+  const state = endedTurn();
+  state.players[1].restTurnsRemaining = 2;
+  state.players[1].party[0].hp = 0;
+  const ui = controls(t, state);
+  findElement(ui.render(), ActionPanel).props.dispatch({ type: "END_TURN_AND_ROLL" });
+  assert.equal(ui.saves[0].activePlayer, 1);
+  assert.equal(ui.saves[0].dicePurpose, "rest");
+  assert.equal(ui.experience.frame.event.kind, "roll");
+  assert.equal(findElement(ui.render(), TabletopControls).props.seatSide, "left");
+});
+
+test("saved move learning opens a full comparison facing its owner without replaying rewards", (t) => {
+  const state = endedTurn();
+  const pokemon = state.players[1].party[0];
+  pokemon.moveIds = [33, 52, 53];
+  state.phase = "learn-move";
+  state.growth = { resume: "movement", queue: [{ ownerId: 1, pokemonId: pokemon.id,
+    pendingMoveIds: [83], consideredMoveIds: [] }] };
+  const ui = controls(t, state);
+  const tabletop = findElement(ui.render(), TabletopControls);
+  assert.equal(tabletop.props.seatSide, "left");
+  assert.equal(tabletop.props.overlay.seatSide, "left");
+  const learning = tabletop.props.overlay.render({ width: 672, height: 1024 });
+  assert.equal(learning.type, MoveLearningPanel);
+  assert.deepEqual(learning.props.state.growth, state.growth);
+  assert.equal(ui.batches.length, 0);
+  assert.equal(ui.saves.length, 0);
 });

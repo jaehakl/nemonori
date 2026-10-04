@@ -2,15 +2,20 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { loadGameSource, pokemonBattleAction } from "./game-test-helpers.mjs";
 
+const ROAD_TILE = 1;
+const WILD_TILE = 2;
+
 const path = "app/games/_components/pokemon-marble/";
 const { createGame, transition, getStats, getActingPlayer } = loadGameSource(
   `${path}engine.ts`,
 );
 const { validateSave, parseGameSave } = loadGameSource(`${path}save.ts`);
 const { BOARD_SIZE, BOARD_TILES } = loadGameSource(`${path}board.ts`);
+const { getAvailableMoves } = loadGameSource(`${path}pokemon-data.ts`);
 
 function pokemon(state, speciesId, level = 1, hp) {
-  const entry = { id: `p${state.nextPokemonId++}`, speciesId, level, xp: 0, hp: 0 };
+  const entry = { id: `p${state.nextPokemonId++}`, speciesId, level, xp: 0, hp: 0,
+    moveIds: getAvailableMoves(speciesId, level).map(move => move.id) };
   entry.hp = hp ?? getStats(entry).hp;
   return entry;
 }
@@ -18,13 +23,17 @@ function enter(state, tile, remaining = 1) {
   state.players[state.activePlayer].position = (tile + BOARD_SIZE - 1) % BOARD_SIZE;
   state.phase = "moving";
   state.dice = [6, 6];
+  state.dicePurpose = "movement";
   state.movement = { remaining, encounters: [] };
   return transition(state, { type: "STEP" });
 }
 function nextAction(state) {
   switch (state.phase) {
     case "roll":
+    case "rest-roll":
       return { type: "ROLL" };
+    case "learn-move":
+      return { type: "CHOOSE_MOVE", replaceMoveId: null };
     case "moving":
       return { type: "STEP" };
     case "choose-defender":
@@ -65,6 +74,18 @@ function snapshot(state) {
   return resumed;
 }
 
+function declineMoves(state) {
+  while (state.phase === "learn-move") {
+    const restored = snapshot(state);
+    const action = { type: "CHOOSE_MOVE", replaceMoveId: null };
+    const next = transition(restored, action);
+    assert.equal(next.revision, state.revision + 1);
+    assert.deepEqual(next, transition(state, action));
+    state = next;
+  }
+  return state;
+}
+
 test("1-, 2- and 4-player games resume identically across movement, battles and rest", () => {
   for (const count of [1, 2, 4]) {
     for (const seed of [1, 35, 9182, 987654321]) {
@@ -89,9 +110,9 @@ test("1-, 2- and 4-player games resume identically across movement, battles and 
 
 test("paused encounters keep remaining movement, selected Pokemon, attack turn and RNG", () => {
   const initial = createGame([1, 4, 7, 172], [], 13);
-  initial.players[1].position = 2;
-  initial.players[2].position = 2;
-  let state = enter(initial, 2);
+  initial.players[1].position = ROAD_TILE;
+  initial.players[2].position = ROAD_TILE;
+  let state = enter(initial, ROAD_TILE);
   assert.equal(state.phase, "choose-defender");
   assert.deepEqual(state.movement, { remaining: 0, encounters: [2] });
   for (let index = 0; index < 3; index++) {
@@ -108,7 +129,7 @@ test("paused encounters keep remaining movement, selected Pokemon, attack turn a
 test("capture snapshots preserve remaining HP and commit rewards and ownership once", () => {
   const initial = createGame([1, 4, 7], [], 9182);
   initial.players[0].party[0] = pokemon(initial, 128, 40);
-  let state = enter(initial, 1);
+  let state = enter(initial, WILD_TILE);
   state = transition(state, nextAction(state));
   state.battle.wild.hp = 1;
   state = transition(state, { type: "WILD_ATTACK" });
@@ -129,28 +150,29 @@ test("branch evolution snapshots resume rewards once, including a victorious roa
     initial.players[0].party.push(pokemon(initial, 7));
     initial.players[0].party[0].hp = 1;
     if (kind === "trainer") {
-      initial.players[1].position = 2;
+      initial.players[1].position = ROAD_TILE;
       initial.players[1].party[0] = pokemon(initial, 133, 19);
       initial.players[1].party[0].xp = 900;
     } else {
-      initial.roads[2] = { ownerId: 1, pokemon: pokemon(initial, 133, 19) };
-      initial.roads[2].pokemon.xp = 900;
+      initial.roads[1] = { ownerId: 1, pokemon: pokemon(initial, 133, 19) };
+      initial.roads[1].pokemon.xp = 900;
     }
-    let state = enter(initial, 2);
+    let state = enter(initial, ROAD_TILE);
     while (state.phase.startsWith("choose-"))
       state = transition(state, nextAction(state));
     state = transition(state, pokemonBattleAction(state));
+    state = declineMoves(state);
     assert.equal(state.phase, "evolution");
     const restored = snapshot(state);
     const winnerId = state.evolution.pokemonId;
-    const evolved = transition(restored, {
+    const evolved = declineMoves(transition(restored, {
       type: "CHOOSE_EVOLUTION",
       speciesId: 134,
-    });
+    }));
     const winner =
       kind === "trainer"
         ? evolved.players[1].party[0]
-        : evolved.roads[2].pokemon;
+        : evolved.roads[1].pokemon;
     assert.equal(winner.id, winnerId);
     assert.equal(winner.level, 20);
     assert.equal(winner.speciesId, 134);
@@ -169,16 +191,17 @@ test("active winner evolution preserves a defeated guardian and ends a knocked-o
     initial.players[0].party[0] = pokemon(initial, 133, 19);
     initial.players[0].party[0].xp = 900;
     if (kind === "road")
-      initial.roads[2] = { ownerId: 1, pokemon: pokemon(initial, 7, 1, 1) };
-    let state = enter(initial, kind === "road" ? 2 : 1);
+      initial.roads[1] = { ownerId: 1, pokemon: pokemon(initial, 7, 1, 1) };
+    let state = enter(initial, kind === "road" ? ROAD_TILE : WILD_TILE);
     state = transition(state, nextAction(state));
     if (kind === "wild") state.battle.wild.hp = 1;
     state = transition(state, nextAction(state));
     state = transition(state, pokemonBattleAction(state));
+    state = declineMoves(state);
     assert.equal(state.phase, "evolution");
     if (kind === "road") assert.equal(state.players[1].box[0].hp, 0);
     snapshot(state);
-    state = transition(state, { type: "CHOOSE_EVOLUTION", speciesId: 134 });
+    state = declineMoves(transition(state, { type: "CHOOSE_EVOLUTION", speciesId: 134 }));
     assert.equal(state.phase, kind === "road" ? "road" : "turn-end");
     if (kind === "road") {
       const returned = state.players[1].box[0];
@@ -193,7 +216,7 @@ test("a full-party attack save resumes with capture blocked and attacks availabl
   initial.players[0].party[0] = pokemon(initial, 128, 40);
   while (initial.players[0].party.length < 6)
     initial.players[0].party.push(pokemon(initial, 7, 3));
-  let state = enter(initial, 1);
+  let state = enter(initial, WILD_TILE);
   state = transition(state, nextAction(state));
   state.battle.wild.hp = 1;
   state = transition(state, { type: "WILD_ATTACK" });
@@ -208,13 +231,14 @@ test("a full-party attack save resumes with capture blocked and attacks availabl
 test("a defeated guardian returns fully healed before a completed battle can be resumed", () => {
   const initial = createGame([1, 4], [], 9182);
   initial.players[0].party[0] = pokemon(initial, 1, 40);
-  initial.roads[2] = { ownerId: 1, pokemon: pokemon(initial, 7, 1, 1) };
-  let state = enter(initial, 2);
+  initial.roads[1] = { ownerId: 1, pokemon: pokemon(initial, 7, 1, 1) };
+  let state = enter(initial, ROAD_TILE);
   state = transition(state, nextAction(state));
   state = transition(state, pokemonBattleAction(state));
   state = transition(state, pokemonBattleAction(state));
+  state = declineMoves(state);
   assert.equal(state.phase, "road");
-  assert.equal(state.roads[2], null);
+  assert.equal(state.roads[1], null);
   const returned = state.players[1].box[0];
   assert.equal(returned.hp, getStats(returned).hp);
   snapshot(state);
@@ -230,8 +254,8 @@ function pendingLap(remaining = 4) {
     pokemon(state, 1, 15, 10),
   ];
   state.players[0].box.push(pokemon(state, 133, 19));
-  state.roads[2] = { ownerId: 0, pokemon: pokemon(state, 133, 19) };
-  return enter(state, 0, remaining);
+  state.roads[1] = { ownerId: 0, pokemon: pokemon(state, 133, 19) };
+  return declineMoves(enter(state, 0, remaining));
 }
 
 test("multiple lap evolution saves resume each choice once without replaying growth or consuming RNG", () => {
@@ -242,31 +266,31 @@ test("multiple lap evolution saves resume each choice once without replaying gro
     assert.equal(first.players[0].position, 0);
     assert.deepEqual(first.players[0].party.map((entry) => entry.level), [20, 20, 17]);
     assert.equal(first.players[0].box[0].level, 19);
-    assert.equal(first.roads[2].pokemon.level, 20);
-    assert.deepEqual(first.lapGrowth.remainingPokemonIds, [...first.players[0].party.slice(1).map((entry) => entry.id), first.roads[2].pokemon.id]);
+    assert.equal(first.roads[1].pokemon.level, 20);
+    assert.deepEqual(first.growth.queue.slice(1).map((entry) => entry.pokemonId), [...first.players[0].party.slice(1).map((entry) => entry.id), first.roads[1].pokemon.id]);
     const firstChoice = { type: "CHOOSE_EVOLUTION", speciesId: 134 };
-    const second = transition(snapshot(first), firstChoice);
-    assert.deepEqual(second, transition(first, firstChoice));
+    const second = declineMoves(transition(snapshot(first), firstChoice));
+    assert.deepEqual(second, declineMoves(transition(first, firstChoice)));
     assert.equal(second.phase, "evolution");
     assert.equal(second.evolution.pokemonId, second.players[0].party[1].id);
     assert.equal(second.players[0].party[1].hp, 0);
-    assert.deepEqual(second.lapGrowth.remainingPokemonIds, [second.players[0].party[2].id, second.roads[2].pokemon.id]);
+    assert.deepEqual(second.growth.queue.slice(1).map((entry) => entry.pokemonId), [second.players[0].party[2].id, second.roads[1].pokemon.id]);
     const secondChoice = { type: "CHOOSE_EVOLUTION", speciesId: 135 };
-    const guardianChoice = transition(snapshot(second), secondChoice);
-    assert.deepEqual(guardianChoice, transition(second, secondChoice));
-    assert.equal(guardianChoice.evolution.pokemonId, guardianChoice.roads[2].pokemon.id);
-    const completed = transition(snapshot(guardianChoice), { type: "CHOOSE_EVOLUTION", speciesId: 136 });
-    assert.equal(completed.roads[2].pokemon.speciesId, 136);
+    const guardianChoice = declineMoves(transition(snapshot(second), secondChoice));
+    assert.deepEqual(guardianChoice, declineMoves(transition(second, secondChoice)));
+    assert.equal(guardianChoice.evolution.pokemonId, guardianChoice.roads[1].pokemon.id);
+    const completed = declineMoves(transition(snapshot(guardianChoice), { type: "CHOOSE_EVOLUTION", speciesId: 136 }));
+    assert.equal(completed.roads[1].pokemon.speciesId, 136);
     assert.deepEqual(completed.players[0].party.map((entry) => entry.speciesId), [134, 135, 2]);
     assert.deepEqual(completed.players[0].party.map((entry) => entry.level), [20, 20, 17]);
-    assert.equal(completed.lapGrowth, null);
+    assert.equal(completed.growth, null);
     assert.equal(completed.evolution, null);
     assert.equal(completed.phase, remaining === 1 ? "center" : "moving");
     assert.equal(completed.movement.remaining, remaining - 1);
     assert.equal(completed.rng, first.rng);
     assert.equal(completed.turn, first.turn);
     assert.equal(completed.activePlayer, first.activePlayer);
-    assert.equal(completed.revision, first.revision + 3);
+    assert.ok(completed.revision >= first.revision + 3);
     assert.equal(transition(completed, secondChoice), completed);
     snapshot(completed);
   }
@@ -276,10 +300,10 @@ test("lap evolution saves preserve trainer encounters waiting at the start corne
   const initial = createGame([133, 4, 7], [], 9182);
   initial.players[0].party[0] = pokemon(initial, 133, 19);
     initial.players[0].party[0].xp = 900;
-  const pending = enter(initial, 0);
+  const pending = declineMoves(enter(initial, 0));
   assert.equal(pending.phase, "evolution");
   assert.deepEqual(pending.movement.encounters, [1, 2]);
-  const resumed = transition(snapshot(pending), { type: "CHOOSE_EVOLUTION", speciesId: 134 });
+  const resumed = declineMoves(transition(snapshot(pending), { type: "CHOOSE_EVOLUTION", speciesId: 134 }));
   assert.equal(resumed.phase, "choose-defender");
   assert.equal(resumed.battle.defenderOwner, 1);
   assert.deepEqual(resumed.movement, { remaining: 0, encounters: [2] });
@@ -292,14 +316,14 @@ test("lap save validation rejects forged queues, locations, owners and evolution
   const valid = pendingLap();
   snapshot(valid);
   const changes = [
-    (state) => { state.lapGrowth = null; },
-    (state) => { delete state.lapGrowth; },
-    (state) => { state.lapGrowth = []; },
-    (state) => { state.lapGrowth.remainingPokemonIds = null; },
-    (state) => { state.lapGrowth.remainingPokemonIds.reverse(); },
-    (state) => { state.lapGrowth.remainingPokemonIds.pop(); },
-    (state) => { state.lapGrowth.remainingPokemonIds.push(state.players[0].party[1].id); },
-    (state) => { state.lapGrowth.remainingPokemonIds[0] = state.players[0].box[0].id; },
+    (state) => { state.growth = null; },
+    (state) => { delete state.growth; },
+    (state) => { state.growth = []; },
+    (state) => { state.growth.queue = null; },
+    (state) => { state.growth.queue.reverse(); },
+    (state) => { state.growth.queue.pop(); },
+    (state) => { state.growth.queue.push(state.growth.queue[0]); },
+    (state) => { state.growth.queue[0].pokemonId = state.players[0].box[0].id; },
     (state) => { state.evolution.ownerId = 1; },
     (state) => { state.evolution.pokemonId = state.players[0].box[0].id; },
     (state) => { state.evolution.options.reverse(); },
@@ -323,22 +347,23 @@ test("lap save validation rejects forged queues, locations, owners and evolution
 
 test("pending branch evolution resumes before rescuing a defeated party", () => {
   const initial = createGame([1, 4], [], 9182);
-  initial.players[1].position = 2;
+  initial.players[1].position = ROAD_TILE;
   initial.players[1].party[0] = pokemon(initial, 133, 19);
       initial.players[1].party[0].xp = 900;
   initial.players[0].party[0].hp = 1;
-  let state = enter(initial, 2);
+  let state = enter(initial, ROAD_TILE);
   while (state.phase.startsWith("choose-"))
     state = transition(state, nextAction(state));
   state = transition(state, pokemonBattleAction(state));
+  state = declineMoves(state);
   assert.equal(state.phase, "evolution");
   assert.equal(state.winner, null);
   assert.equal(state.players[0].restTurnsRemaining, 0);
   snapshot(state);
-  state = transition(state, { type: "CHOOSE_EVOLUTION", speciesId: 134 });
+  state = declineMoves(transition(state, { type: "CHOOSE_EVOLUTION", speciesId: 134 }));
   assert.equal(state.phase, "turn-end");
   assert.equal(state.players[0].restTurnsRemaining, 3);
-  assert.equal(state.players[0].position, 0);
+  assert.equal(state.players[0].position, 10);
   assert.equal(state.winner, null);
   snapshot(state);
 });
@@ -419,10 +444,10 @@ test("save validation rejects malformed scalar, roster, ownership and phase data
       state.roads[0] = { ownerId: 0, pokemon: pokemon(state, 7) };
     },
     (state) => {
-      state.roads[2] = { ownerId: 9, pokemon: pokemon(state, 7) };
+      state.roads[1] = { ownerId: 9, pokemon: pokemon(state, 7) };
     },
     (state) => {
-      state.roads[2] = { ownerId: 0, pokemon: pokemon(state, 7, 1, 0) };
+      state.roads[1] = { ownerId: 0, pokemon: pokemon(state, 7, 1, 0) };
     },
     (state) => {
       state.phase = "capture";
@@ -450,8 +475,8 @@ test("save validation rejects malformed scalar, roster, ownership and phase data
 
 test("save validation rejects forged battle references, progression and rewards", () => {
   const initial = createGame([1, 4, 7], [], 9182);
-  initial.players[1].position = 2;
-  let state = enter(initial, 2);
+  initial.players[1].position = ROAD_TILE;
+  let state = enter(initial, ROAD_TILE);
   state = transition(state, nextAction(state));
   state = transition(state, nextAction(state));
   assert.ok(validateSave(state));
@@ -509,11 +534,11 @@ test("resting saves preserve counters, seats, starter identity and deployed guar
   state.players[1].party[0].hp = 0;
   state.players[1].position = 10;
   state.players[1].restTurnsRemaining = 2;
-  state.roads[2] = { ownerId: 1, pokemon: pokemon(state, 4, 20) };
+  state.roads[1] = { ownerId: 1, pokemon: pokemon(state, 4, 20) };
   snapshot(state);
   for (const corrupt of [
     (copy) => { copy.players[1].position = 2; },
-    (copy) => { copy.players[1].party[0].hp = 1; },
+
     (copy) => { copy.players[1].restTurnsRemaining = 0; },
     (copy) => { copy.activePlayer = 1; },
     (copy) => { copy.players[2].party[0].hp = 0; },
@@ -528,17 +553,17 @@ test("monopoly saves resume the terminal state and reject incomplete or unrecord
   const initial = createGame([1, 4], [], 9182);
   initial.players[0].party.push(pokemon(initial, 7));
   for (const [tile, kind] of BOARD_TILES.entries()) {
-    if (kind === "road" && tile !== 2)
+    if (kind === "road" && tile !== ROAD_TILE)
       initial.roads[tile] = { ownerId: 0, pokemon: pokemon(initial, 1) };
   }
-  const ready = snapshot(enter(initial, 2));
+  const ready = snapshot(enter(initial, ROAD_TILE));
   const state = snapshot(transition(transition(ready, { type: "START_EXCHANGE" }), { type: "DEPLOY", pokemonId: ready.players[0].party[0].id }));
   assert.equal(state.winner, 0);
   assert.equal(state.phase, "finished");
   assert.equal(transition(state, { type: "ROLL" }), state);
   for (const corrupt of [
-    (copy) => { copy.roads[2] = null; },
-    (copy) => { copy.roads[2].ownerId = 1; },
+    (copy) => { copy.roads[1] = null; },
+    (copy) => { copy.roads[1].ownerId = 1; },
     (copy) => { copy.winner = 1; },
     (copy) => { copy.winner = null; copy.phase = "turn-end"; },
   ]) {

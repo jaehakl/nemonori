@@ -1,4 +1,9 @@
-import type { BattleActionResult, CombatState } from "./combat-types";
+import type { BattleActionResult, CombatState as CurrentCombatState } from "./combat-types";
+
+/** Frozen version 3/4 shapes, kept independent of current save fields. */
+type CombatState = Omit<CurrentCombatState, "delayed"> & {
+  delayed: (Omit<CurrentCombatState["delayed"][number], "pokemon"> & { pokemon: Pokemon })[];
+};
 
 export interface Pokemon {
   id: string;
@@ -7,8 +12,6 @@ export interface Pokemon {
   /** Progress toward the next level; 1,000 XP advances one level. */
   xp: number;
   hp: number;
-  /** Three persistent move slots, in the player's chosen order. */
-  moveIds: number[];
 }
 
 export type SeatSide = "bottom" | "left" | "top" | "right";
@@ -66,32 +69,13 @@ export interface PendingLapGrowth {
   legacyPartyOnly?: true;
 }
 
-export interface PendingPokemonGrowth {
-  ownerId: number;
-  pokemonId: string;
-  pendingMoveIds: number[];
-  /** Includes older eligible moves and each offered move, even when declined. */
-  consideredMoveIds: number[];
-}
-
-export interface PendingGrowth {
-  resume: "battle" | "movement";
-  /** Version-2 lap rewards did not include deployed guardians. */
-  legacyPartyOnly?: true;
-  /** Experience is already awarded; only move and evolution choices remain. */
-  queue: PendingPokemonGrowth[];
-}
-
 export type GamePhase =
   | "roll"
-  | "rest-roll"
-  | "rest-end"
   | "moving"
   | "choose-defender"
   | "choose-attacker"
   | "attack"
   | "evolution"
-  | "learn-move"
   | "capture"
   | "road"
   | "center"
@@ -99,7 +83,7 @@ export type GamePhase =
   | "finished";
 
 export interface GameState {
-  version: 5;
+  version: 4;
   revision: number;
   rng: number;
   nextPokemonId: number;
@@ -109,12 +93,9 @@ export interface GameState {
   roads: (Guardian | null)[];
   phase: GamePhase;
   dice: [number, number] | null;
-  /** Rest doubles permit movement, but never earn an extra roll. */
-  dicePurpose: "movement" | "rest" | null;
   movement: { remaining: number; encounters: number[] } | null;
   battle: Battle | null;
   evolution: PendingEvolution | null;
-  growth: PendingGrowth | null;
   /** Missing only in earlier version-2 saves, before lap growth was introduced. */
   lapGrowth?: PendingLapGrowth | null;
   exchangeActive?: boolean;
@@ -132,8 +113,6 @@ export type GameAction =
   | { type: "CONTINUE_BATTLE" }
   | { type: "THROW_BALL" }
   | { type: "CHOOSE_EVOLUTION"; speciesId: number }
-  | { type: "CHOOSE_MOVE"; replaceMoveId: number | null }
-  | { type: "MOVE_TO_CENTER" }
   | { type: "CAPTURE"; capture: boolean }
   | { type: "DEPLOY"; pokemonId: string }
   | { type: "RETRIEVE" }

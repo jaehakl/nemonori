@@ -11,6 +11,7 @@ const { default: GameBoard, BattleHud } = loadGameSource(`${path}GameBoard.tsx`)
 const { getBattlePose, BATTLE_ANCHORS } = loadGameSource(`${path}battle-visuals.ts`);
 const { createGame, transitionWithEvents, getActingPlayer, getStats, snapshotForPresentation } = loadGameSource(`${path}engine.ts`);
 const { parseGameSave } = loadGameSource(`${path}save.ts`);
+const { getAvailableMoves } = loadGameSource(`${path}pokemon-data.ts`);
 const battle = {
   kind: "trainer",
   attacker: { id: "a", speciesId: 1, level: 3, xp: 0, hp: 15, maxHp: 20 },
@@ -145,22 +146,24 @@ test("normalized PNG bounds are shared with the board and stay in the portrait c
   assert.match(html, /<rect x="-160" y="-160" width="320" height="320"/);
 });
 
-test("21 mixed battles render, return to the board and resume version-3 saves without GPU access", () => {
+test("21 mixed battles render, return to the board and resume version-5 saves without GPU access", () => {
   const kinds = new Set();
   let savedBattles = 0;
   for (let round = 0; round < 21; round++) {
     const kind = ["wild", "trainer", "road"][round % 3];
     let state = createGame([1, 4], [], 123 + round);
-    const tile = kind === "wild" ? 1 : 2;
+    const tile = kind === "wild" ? 2 : 3;
     state.players[0].position = tile - 1;
     state.players[1].position = kind === "trainer" ? tile : 20;
     if (kind === "road") {
-      const guardian = { id: `p${state.nextPokemonId++}`, speciesId: 7, level: 1, xp: 0, hp: 0 };
+      const guardian = { id: `p${state.nextPokemonId++}`, speciesId: 7, level: 1, xp: 0, hp: 0,
+        moveIds: getAvailableMoves(7, 1).map(move => move.id) };
       guardian.hp = getStats(guardian).hp;
       state.roads[tile] = { ownerId: 1, pokemon: guardian };
     }
     state.phase = "moving";
     state.dice = [1, 1];
+    state.dicePurpose = "movement";
     state.movement = { remaining: 1, encounters: [] };
     let action = { type: "STEP" };
     let completed = false;
@@ -191,6 +194,8 @@ test("21 mixed battles render, return to the board and resume version-3 saves wi
         action = getActingPlayer(state) === null ? { type: "WILD_ATTACK" } : pokemonBattleAction(state);
       } else if (state.phase === "evolution") {
         action = { type: "CHOOSE_EVOLUTION", speciesId: state.evolution.options[0] };
+      } else if (state.phase === "learn-move") {
+        action = { type: "CHOOSE_MOVE", replaceMoveId: null };
       } else if (state.phase === "capture") {
         action = { type: "CAPTURE", capture: false };
       } else {

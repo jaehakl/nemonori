@@ -1,19 +1,22 @@
 import { getStats } from "./battle";
 import { BOARD_SIZE, BOARD_TILES } from "./board";
-import { speciesById, movesById, isStarter } from "./pokemon-data";
+import { speciesById, movesById, isStarter, getAvailableMoves, getLearnableMoves } from "./pokemon-data";
 import type { GameState, Pokemon } from "./types";
 import { XP_PER_LEVEL } from "./progression";
-import { validateV2Save } from "./save-v2";
-import { createCombatState } from "./combat-types";
-import { validateCombat, validateBattleAction } from "./combat-save";
+import { parseLegacyGameSave } from "./save-legacy";
+import { BOARD_TILES as LEGACY_BOARD_TILES } from "./save-legacy-board";
+import { validateCombat, validateBattleAction, validateMoveIds } from "./combat-save";
 
 const phases = new Set([
   "roll",
+  "rest-roll",
+  "rest-end",
   "moving",
   "choose-defender",
   "choose-attacker",
   "attack",
   "evolution",
+  "learn-move",
   "capture",
   "road",
   "center",
@@ -25,6 +28,7 @@ const battlePhases = new Set([
   "choose-attacker",
   "attack",
   "evolution",
+  "learn-move",
   "capture",
 ]);
 const record = (value: unknown): value is Record<string, unknown> =>
@@ -70,10 +74,10 @@ export function validateSave(value: unknown): value is GameState {
   }
 }
 
-function validate(value: unknown, legacy = false): value is GameState {
+function validate(value: unknown): value is GameState {
   if (
     !record(value) ||
-    value.version !== (legacy ? 3 : 4) ||
+    value.version !== 5 ||
     !integer(value.revision) ||
     !integer(value.rng, 1, 0xffffffff) ||
     !integer(value.nextPokemonId, 1) ||
@@ -81,7 +85,7 @@ function validate(value: unknown, legacy = false): value is GameState {
     !phases.has(value.phase as string)
   )
     return false;
-  if (!legacy && value.lastBattleAction !== null && !validateBattleAction(value.lastBattleAction)) return false;
+  if (value.lastBattleAction !== null && !validateBattleAction(value.lastBattleAction)) return false;
   if (
     !Array.isArray(value.players) ||
     value.players.length < 1 ||
@@ -123,7 +127,8 @@ function validate(value: unknown, legacy = false): value is GameState {
       !speciesById[candidate.speciesId] ||
       !integer(candidate.level, 1, 100) ||
       !integer(candidate.xp, 0, candidate.level === 100 ? 0 : XP_PER_LEVEL - 1) ||
-      !integer(candidate.hp, 0)
+      !integer(candidate.hp, 0) ||
+      !validateMoveIds(candidate.moveIds)
     )
       return false;
     const pokemon = candidate as unknown as Pokemon;
@@ -163,11 +168,11 @@ function validate(value: unknown, legacy = false): value is GameState {
       (pokemon: Pokemon) => pokemon.hp > 0,
     );
     if (player.restTurnsRemaining > 0) {
-      if (hasHealthyPokemon || BOARD_TILES[player.position] !== "center")
+      if (BOARD_TILES[player.position] !== "center")
         return false;
     } else if (!hasHealthyPokemon) {
       // Rescue follows the winner's branching evolution, before play continues.
-      if (value.phase !== "evolution") return false;
+      if (value.phase !== "evolution" && value.phase !== "learn-move") return false;
       pendingRecovery.push(index);
     }
   }
@@ -204,7 +209,7 @@ function validate(value: unknown, legacy = false): value is GameState {
   // A temporary seventh party member must be returned before leaving exchange.
   if (active.party.length === 7 && state.phase === "road" && state.roads[active.position]) return false;
 
-  if (active.restTurnsRemaining > 0 && state.phase !== "turn-end")
+  if (active.restTurnsRemaining > 0 && !["turn-end", "rest-roll", "rest-end"].includes(state.phase))
     return false;
 
   if (
@@ -237,11 +242,25 @@ function validate(value: unknown, legacy = false): value is GameState {
     if (movement.remaining > state.dice[0] + state.dice[1]) return false;
   }
   if (
-    state.phase === "roll" &&
+    ["roll", "rest-roll"].includes(state.phase) &&
     (state.dice !== null || state.movement !== null)
   )
     return false;
-  if (state.phase !== "roll" && state.dice === null) return false;
+  if (![null, "movement", "rest"].includes(state.dicePurpose)) return false;
+  if ((state.dice === null) !== (state.dicePurpose === null)) return false;
+  if (state.phase === "roll" && active.restTurnsRemaining !== 0) return false;
+  if (state.phase === "rest-roll" && active.restTurnsRemaining === 0) return false;
+  if (state.phase === "rest-end" &&
+    (state.dicePurpose !== "rest" || !state.dice || state.dice[0] === state.dice[1] ||
+      state.movement !== null || BOARD_TILES[active.position] !== "center" ||
+      active.restTurnsRemaining > 2 ||
+      (active.restTurnsRemaining === 0 && [...active.party, ...active.box].some(
+        (pokemon) => pokemon.hp !== getStats(pokemon).hp,
+      )))) return false;
+  if (state.dicePurpose === "rest" && state.phase !== "rest-end" &&
+    (!state.dice || state.dice[0] !== state.dice[1])) return false;
+  if (!["roll", "rest-roll"].includes(state.phase) && state.dice === null &&
+    !(state.phase === "turn-end" && active.restTurnsRemaining > 0)) return false;
   if (state.phase === "finished" && state.movement !== null) return false;
   if (
     state.phase === "moving" &&
@@ -282,42 +301,61 @@ function validate(value: unknown, legacy = false): value is GameState {
   )
     return false;
 
-  // All rewards were committed before this queue; only evolution remains.
-  if (state.lapGrowth !== undefined && state.lapGrowth !== null) {
-    const growth = state.lapGrowth;
-    const evolution = state.evolution;
-    if (
-      !record(growth) ||
-      !Array.isArray(growth.remainingPokemonIds) ||
-      (growth.legacyPartyOnly !== undefined && growth.legacyPartyOnly !== true) ||
-      state.phase !== "evolution" ||
-      state.battle !== null ||
-      active.position !== 0 ||
-      !state.movement ||
-      pendingRecovery.length > 0 ||
-      !record(evolution)
-    )
-      return false;
-    const recipients = growth.legacyPartyOnly
-      ? active.party
-      : [...active.party, ...state.roads.flatMap((guardian) =>
-          guardian?.ownerId === active.id ? [guardian.pokemon] : [],
-        )];
-    const currentIndex = recipients.findIndex(
-      (pokemon) => pokemon.id === evolution.pokemonId,
-    );
-    if (
-      currentIndex < 0 ||
-      !matchesEvolution(evolution, recipients[currentIndex], active.id)
-    )
-      return false;
-    const remaining = recipients.slice(currentIndex + 1);
-    return (
-      remaining.length === growth.remainingPokemonIds.length &&
-      remaining.every(
-        (pokemon, index) => pokemon.id === growth.remainingPokemonIds[index],
-      )
-    );
+  // Every reward is already committed; this queue stores only unresolved choices.
+  if (state.lapGrowth !== undefined && state.lapGrowth !== null) return false;
+  const growth = state.growth;
+  const choosingGrowth = state.phase === "learn-move" || state.phase === "evolution";
+  if (choosingGrowth !== (growth !== null)) return false;
+  if (growth !== null) {
+    if (!record(growth) || !["battle", "movement"].includes(growth.resume) ||
+      !Array.isArray(growth.queue) || growth.queue.length < 1 ||
+      (growth.legacyPartyOnly !== undefined && growth.legacyPartyOnly !== true)) return false;
+    const queuedIds = new Set<string>();
+    for (const item of growth.queue) {
+      if (!record(item) || !integer(item.ownerId, 0, state.players.length - 1) ||
+        typeof item.pokemonId !== "string" || queuedIds.has(item.pokemonId) ||
+        !validLearningList(item.pendingMoveIds) || !validLearningList(item.consideredMoveIds)) return false;
+      const learner = ownedPokemon.get(item.pokemonId);
+      if (!learner || learner.ownerId !== item.ownerId ||
+        !["party", "road"].includes(learner.location) ||
+        item.pendingMoveIds.some((id) => !item.consideredMoveIds.includes(id) || learner.pokemon.moveIds.includes(id))) return false;
+      const pokemon = learner.pokemon;
+      const eligible = getLearnableMoves(pokemon.speciesId, pokemon.level).map((move) => move.id);
+      const required = [...eligible, ...pokemon.moveIds];
+      if (required.some((id) => !item.consideredMoveIds.includes(id))) return false;
+      const inherited = new Set(pokemon.moveIds);
+      let speciesId: number | null = pokemon.speciesId;
+      const ancestors = new Set<number>();
+      while (speciesId !== null && !ancestors.has(speciesId)) {
+        ancestors.add(speciesId);
+        for (const move of getLearnableMoves(speciesId, pokemon.level)) inherited.add(move.id);
+        speciesId = speciesById[speciesId]?.evolvesFrom ?? null;
+      }
+      if (item.consideredMoveIds.some((id) => !inherited.has(id))) return false;
+      if (item.pendingMoveIds.some((id, index) => {
+        const position = eligible.indexOf(id);
+        return position < 0 || (index > 0 && position <= eligible.indexOf(item.pendingMoveIds[index - 1]));
+      })) return false;
+      queuedIds.add(item.pokemonId);
+    }
+    const first = growth.queue[0];
+    const learner = ownedPokemon.get(first.pokemonId)!;
+    if (state.phase === "learn-move") {
+      if (state.evolution !== null || first.pendingMoveIds.length < 1 || learner.pokemon.moveIds.length !== 3) return false;
+    } else if (first.pendingMoveIds.length !== 0 ||
+      !matchesEvolution(state.evolution, learner.pokemon, first.ownerId)) return false;
+    if (growth.resume === "movement") {
+      if (state.battle !== null || active.position !== 0 || !state.movement || pendingRecovery.length > 0) return false;
+      const recipients = growth.legacyPartyOnly ? active.party : [
+        ...active.party,
+        ...state.roads.flatMap((guardian) => guardian?.ownerId === active.id ? [guardian.pokemon] : []),
+      ];
+      const firstIndex = recipients.findIndex((pokemon) => pokemon.id === first.pokemonId);
+      const remaining = recipients.slice(firstIndex);
+      return firstIndex >= 0 && remaining.length === growth.queue.length &&
+        remaining.every((pokemon, index) => growth.queue[index].ownerId === active.id && growth.queue[index].pokemonId === pokemon.id);
+    }
+    if (growth.legacyPartyOnly !== undefined || growth.queue.length !== 1) return false;
   }
 
   if (!battlePhases.has(state.phase))
@@ -335,7 +373,7 @@ function validate(value: unknown, legacy = false): value is GameState {
   )
     return false;
   const outcome = battle.outcome;
-  if (!legacy && !validateCombat(battle.combat)) return false;
+  if (!validateCombat(battle.combat)) return false;
   if (outcome !== null) {
     if (!record(outcome) || !["knockout", "capture"].includes(outcome.kind)) return false;
     if (outcome.kind === "knockout") {
@@ -439,10 +477,10 @@ function validate(value: unknown, legacy = false): value is GameState {
       return false;
   } else if (outcome?.kind === "capture") {
     if (
-      state.phase !== "evolution" || battle.turn !== "attacker" ||
+      !["evolution", "learn-move"].includes(state.phase) || battle.turn !== "attacker" ||
       attacker!.pokemon.hp <= 0 || defender!.pokemon.hp <= 0 ||
       active.party.length >= 6 || pendingRecovery.length > 0 ||
-      !matchesEvolution(state.evolution, attacker!.pokemon, active.id)
+      growth?.queue[0].ownerId !== active.id || growth?.queue[0].pokemonId !== attacker!.pokemon.id
     ) return false;
   } else {
     if (
@@ -469,10 +507,10 @@ function validate(value: unknown, legacy = false): value is GameState {
         state.evolution !== null)
     )
       return false;
-    if (state.phase === "evolution") {
+    if (state.phase === "evolution" || state.phase === "learn-move") {
       if (
-        winner.ownerId === null ||
-        !matchesEvolution(state.evolution, winner.pokemon, winner.ownerId)
+        winner.ownerId === null || growth?.queue[0].ownerId !== winner.ownerId ||
+        growth?.queue[0].pokemonId !== winner.pokemon.id
       )
         return false;
     }
@@ -483,64 +521,87 @@ function validate(value: unknown, legacy = false): value is GameState {
       !record(last) ||
       !["attacker", "defender"].includes(last.side) ||
       !integer(last.moveId) ||
-      (!movesById[last.moveId] && !(last.moveId === 0 && (legacy || last.legacy === true))) ||
-      !integer(last.damage, legacy ? 1 : 0, 1000000) ||
+      (!movesById[last.moveId] && !(last.moveId === 0 && last.legacy === true)) ||
+      !integer(last.damage, 0, 1000000) ||
       ![0, 0.125, 0.25, 0.5, 1, 2, 4, 8].includes(last.effectiveness) ||
-      (!legacy && last.result !== undefined && !validateBattleAction(last.result)) ||
-      (!legacy && last.result === undefined && last.legacy !== true)
+      (last.result !== undefined && !validateBattleAction(last.result)) ||
+      (last.result === undefined && last.legacy !== true)
     )
       return false;
   }
   return true;
 }
 
+function validLearningList(value: unknown): value is number[] {
+  return Array.isArray(value) && value.length <= Object.keys(movesById).length &&
+    new Set(value).size === value.length && value.every((id) =>
+      integer(id, 1) && !!movesById[id] && id !== 165 && movesById[id].effects.support !== "excluded",
+    );
+}
+
+/** Match old and new cells by kind and order, preserving guardians and encounters. */
+export function getLegacyTileMapping(): number[] {
+  const mapping: number[] = [];
+  for (const kind of ["center", "grass", "road"] as const) {
+    const oldTiles = LEGACY_BOARD_TILES.flatMap((tileKind, tile) => tileKind === kind ? [tile] : []);
+    const newTiles = BOARD_TILES.flatMap((tileKind, tile) => tileKind === kind ? [tile] : []);
+    oldTiles.forEach((tile, index) => { mapping[tile] = newTiles[index]; });
+  }
+  return mapping;
+}
+
 export function parseGameSave(value: unknown): GameState | null {
   if (validateSave(value)) return structuredClone(value);
-  try {
-    if (validate(value, true)) {
-      const migrated = structuredClone(value);
-      migrated.version = 4;
-      migrated.lastBattleAction = null;
-      if (migrated.battle) {
-        migrated.battle.combat = createCombatState();
-        if (migrated.battle.lastAttack) migrated.battle.lastAttack.legacy = true;
-      }
-      return validateSave(migrated) ? migrated : null;
-    }
-  } catch { return null; }
-  if (!validateV2Save(value)) return null;
-  const legacy = structuredClone(value);
-  const withExperience = (pokemon: Omit<Pokemon, "xp">): Pokemon => ({ ...pokemon, xp: 0 });
-  const battle = legacy.battle;
+  const legacy = parseLegacyGameSave(value);
+  if (!legacy) return null;
+  const mapping = getLegacyTileMapping();
+  const withMoves = (pokemon: Omit<Pokemon, "moveIds">): Pokemon => ({
+    ...pokemon,
+    moveIds: getAvailableMoves(pokemon.speciesId, pokemon.level).map((move) => move.id),
+  });
   const migrated: GameState = {
     ...legacy,
-    version: 4,
-    lastBattleAction: null,
+    version: 5,
+    dicePurpose: legacy.dice ? "movement" : null,
+    growth: null,
+    lapGrowth: null,
+    log: [...legacy.log.slice(-23), "저장한 모험을 새 보드 배치로 업데이트했습니다. 위치와 수비 포켓몬은 같은 종류의 칸 순서에 맞췄습니다."],
     players: legacy.players.map((player) => ({
       ...player,
-      party: player.party.map(withExperience),
-      box: player.box.map(withExperience),
+      position: mapping[player.position],
+      party: player.party.map(withMoves),
+      box: player.box.map(withMoves),
     })),
-    roads: legacy.roads.map((guardian) => guardian
-      ? { ...guardian, pokemon: withExperience(guardian.pokemon) } : null),
-    lapGrowth: legacy.lapGrowth
-      ? { ...legacy.lapGrowth, legacyPartyOnly: true } : null,
-    battle: battle ? {
-      kind: battle.kind,
-      defenderOwner: battle.defenderOwner,
-      defenderPokemonId: battle.defenderPokemonId,
-      attackerPokemonId: battle.attackerPokemonId,
-      wild: battle.wild ? withExperience(battle.wild) : null,
-      turn: battle.turn,
-      lastAttack: battle.lastAttack ? { ...battle.lastAttack, legacy: true } : null,
-      combat: createCombatState(),
-      outcome: battle.winner === null ? null : {
-        kind: "knockout",
-        winner: battle.winner,
-        ...(battle.kind === "wild" && battle.winner === "attacker"
-          ? { legacyCapturePending: true as const } : {}),
+    roads: Array.from({ length: BOARD_SIZE }, () => null),
+    battle: legacy.battle ? {
+      ...legacy.battle,
+      wild: legacy.battle.wild ? withMoves(legacy.battle.wild) : null,
+      combat: {
+        ...legacy.battle.combat,
+        delayed: legacy.battle.combat.delayed.map((entry) => ({ ...entry, pokemon: withMoves(entry.pokemon) })),
       },
     } : null,
   };
+  legacy.roads.forEach((guardian, tile) => {
+    if (guardian) migrated.roads[mapping[tile]] = { ...guardian, pokemon: withMoves(guardian.pokemon) };
+  });
+  if (legacy.evolution) {
+    const ownerId = legacy.evolution.ownerId;
+    const ids = [legacy.evolution.pokemonId, ...(legacy.lapGrowth?.remainingPokemonIds ?? [])];
+    const owned = [
+      ...migrated.players[ownerId].party,
+      ...migrated.roads.flatMap((guardian) => guardian?.ownerId === ownerId ? [guardian.pokemon] : []),
+    ];
+    migrated.growth = {
+      resume: legacy.lapGrowth ? "movement" : "battle",
+      ...(legacy.lapGrowth?.legacyPartyOnly ? { legacyPartyOnly: true as const } : {}),
+      queue: ids.map((pokemonId) => {
+        const pokemon = owned.find((entry) => entry.id === pokemonId)!;
+        return { ownerId, pokemonId, pendingMoveIds: [],
+          consideredMoveIds: [...new Set(getLearnableMoves(pokemon.speciesId, pokemon.level).map((move) => move.id))],
+        };
+      }),
+    };
+  }
   return validateSave(migrated) ? migrated : null;
 }

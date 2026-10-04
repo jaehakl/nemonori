@@ -7,6 +7,7 @@ const source = "app/games/_components/pokemon-marble/";
 const { getAudioScene } = loadGameSource(`${source}music-scene.ts`);
 const { createGame, snapshotForPresentation, transitionWithEvents } = loadGameSource(`${source}engine.ts`);
 const { BOARD_TILES } = loadGameSource(`${source}board.ts`);
+const { getAvailableMoves } = loadGameSource(`${source}pokemon-data.ts`);
 
 test("setup, center, movement and all battle kinds select their music", () => {
   assert.equal(getAudioScene(null), "opening");
@@ -52,7 +53,7 @@ test("capture music waits for the real result snapshot, then returns after the q
     combat: loadGameSource("app/games/_components/pokemon-marble/combat-types.ts").createCombatState(),
     kind: "wild", defenderOwner: null, defenderPokemonId: null,
     attackerPokemonId: state.players[0].party[0].id,
-    wild: { id: "wild-test", speciesId: 10, level: 1, xp: 0, hp: 1 },
+    wild: { id: "wild-test", speciesId: 10, level: 1, xp: 0, hp: 1, moveIds: getAvailableMoves(10, 1).map(move => move.id) },
     turn: "attacker", outcome: null, lastAttack: null,
   };
   // Search deterministic seeds to cover both branches through the real engine.
@@ -67,7 +68,7 @@ test("capture music waits for the real result snapshot, then returns after the q
       assert.equal(getAudioScene(event.snapshot, event), "wild");
     }
     assert.equal(getAudioScene(capture.snapshot, capture), capture.capture.success ? "wild-victory" : "wild");
-    if (capture.capture.success && result.state.phase !== "evolution") {
+    if (capture.capture.success && !["evolution", "learn-move"].includes(result.state.phase)) {
       assert.equal(getAudioScene(snapshotForPresentation(result.state)), "adventure");
     }
   }

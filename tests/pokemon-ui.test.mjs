@@ -55,7 +55,8 @@ test("idle turn panel puts the only dice pair inside the player's roll button wi
   assert.match(html, /aria-label="민지 주사위 굴리기"/);
   assert.match(html, /role="img" aria-label="주사위 두 개"/);
   assert.equal((html.match(/data-die=/g) ?? []).length, 2);
-  assert.equal((html.match(/<button/g) ?? []).length, 1);
+  assert.equal((html.match(/<button/g) ?? []).length, 2);
+  assert.match(html, /다음 포켓몬센터로 이동 · 3턴 휴식/);
   assert.doesNotMatch(html, /TURN \d+|도로 \d+\/27|두 개의 주사위, 새로운 만남|연출 건너뛰기|턴 마치기/);
 });
 
@@ -67,13 +68,13 @@ test("the dice image and next-player label share one button that dispatches exac
     const state = createGame([1, 4], ["민지", "준"], 1);
     state.phase = phase;
     state.dice = phase === "roll" ? null : [2, 3];
+    state.dicePurpose = state.dice ? "movement" : null;
     const actions = [];
     const nodes = [...renderedElements(React.createElement(ActionPanel, {
       state, dispatch: (action) => actions.push(action), onRestart() {},
     }))];
     const buttons = nodes.filter((node) => node.type === "button");
-    assert.equal(buttons.length, 1);
-    const button = buttons[0];
+    const button = buttons.find((node) => node.props["aria-label"]?.endsWith("주사위 굴리기"));
     const playerId = phase === "roll" ? 0 : 1;
     assert.equal(button.props["aria-label"], `${state.players[playerId].name} 주사위 굴리기`);
     assert.equal(button.props.style["--player-color"], PLAYER_COLORS[playerId]);
@@ -86,20 +87,21 @@ test("the dice image and next-player label share one button that dispatches exac
   }
 });
 
-test("the roll button identifies the actual next player and color after skipped rest turns", () => {
+test("the roll button identifies the next resting player for their escape attempt", () => {
   const { default: ActionPanel } = loadGameSource("app/games/_components/pokemon-marble/ActionPanel.tsx");
   const { createGame } = loadGameSource("app/games/_components/pokemon-marble/engine.ts");
   const { PLAYER_COLORS } = loadGameSource("app/games/_components/pokemon-marble/board.ts");
   const state = createGame([1, 4, 7], ["민지", "준", "하늘"], 1);
   state.phase = "turn-end";
   state.dice = [1, 2];
+  state.dicePurpose = "movement";
   state.players[1].restTurnsRemaining = 1;
   state.players[1].party[0].hp = 0;
   const original = structuredClone(state);
   const nodes = [...renderedElements(React.createElement(ActionPanel, { state, dispatch() {}, onRestart() {} }))];
   const button = nodes.find((node) => node.type === "button");
-  assert.equal(button.props["aria-label"], "하늘 주사위 굴리기");
-  assert.equal(button.props.style["--player-color"], PLAYER_COLORS[2]);
+  assert.equal(button.props["aria-label"], "준 탈출 주사위 굴리기");
+  assert.equal(button.props.style["--player-color"], PLAYER_COLORS[1]);
   assert.deepEqual(state, original);
 });
 
@@ -112,7 +114,7 @@ test("legacy pending captures retain a playable continuation choice", () => {
     combat: loadGameSource("app/games/_components/pokemon-marble/combat-types.ts").createCombatState(),
     kind: "wild", defenderOwner: null, defenderPokemonId: "wild",
     attackerPokemonId: state.players[0].party[0].id,
-    wild: { id: "wild", speciesId: 7, level: 2, xp: 0, hp: 0 },
+    wild: { id: "wild", speciesId: 7, level: 2, xp: 0, hp: 0, moveIds: [33] },
     turn: "attacker", outcome: { kind: "knockout", winner: "attacker", legacyCapturePending: true }, lastAttack: null,
   };
   const html = renderToStaticMarkup(React.createElement(ActionPanel, { state, dispatch() {}, onRestart() {} }));
@@ -223,7 +225,7 @@ test("movement feedback stays present between step animations and counts remaini
   }
 });
 
-test("wild battle offers HP-based capture odds only on the player's turn with party space", () => {
+test("wild battle offers level-and-HP capture odds only on the player's turn with party space", () => {
   const { default: ActionPanel } = loadGameSource("app/games/_components/pokemon-marble/ActionPanel.tsx");
   const { createGame } = loadGameSource("app/games/_components/pokemon-marble/engine.ts");
   const state = createGame([1, 4], [], 12);
@@ -232,7 +234,7 @@ test("wild battle offers HP-based capture odds only on the player's turn with pa
     combat: loadGameSource("app/games/_components/pokemon-marble/combat-types.ts").createCombatState(),
     kind: "wild", defenderOwner: null, defenderPokemonId: "wild",
     attackerPokemonId: state.players[0].party[0].id,
-    wild: { id: "wild", speciesId: 7, level: 2, xp: 0, hp: 1 },
+    wild: { id: "wild", speciesId: 7, level: 2, xp: 0, hp: 1, moveIds: [33] },
     turn: "attacker", outcome: null, lastAttack: null,
   };
   while (state.players[0].party.length < 6) {
@@ -247,6 +249,9 @@ test("wild battle offers HP-based capture odds only on the player's turn with pa
   state.players[0].party.pop();
   assert.doesNotMatch(render(), /<button class="captureButton" disabled=""/);
   assert.match(render(), /포켓볼 던지기, 성공률 \d+%/);
+  const { getCaptureChance } = loadGameSource("app/games/_components/pokemon-marble/progression.ts");
+  state.players[0].party[0].level = 30;
+  assert.match(render(), new RegExp(`포켓볼 던지기, 성공률 ${Math.round(getCaptureChance(state.battle.wild, 30) * 100)}%`));
   state.battle.turn = "defender";
   assert.match(render(), /<button class="captureButton" disabled=""/);
 });
@@ -320,11 +325,13 @@ test("the in-game guide explains capture HP, defeat and battle priority", () => 
   assert.match(html, /파티가 6마리면 포획할 수 없습니다/);
   assert.match(html, /박스는 센터에서만 이용/);
   assert.match(html, /스타팅 포켓몬은 레벨 3/);
-  assert.match(html, /1~3 중 무작위/);
+  assert.match(html, /최저 레벨/);
+  assert.match(html, /최고 레벨/);
   assert.match(html, /트레이너 배틀은 타일 효과보다 먼저/);
   assert.match(html, /정확히 같은 칸에 멈춰야 배틀/);
   assert.match(html, /연속 더블도 허용/);
-  assert.match(html, /본인 차례 3번을 쉬고/);
+  assert.match(html, /본인 차례 3번/);
+  assert.match(html, /더블/);
   assert.match(html, /도로 27칸을 모두 소유하면 즉시 승리/);
   assert.match(html, /40칸 탑뷰/);
   assert.doesNotMatch(html, /즉시 탈락|마지막 생존자/);
@@ -348,7 +355,7 @@ test("battle stage HP changes on impact and retains the finishing attack snapsho
     "app/games/_components/pokemon-marble/pokemon-data.ts",
   );
   const game = createGame([1, 4], ["민지", "준"], 15);
-  const target = { id: "wild", speciesId: 7, level: 1, xp: 0, hp: 0 };
+  const target = { id: "wild", speciesId: 7, level: 1, xp: 0, hp: 0, moveIds: [33] };
   game.battle = {
     combat: loadGameSource("app/games/_components/pokemon-marble/combat-types.ts").createCombatState(),
     kind: "wild",
@@ -405,6 +412,7 @@ test("double roll controls wait for tile actions and explain the extra opportuni
   const { createGame } = loadGameSource("app/games/_components/pokemon-marble/engine.ts");
   const state = createGame([1, 4], ["민지", "준"], 12);
   state.dice = [3, 3];
+  state.dicePurpose = "movement";
   const render = () => renderToStaticMarkup(React.createElement(ActionPanel, { state, dispatch: () => {}, onRestart: () => {} }));
   for (const phase of ["center", "road", "turn-end"]) {
     state.phase = phase;

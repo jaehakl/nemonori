@@ -9,10 +9,11 @@ const { createGame, transition, getStats } = loadGameSource(`${root}engine.ts`);
 const { parseGameSave, validateSave } = loadGameSource(`${root}save.ts`);
 const { default: ActionPanel, PartySummary, ExchangeControls } = loadGameSource(`${root}ActionPanel.tsx`);
 const { default: GuardianPopup } = loadGameSource(`${root}GuardianPopup.tsx`);
+const { getAvailableMoves } = loadGameSource(`${root}pokemon-data.ts`);
 const { guardianPopupPosition } = loadGameSource(`${root}guardian-popup-position.ts`);
 
 function pokemon(state, hp) {
-  const pokemon = { id: `p${state.nextPokemonId++}`, speciesId: 7, level: 3, xp: 0, hp: 1 };
+  const pokemon = { id: `p${state.nextPokemonId++}`, speciesId: 7, level: 3, xp: 0, hp: 1, moveIds: getAvailableMoves(7, 3).map(move => move.id) };
   pokemon.hp = hp ?? getStats(pokemon).hp;
   return pokemon;
 }
@@ -21,6 +22,7 @@ function landed(tile) {
   state.players[0].position = tile - 1;
   state.phase = "moving";
   state.dice = [2, 2];
+  state.dicePurpose = "movement";
   state.movement = { remaining: 1, encounters: [] };
   while (state.players[0].party.length < 6) state.players[0].party.push(pokemon(state));
   return transition(state, { type: "STEP" });
@@ -59,9 +61,9 @@ test("box exchange supports repeated 6–7–6 transfers and preserves unfinishe
 });
 
 test("road exchange repeatedly retrieves and deploys without ending the turn or healing", () => {
-  let state = landed(2);
-  state.roads[2] = { ownerId: 0, pokemon: pokemon(state, 2) };
-  const original = state.roads[2].pokemon.id;
+  let state = landed(3);
+  state.roads[3] = { ownerId: 0, pokemon: pokemon(state, 2) };
+  const original = state.roads[3].pokemon.id;
   const replacement = state.players[0].party[0].id;
   assert.equal(transition(state, { type: "RETRIEVE" }), state);
   state = transition(state, { type: "START_EXCHANGE" });
@@ -78,7 +80,7 @@ test("road exchange repeatedly retrieves and deploys without ending the turn or 
     state = resume(transition(state, { type: "RETRIEVE" }));
   }
   state = resume(transition(state, { type: "DEPLOY", pokemonId: original }));
-  assert.equal(state.roads[2].pokemon.hp, 2);
+  assert.equal(state.roads[3].pokemon.hp, 2);
   assert.equal(state.players[0].party.length, 6);
 });
 
@@ -98,11 +100,11 @@ test("exchange validation rejects overflow outside exchange and forged destinati
     change(invalid);
     assert.equal(validateSave(invalid), false);
   }
-  const road = transition(landed(2), { type: "START_EXCHANGE" });
-  road.roads[2] = { ownerId: 1, pokemon: pokemon(road) };
+  const road = transition(landed(3), { type: "START_EXCHANGE" });
+  road.roads[3] = { ownerId: 1, pokemon: pokemon(road) };
   assert.equal(transition(road, { type: "RETRIEVE" }), road);
   assert.equal(validateSave(road), false);
-  const far = transition(landed(2), { type: "START_EXCHANGE" });
+  const far = transition(landed(3), { type: "START_EXCHANGE" });
   far.roads[4] = { ownerId: 0, pokemon: pokemon(far) };
   assert.equal(transition(far, { type: "RETRIEVE" }), far);
   for (const type of ["CENTER_SWAP", "SWAP_GUARDIAN"]) {
@@ -112,17 +114,17 @@ test("exchange validation rejects overflow outside exchange and forged destinati
 
 test("old road turn-end saves can restart exchange but resting players and enemy roads cannot", () => {
   for (const occupied of [false, true]) {
-    const legacy = landed(2);
+    const legacy = landed(3);
     legacy.phase = "turn-end";
-    if (occupied) legacy.roads[2] = { ownerId: 0, pokemon: pokemon(legacy) };
+    if (occupied) legacy.roads[3] = { ownerId: 0, pokemon: pokemon(legacy) };
     const opened = transition(resume(legacy), { type: "START_EXCHANGE" });
     assert.equal(opened.phase, "road");
     assert.equal(opened.exchangeActive, true);
     resume(opened);
   }
-  const enemy = landed(2);
+  const enemy = landed(3);
   enemy.phase = "turn-end";
-  enemy.roads[2] = { ownerId: 1, pokemon: pokemon(enemy) };
+  enemy.roads[3] = { ownerId: 1, pokemon: pokemon(enemy) };
   assert.equal(transition(enemy, { type: "START_EXCHANGE" }), enemy);
   const resting = landed(10);
   resting.phase = "turn-end";
@@ -176,7 +178,7 @@ test("the footer opens and ends exchange with one action and restores the roll b
 });
 
 test("guardian popup displays a read-only card and stays inside small and large viewports", () => {
-  const state = landed(2);
+  const state = landed(3);
   const html = renderToStaticMarkup(React.createElement(GuardianPopup, {
     tile: 2, pokemon: state.players[0].party[0], ownerName: "민지", rootRef: { current: null }, onClose() {},
   }));

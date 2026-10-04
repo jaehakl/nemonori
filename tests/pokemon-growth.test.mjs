@@ -10,6 +10,7 @@ const { getExperienceGrowth, getVictoryExperience } = loadGameSource(`${path}pro
 const { getOverlayLayout, SEAT_ROTATION } = loadGameSource(`${path}tabletop-layout.ts`);
 const { createGame, transitionWithEvents, getStats } = loadGameSource(`${path}engine.ts`);
 const { BOARD_TILES } = loadGameSource(`${path}board.ts`);
+const { getAvailableMoves } = loadGameSource(`${path}pokemon-data.ts`);
 const { default: GrowthPresentation, hasGrowthPresentation } = loadGameSource(`${path}GrowthPresentation.tsx`);
 
 function reward(level = 15, xp = 800, amount = 2400) {
@@ -47,6 +48,7 @@ test("a full lap groups all 33 rewards in party then road order without changing
   const state = createGame([1], ["민지"], 9182);
   const make = (index) => {
     const value = { id: `p${state.nextPokemonId++}`, speciesId: 128, level: index === 5 ? 100 : index + 2, xp: index === 5 ? 0 : 950, hp: 0 };
+    value.moveIds = getAvailableMoves(value.speciesId, value.level).map(move => move.id);
     value.hp = index === 0 ? 0 : getStats(value).hp;
     return value;
   };
@@ -58,6 +60,7 @@ test("a full lap groups all 33 rewards in party then road order without changing
   state.players[0].position = 39;
   state.phase = "moving";
   state.dice = [6, 6];
+  state.dicePurpose = "movement";
   state.movement = { remaining: 2, encounters: [] };
   const result = transitionWithEvents(state, { type: "STEP" });
   assert.deepEqual(result.events.map((entry) => entry.kind), ["move", "lap"]);
@@ -76,7 +79,7 @@ test("a full lap groups all 33 rewards in party then road order without changing
   assert.deepEqual(result.state.players[0].box, state.players[0].box);
   assert.equal(result.state.rng, state.rng);
   assert.equal(result.state.movement.remaining, 1);
-  assert.equal("growth" in result.state, false);
+  assert.equal(result.state.growth.resume, "movement");
   const html = renderToStaticMarkup(React.createElement(GrowthPresentation, {
     event, progress: 0.85, reducedMotion: false, width: 1024, height: 672,
   }));

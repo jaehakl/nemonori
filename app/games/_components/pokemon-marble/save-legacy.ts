@@ -1,21 +1,11 @@
 import { getStats } from "./battle";
 import { BOARD_SIZE, BOARD_TILES } from "./save-legacy-board";
 import { speciesById, movesById, isStarter } from "./pokemon-data";
-import type { Battle, GameState as CurrentGameState, Player, Pokemon as CurrentPokemon } from "./save-legacy-types";
-
-// Frozen v2 contract: validate the original data before migrating any fields.
-type Pokemon = Omit<CurrentPokemon, "xp">;
-type LegacyPlayer = Omit<Player, "party" | "box"> & { party: Pokemon[]; box: Pokemon[] };
-export type LegacyGameState = Omit<CurrentGameState, "version" | "players" | "roads" | "battle" | "lastBattleAction"> & {
-  version: 2;
-  players: LegacyPlayer[];
-  roads: ({ ownerId: number; pokemon: Pokemon } | null)[];
-  battle: (Omit<Battle, "outcome" | "wild" | "combat"> & {
-    winner: "attacker" | "defender" | null;
-    wild: Pokemon | null;
-  }) | null;
-};
-type GameState = LegacyGameState;
+import type { GameState, Pokemon } from "./save-legacy-types";
+import { XP_PER_LEVEL } from "./progression";
+import { validateV2Save } from "./save-v2";
+import { createCombatState } from "./combat-types";
+import { validateCombat, validateBattleAction } from "./combat-save";
 
 const phases = new Set([
   "roll",
@@ -72,7 +62,7 @@ function matchesEvolution(
 }
 
 /** Validate references and phase invariants before resuming any stored state. */
-export function validateV2Save(value: unknown): value is GameState {
+export function validateLegacySave(value: unknown): value is GameState {
   try {
     return validate(value);
   } catch {
@@ -80,10 +70,10 @@ export function validateV2Save(value: unknown): value is GameState {
   }
 }
 
-function validate(value: unknown): value is GameState {
+function validate(value: unknown, legacy = false): value is GameState {
   if (
     !record(value) ||
-    value.version !== 2 ||
+    value.version !== (legacy ? 3 : 4) ||
     !integer(value.revision) ||
     !integer(value.rng, 1, 0xffffffff) ||
     !integer(value.nextPokemonId, 1) ||
@@ -91,9 +81,10 @@ function validate(value: unknown): value is GameState {
     !phases.has(value.phase as string)
   )
     return false;
+  if (!legacy && value.lastBattleAction !== null && !validateBattleAction(value.lastBattleAction)) return false;
   if (
     !Array.isArray(value.players) ||
-    value.players.length < 2 ||
+    value.players.length < 1 ||
     value.players.length > 4 ||
     !integer(value.activePlayer, 0, value.players.length - 1) ||
     !Array.isArray(value.roads) ||
@@ -131,6 +122,7 @@ function validate(value: unknown): value is GameState {
       !integer(candidate.speciesId, 1, 1025) ||
       !speciesById[candidate.speciesId] ||
       !integer(candidate.level, 1, 100) ||
+      !integer(candidate.xp, 0, candidate.level === 100 ? 0 : XP_PER_LEVEL - 1) ||
       !integer(candidate.hp, 0)
     )
       return false;
@@ -290,14 +282,14 @@ function validate(value: unknown): value is GameState {
   )
     return false;
 
-  // Older v2 saves have no lapGrowth field. A live queue exists only while a
-  // party member's branching evolution interrupts the completed lap.
+  // All rewards were committed before this queue; only evolution remains.
   if (state.lapGrowth !== undefined && state.lapGrowth !== null) {
     const growth = state.lapGrowth;
     const evolution = state.evolution;
     if (
       !record(growth) ||
       !Array.isArray(growth.remainingPokemonIds) ||
+      (growth.legacyPartyOnly !== undefined && growth.legacyPartyOnly !== true) ||
       state.phase !== "evolution" ||
       state.battle !== null ||
       active.position !== 0 ||
@@ -306,15 +298,20 @@ function validate(value: unknown): value is GameState {
       !record(evolution)
     )
       return false;
-    const currentIndex = active.party.findIndex(
+    const recipients = growth.legacyPartyOnly
+      ? active.party
+      : [...active.party, ...state.roads.flatMap((guardian) =>
+          guardian?.ownerId === active.id ? [guardian.pokemon] : [],
+        )];
+    const currentIndex = recipients.findIndex(
       (pokemon) => pokemon.id === evolution.pokemonId,
     );
     if (
       currentIndex < 0 ||
-      !matchesEvolution(evolution, active.party[currentIndex], active.id)
+      !matchesEvolution(evolution, recipients[currentIndex], active.id)
     )
       return false;
-    const remaining = active.party.slice(currentIndex + 1);
+    const remaining = recipients.slice(currentIndex + 1);
     return (
       remaining.length === growth.remainingPokemonIds.length &&
       remaining.every(
@@ -334,11 +331,21 @@ function validate(value: unknown): value is GameState {
     !record(battle) ||
     !["trainer", "wild", "road"].includes(battle.kind) ||
     !["defender", "attacker"].includes(battle.turn) ||
-    (battle.winner !== null &&
-      !["attacker", "defender"].includes(battle.winner)) ||
     !state.movement
   )
     return false;
+  const outcome = battle.outcome;
+  if (!legacy && !validateCombat(battle.combat, true)) return false;
+  if (outcome !== null) {
+    if (!record(outcome) || !["knockout", "capture"].includes(outcome.kind)) return false;
+    if (outcome.kind === "knockout") {
+      if (!["attacker", "defender"].includes(outcome.winner)) return false;
+      if (outcome.legacyCapturePending !== undefined &&
+        (outcome.legacyCapturePending !== true || battle.kind !== "wild" || outcome.winner !== "attacker"))
+        return false;
+    } else if (battle.kind !== "wild" || "winner" in outcome || "legacyCapturePending" in outcome) return false;
+  }
+  const knockoutWinner = outcome?.kind === "knockout" ? outcome.winner : null;
   if (battle.kind === "wild") {
     if (
       battle.defenderOwner !== null ||
@@ -394,7 +401,7 @@ function validate(value: unknown): value is GameState {
   )
     return false;
   if (battle.kind === "road" && defender) {
-    if (battle.winner === "attacker") {
+    if (knockoutWinner === "attacker") {
       if (defender.location !== "box" || state.roads[active.position] !== null)
         return false;
     } else if (
@@ -424,21 +431,28 @@ function validate(value: unknown): value is GameState {
   )
     return false;
   if (["choose-defender", "choose-attacker", "attack"].includes(state.phase)) {
-    if (battle.winner !== null || state.evolution !== null) return false;
+    if (outcome !== null || state.evolution !== null) return false;
     if (
       state.phase === "attack" &&
       (attacker!.pokemon.hp <= 0 || defender!.pokemon.hp <= 0)
     )
       return false;
+  } else if (outcome?.kind === "capture") {
+    if (
+      state.phase !== "evolution" || battle.turn !== "attacker" ||
+      attacker!.pokemon.hp <= 0 || defender!.pokemon.hp <= 0 ||
+      active.party.length >= 6 || pendingRecovery.length > 0 ||
+      !matchesEvolution(state.evolution, attacker!.pokemon, active.id)
+    ) return false;
   } else {
     if (
-      battle.winner === null ||
-      battle.turn !== battle.winner ||
+      knockoutWinner === null ||
+      battle.turn !== knockoutWinner ||
       battle.lastAttack === null
     )
       return false;
-    const winner = battle.winner === "attacker" ? attacker! : defender!;
-    const loser = battle.winner === "attacker" ? defender! : attacker!;
+    const winner = knockoutWinner === "attacker" ? attacker! : defender!;
+    const loser = knockoutWinner === "attacker" ? defender! : attacker!;
     if (winner.pokemon.hp <= 0 || loser.pokemon.hp !== 0) return false;
     if (
       pendingRecovery.length > 1 ||
@@ -450,7 +464,8 @@ function validate(value: unknown): value is GameState {
     if (
       state.phase === "capture" &&
       (battle.kind !== "wild" ||
-        battle.winner !== "attacker" ||
+        knockoutWinner !== "attacker" ||
+        outcome?.kind !== "knockout" || !outcome.legacyCapturePending ||
         state.evolution !== null)
     )
       return false;
@@ -468,12 +483,64 @@ function validate(value: unknown): value is GameState {
       !record(last) ||
       !["attacker", "defender"].includes(last.side) ||
       !integer(last.moveId) ||
-      (!movesById[last.moveId] && last.moveId !== 0) ||
-      !integer(last.damage, 1, 1000000) ||
-      ![0.25, 0.5, 1, 2, 4].includes(last.effectiveness)
+      (!movesById[last.moveId] && !(last.moveId === 0 && (legacy || last.legacy === true))) ||
+      !integer(last.damage, legacy ? 1 : 0, 1000000) ||
+      ![0, 0.125, 0.25, 0.5, 1, 2, 4, 8].includes(last.effectiveness) ||
+      (!legacy && last.result !== undefined && !validateBattleAction(last.result)) ||
+      (!legacy && last.result === undefined && last.legacy !== true)
     )
       return false;
   }
   return true;
 }
 
+export function parseLegacyGameSave(value: unknown): GameState | null {
+  if (validateLegacySave(value)) return structuredClone(value);
+  try {
+    if (validate(value, true)) {
+      const migrated = structuredClone(value);
+      migrated.version = 4;
+      migrated.lastBattleAction = null;
+      if (migrated.battle) {
+        migrated.battle.combat = createCombatState();
+        if (migrated.battle.lastAttack) migrated.battle.lastAttack.legacy = true;
+      }
+      return validateLegacySave(migrated) ? migrated : null;
+    }
+  } catch { return null; }
+  if (!validateV2Save(value)) return null;
+  const legacy = structuredClone(value);
+  const withExperience = (pokemon: Omit<Pokemon, "xp">): Pokemon => ({ ...pokemon, xp: 0 });
+  const battle = legacy.battle;
+  const migrated: GameState = {
+    ...legacy,
+    version: 4,
+    lastBattleAction: null,
+    players: legacy.players.map((player) => ({
+      ...player,
+      party: player.party.map(withExperience),
+      box: player.box.map(withExperience),
+    })),
+    roads: legacy.roads.map((guardian) => guardian
+      ? { ...guardian, pokemon: withExperience(guardian.pokemon) } : null),
+    lapGrowth: legacy.lapGrowth
+      ? { ...legacy.lapGrowth, legacyPartyOnly: true } : null,
+    battle: battle ? {
+      kind: battle.kind,
+      defenderOwner: battle.defenderOwner,
+      defenderPokemonId: battle.defenderPokemonId,
+      attackerPokemonId: battle.attackerPokemonId,
+      wild: battle.wild ? withExperience(battle.wild) : null,
+      turn: battle.turn,
+      lastAttack: battle.lastAttack ? { ...battle.lastAttack, legacy: true } : null,
+      combat: createCombatState(),
+      outcome: battle.winner === null ? null : {
+        kind: "knockout",
+        winner: battle.winner,
+        ...(battle.kind === "wild" && battle.winner === "attacker"
+          ? { legacyCapturePending: true as const } : {}),
+      },
+    } : null,
+  };
+  return validateLegacySave(migrated) ? migrated : null;
+}

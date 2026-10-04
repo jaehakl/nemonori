@@ -2,7 +2,7 @@ import {
   speciesById,
   movesById,
   typeEffectiveness,
-  getAvailableMoves,
+  getPokemonMoves,
   struggleMove,
 } from "./pokemon-data";
 import type { Move, BattleStat } from "./data-types";
@@ -117,10 +117,7 @@ export function getMoveUnavailableReason(
         return "직전 상대 공격으로 집중이 끊겼습니다.";
       break;
     case "last-resort": {
-      const others = getAvailableMoves(
-        attacker.speciesId,
-        attacker.level,
-      ).filter((m) => m.id !== move.id);
+      const others = getPokemonMoves(attacker).filter((m) => m.id !== move.id);
       if (
         !others.length ||
         others.some((m) => !source.usedMoves.includes(m.id))
@@ -141,7 +138,7 @@ export function getBattleMoves(
   const source = context.combat?.[context.side ?? "attacker"],
     forced = source ? getForcedMove(source) : null;
   if (forced !== null) return [movesById[forced]];
-  const learned = getAvailableMoves(attacker.speciesId, attacker.level);
+  const learned = getPokemonMoves(attacker);
   return learned.some(
     (move) => !getMoveUnavailableReason(attacker, defender, move, context),
   )

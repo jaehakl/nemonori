@@ -9,6 +9,9 @@ import {
   movesById,
   isStarter,
   speciesList,
+  getAvailableMoves,
+  getLearnableMoves,
+  MOVE_SLOT_LIMIT,
 } from "./pokemon-data";
 import type {
   Battle,
@@ -17,6 +20,7 @@ import type {
   GameState,
   Player,
   Pokemon,
+  PendingPokemonGrowth,
   SeatSide,
 } from "./types";
 import type {
@@ -35,7 +39,7 @@ type EventDetails = Omit<
 type EventSink = (state: GameState, event: EventDetails) => void;
 
 function pokemonView(pokemon: Pokemon): PokemonView {
-  return { ...pokemon, maxHp: getStats(pokemon).hp };
+  return { ...pokemon, moveIds: [...pokemon.moveIds], maxHp: getStats(pokemon).hp };
 }
 
 function addLog(state: GameState, message: string) {
@@ -62,6 +66,7 @@ function makePokemon(
     level,
     xp: 0,
     hp: 0,
+    moveIds: getAvailableMoves(speciesId, level).map((move) => move.id),
   };
   pokemon.hp = getStats(pokemon).hp;
   return pokemon;
@@ -86,7 +91,7 @@ export function createGame(
   )
     throw new Error("각 플레이어의 자리 방향을 골라 주세요.");
   const state: GameState = {
-    version: 4,
+    version: 5,
     revision: 0,
     rng: seed >>> 0 || 0x9e3779b9,
     nextPokemonId: 1,
@@ -96,9 +101,11 @@ export function createGame(
     roads: Array(BOARD_SIZE).fill(null),
     phase: "roll",
     dice: null,
+    dicePurpose: null,
     movement: null,
     battle: null,
     evolution: null,
+    growth: null,
     lapGrowth: null,
     winner: null,
     log: ["모험을 시작합니다. 주사위를 굴려 주세요!"],
@@ -182,6 +189,7 @@ export function snapshotForPresentation(
     ),
     activePlayerId: state.winner ?? state.activePlayer,
     dice: state.dice ? [...state.dice] : null,
+    dicePurpose: state.dicePurpose,
     battle: battle
       ? {
           kind: battle.kind,
@@ -202,6 +210,7 @@ export function snapshotForPresentation(
 }
 
 export function getActingPlayer(state: GameState): number | null {
+  if (state.phase === "learn-move") return state.growth!.queue[0].ownerId;
   if (state.phase === "evolution") return state.evolution!.ownerId;
   if (state.phase === "choose-defender") return state.battle!.defenderOwner;
   if (state.phase === "attack" && state.battle!.turn === "defender")
@@ -285,7 +294,10 @@ function arrive(state: GameState, events?: EventSink) {
     const roll = random(state, 100);
     const pool = wildPools[roll < 90 ? 0 : roll < 99 ? 1 : 2];
     const species = pool[random(state, pool.length)];
-    const level = random(state, 3) + 1;
+    const levels = player.party.filter((pokemon) => pokemon.hp > 0).map((pokemon) => pokemon.level);
+    const minimum = Math.min(...levels);
+    const maximum = Math.max(...levels);
+    const level = minimum + random(state, maximum - minimum + 1);
     startBattle(
       state,
       "wild",
@@ -325,26 +337,36 @@ function continueMovement(state: GameState, events?: EventSink) {
   else arrive(state, events);
 }
 
-/** Ties go to the next center in the direction of travel. */
-export function getNearestCenter(position: number): number {
-  let nearest = 0;
-  let shortestDistance = BOARD_SIZE;
-  let shortestForward = BOARD_SIZE;
-  for (const [tile, kind] of BOARD_TILES.entries()) {
-    if (kind !== "center") continue;
-    const forward = (tile - position + BOARD_SIZE) % BOARD_SIZE;
-    const backward = (position - tile + BOARD_SIZE) % BOARD_SIZE;
-    const distance = Math.min(forward, backward);
-    if (
-      distance < shortestDistance ||
-      (distance === shortestDistance && forward < shortestForward)
-    ) {
-      nearest = tile;
-      shortestDistance = distance;
-      shortestForward = forward;
-    }
+/** A transfer always goes forward, including when already at a center. */
+export function getNextCenter(position: number): number {
+  for (let distance = 1; distance <= BOARD_SIZE; distance++) {
+    const tile = (position + distance) % BOARD_SIZE;
+    if (BOARD_TILES[tile] === "center") return tile;
   }
-  return nearest;
+  return 0;
+}
+
+export function canMoveToCenter(state: GameState): boolean {
+  const player = state.players[state.activePlayer];
+  return ["roll", "road", "center", "turn-end"].includes(state.phase) &&
+    !state.exchangeActive && !state.battle && !state.growth && !state.evolution &&
+    player.restTurnsRemaining === 0 && player.party.length <= 6;
+}
+
+function moveToCenter(state: GameState, player: Player, voluntary: boolean, events?: EventSink) {
+  const fromTile = player.position;
+  player.position = getNextCenter(fromTile);
+  player.restTurnsRemaining = 3;
+  if (player.id === state.activePlayer) {
+    state.dice = null;
+    state.dicePurpose = null;
+    state.movement = null;
+  }
+  const message = voluntary
+    ? `${player.name}, 앞의 포켓몬센터로 이동합니다. 다음 자기 차례 3번 동안 휴식하며 더블로 탈출할 수 있습니다.`
+    : `${player.name}의 파티가 모두 행동불능입니다. 앞의 포켓몬센터에서 3턴 쉬며 더블로 탈출할 수 있습니다.`;
+  addLog(state, message);
+  events?.(state, { kind: "rescue", playerId: player.id, tile: player.position, fromTile, message });
 }
 
 function rescueDefeatedPlayers(state: GameState, events?: EventSink) {
@@ -353,20 +375,7 @@ function rescueDefeatedPlayers(state: GameState, events?: EventSink) {
       player.restTurnsRemaining === 0 &&
       !player.party.some((pokemon) => pokemon.hp > 0)
     ) {
-      const fromTile = player.position;
-      player.position = getNearestCenter(fromTile);
-      player.restTurnsRemaining = 3;
-      addLog(
-        state,
-        `${player.name}의 파티가 모두 행동불능입니다. 가까운 포켓몬센터에서 다음 자기 차례 3번을 쉽니다.`,
-      );
-      events?.(state, {
-        kind: "rescue",
-        playerId: player.id,
-        tile: player.position,
-        fromTile,
-        message: `${player.name}, 포켓몬센터로! 3턴 뒤 모두 회복합니다.`,
-      });
+      moveToCenter(state, player, false, events);
     }
   }
 }
@@ -460,25 +469,65 @@ function findOwnedPokemon(
   );
 }
 
-function continueEvolution(
-  state: GameState,
-  pokemon: Pokemon,
-  ownerId: number,
-  events?: EventSink,
-) {
+function createGrowthRecipient(pokemon: Pokemon, ownerId: number, previousLevel: number): PendingPokemonGrowth {
+  const earlier = new Set(getLearnableMoves(pokemon.speciesId, previousLevel).map((move) => move.id));
+  const eligible = getLearnableMoves(pokemon.speciesId, pokemon.level).map((move) => move.id);
+  return {
+    ownerId,
+    pokemonId: pokemon.id,
+    pendingMoveIds: eligible.filter((id) => !earlier.has(id) && !pokemon.moveIds.includes(id)),
+    consideredMoveIds: [...new Set([...eligible, ...pokemon.moveIds])],
+  };
+}
+
+function queueEvolutionMoves(pokemon: Pokemon, growth: PendingPokemonGrowth) {
+  for (const move of getLearnableMoves(pokemon.speciesId, pokemon.level)) {
+    if (growth.consideredMoveIds.includes(move.id)) continue;
+    growth.consideredMoveIds.push(move.id);
+    if (!pokemon.moveIds.includes(move.id)) growth.pendingMoveIds.push(move.id);
+  }
+}
+
+/** One queue owns all post-reward choices, so resuming never grants XP twice. */
+function continueGrowth(state: GameState, events?: EventSink) {
+  const growth = state.growth!;
   state.evolution = null;
-  while (true) {
+  while (growth.queue.length > 0) {
+    const current = growth.queue[0];
+    const pokemon = findOwnedPokemon(state, current.ownerId, current.pokemonId)!;
+    while (current.pendingMoveIds.length > 0) {
+      const moveId = current.pendingMoveIds[0];
+      if (pokemon.moveIds.includes(moveId)) {
+        current.pendingMoveIds.shift();
+        continue;
+      }
+      if (pokemon.moveIds.length === MOVE_SLOT_LIMIT) {
+        state.phase = "learn-move";
+        return;
+      }
+      pokemon.moveIds.push(moveId);
+      current.pendingMoveIds.shift();
+      addLog(state, `${byId[pokemon.speciesId].name}, ${movesById[moveId].name}을(를) 배웠습니다!`);
+    }
     const options = byId[pokemon.speciesId].evolutions
-      .filter((evolution) => pokemon.level >= evolution.level)
-      .map((evolution) => evolution.speciesId);
-    if (options.length === 0) return;
+      .filter((entry) => pokemon.level >= entry.level)
+      .map((entry) => entry.speciesId);
     if (options.length > 1) {
-      state.evolution = { ownerId, pokemonId: pokemon.id, options };
+      state.evolution = { ownerId: current.ownerId, pokemonId: pokemon.id, options };
       state.phase = "evolution";
       return;
     }
-    evolve(state, pokemon, options[0], ownerId, events);
+    if (options.length === 1) {
+      evolve(state, pokemon, options[0], current.ownerId, events);
+      queueEvolutionMoves(pokemon, current);
+      continue;
+    }
+    growth.queue.shift();
   }
+  state.growth = null;
+  state.lapGrowth = null;
+  if (growth.resume === "movement") continueMovement(state, events);
+  else finishBattle(state, events);
 }
 
 function grantExperience(
@@ -520,22 +569,11 @@ function awardVictory(
   opponentLevel: number,
   events?: EventSink,
 ) {
+  const previousLevel = pokemon.level;
   grantExperience(state, pokemon, ownerId, opponentLevel, events);
-  if (ownerId !== null) continueEvolution(state, pokemon, ownerId, events);
-}
-
-function continueLapGrowth(state: GameState, events?: EventSink) {
-  const player = state.players[state.activePlayer];
-  const remaining = state.lapGrowth!.remainingPokemonIds;
-  state.evolution = null;
-  while (remaining.length > 0) {
-    const pokemonId = remaining.shift()!;
-    const pokemon = findOwnedPokemon(state, player.id, pokemonId)!;
-    continueEvolution(state, pokemon, player.id, events);
-    if (state.evolution) return;
+  if (ownerId !== null) {
+    state.growth = { resume: "battle", queue: [createGrowthRecipient(pokemon, ownerId, previousLevel)] };
   }
-  state.lapGrowth = null;
-  continueMovement(state, events);
 }
 
 function awardLapGrowth(state: GameState, events?: EventSink) {
@@ -548,15 +586,16 @@ function awardLapGrowth(state: GameState, events?: EventSink) {
       ? [{ pokemon: guardian.pokemon, location: { kind: "road" as const, tile } }]
       : []),
   ];
-  state.lapGrowth = { remainingPokemonIds: participants.map(({ pokemon }) => pokemon.id) };
+  state.growth = { resume: "movement", queue: [] };
   const growth: LapGrowthView[] = participants.map(({ pokemon, location }) => {
     const before = pokemonView(pokemon);
     // Apply every reward once; a single event presents them together before evolution.
     const amount = grantExperience(state, pokemon, player.id, pokemon.level);
+    state.growth!.queue.push(createGrowthRecipient(pokemon, player.id, before.level));
     return { before, after: pokemonView(pokemon), amount, location };
   });
   events?.(state, { kind: "lap", message, growth });
-  continueLapGrowth(state, events);
+  continueGrowth(state, events);
 }
 
 export function getBattleContext(state: GameState, side = state.battle!.turn) {
@@ -737,12 +776,14 @@ function finishBattleAction(
       events,
     );
   } else addLog(state, "양쪽 포켓몬이 모두 쓰러졌습니다. 무승부입니다.");
-  if (!state.evolution) finishBattle(state, events);
+  if (state.growth) continueGrowth(state, events);
+  else finishBattle(state, events);
   return true;
 }
 
 export function hasExtraRoll(state: GameState): boolean {
   return state.phase !== "finished" && state.players[state.activePlayer].restTurnsRemaining === 0 &&
+    state.dicePurpose === "movement" &&
     state.dice !== null && state.dice[0] === state.dice[1];
 }
 
@@ -750,13 +791,14 @@ function canEndTurn(state: GameState): boolean {
   return (
     !state.exchangeActive &&
     state.players[state.activePlayer].party.length <= 6 &&
-    ["center", "road", "turn-end"].includes(state.phase)
+    ["center", "road", "turn-end", "rest-end"].includes(state.phase)
   );
 }
 
 function nextTurn(state: GameState, events?: EventSink) {
   const extraRoll = hasExtraRoll(state);
   state.dice = null;
+  state.dicePurpose = null;
   state.movement = null;
   state.battle = null;
   state.phase = "roll";
@@ -766,23 +808,9 @@ function nextTurn(state: GameState, events?: EventSink) {
     events?.(state, { kind: "turn", message });
     return;
   }
-  while (true) {
-    state.activePlayer = (state.activePlayer + 1) % state.players.length;
-    state.turn += 1;
-    const player = state.players[state.activePlayer];
-    if (player.restTurnsRemaining === 0) break;
-    player.restTurnsRemaining -= 1;
-    const message = `${player.name}의 휴식 차례입니다. 남은 휴식 ${player.restTurnsRemaining}턴`;
-    addLog(state, message);
-    events?.(state, { kind: "rest", message });
-    if (player.restTurnsRemaining === 0) {
-      healPlayer(player);
-      const healed = `${player.name}의 휴식이 끝나 파티와 박스가 모두 회복했습니다.`;
-      addLog(state, healed);
-      events?.(state, { kind: "heal", message: healed });
-    }
-    // The third resting turn is still skipped; rolling resumes on the next turn.
-  }
+  state.activePlayer = (state.activePlayer + 1) % state.players.length;
+  state.turn += 1;
+  if (state.players[state.activePlayer].restTurnsRemaining > 0) state.phase = "rest-roll";
   addLog(state, `${state.players[state.activePlayer].name}의 차례입니다.`);
   events?.(state, {
     kind: "turn",
@@ -792,7 +820,7 @@ function nextTurn(state: GameState, events?: EventSink) {
 
 /** Preview the same rest and extra-roll rules without changing the game or RNG. */
 export function getNextRollPlayer(state: GameState): Player | null {
-  if (state.phase === "roll") return state.players[state.activePlayer];
+  if (state.phase === "roll" || state.phase === "rest-roll") return state.players[state.activePlayer];
   if (!canEndTurn(state)) return null;
   const preview = structuredClone(state);
   nextTurn(preview);
@@ -800,7 +828,31 @@ export function getNextRollPlayer(state: GameState): Player | null {
 }
 
 function rollDice(state: GameState, events?: EventSink) {
+  const resting = state.phase === "rest-roll";
+  const player = state.players[state.activePlayer];
   state.dice = [random(state, 6) + 1, random(state, 6) + 1];
+  state.dicePurpose = resting ? "rest" : "movement";
+  if (resting) {
+    const escaped = state.dice[0] === state.dice[1];
+    player.restTurnsRemaining = escaped ? 0 : player.restTurnsRemaining - 1;
+    if (player.restTurnsRemaining === 0) healPlayer(player);
+    state.movement = escaped ? { remaining: state.dice[0] + state.dice[1], encounters: [] } : null;
+    state.phase = escaped ? "moving" : "rest-end";
+    const message = escaped
+      ? `${player.name}: ${state.dice.join(" + ")}, 더블! 모두 회복하고 ${state.movement!.remaining}칸 이동합니다.`
+      : `${player.name}: ${state.dice.join(" + ")}, 남은 휴식 ${player.restTurnsRemaining}턴`;
+    addLog(state, message);
+    events?.(state, { kind: "roll", message });
+    if (!escaped) events?.(state, { kind: "rest", message });
+    if (player.restTurnsRemaining === 0) {
+      const healed = escaped
+        ? `${player.name}, 더블로 탈출! 파티와 박스를 모두 회복했습니다.`
+        : `${player.name}의 휴식이 끝나 모두 회복했습니다. 다음 자기 차례부터 이동합니다.`;
+      addLog(state, healed);
+      events?.(state, { kind: "heal", message: healed });
+    }
+    return;
+  }
   state.movement = {
     remaining: state.dice[0] + state.dice[1],
     encounters: [],
@@ -824,6 +876,7 @@ function finishIfAllRoadsOwned(state: GameState, events?: EventSink) {
   state.exchangeActive = false;
   state.battle = null;
   state.evolution = null;
+  state.growth = null;
   state.movement = null;
   const message = `${player.name}, 모든 도로를 차지해 승리했습니다!`;
   addLog(state, message);
@@ -841,8 +894,14 @@ function applyTransition(
   const guardian = state.roads[player.position];
   switch (action.type) {
     case "ROLL": {
-      if (state.phase !== "roll") return previous;
+      if (state.phase !== "roll" && state.phase !== "rest-roll") return previous;
       rollDice(state, events);
+      break;
+    }
+    case "MOVE_TO_CENTER": {
+      if (!canMoveToCenter(state)) return previous;
+      moveToCenter(state, player, true, events);
+      state.phase = "turn-end";
       break;
     }
     case "STEP": {
@@ -948,7 +1007,7 @@ function applyTransition(
       const attacker = getBattlePokemon(state, "attacker");
       if (!attacker || attacker.hp <= 0) return previous;
       const wild = battle.wild;
-      const success = random(state, 1000000) < Math.round(getCaptureChance(wild) * 1000000);
+      const success = random(state, 1000000) < Math.round(getCaptureChance(wild, attacker.level) * 1000000);
       events?.(state, {
         kind: "capture-throw",
         pokemon: pokemonView(wild),
@@ -977,7 +1036,7 @@ function applyTransition(
       if (success) {
         battle.combat = createCombatState();
         awardVictory(state, attacker, player.id, wild.level, events);
-        if (!state.evolution) finishBattle(state, events);
+        continueGrowth(state, events);
       } else {
         battle.combat.attacker.exposed = false;
         battle.combat.attacker.actions += 1;
@@ -1001,10 +1060,26 @@ function applyTransition(
       if (!pokemon) return previous;
       const ownerId = state.evolution.ownerId;
       evolve(state, pokemon, action.speciesId, ownerId, events);
-      continueEvolution(state, pokemon, ownerId, events);
-      if (state.evolution) break;
-      if (state.lapGrowth) continueLapGrowth(state, events);
-      else finishBattle(state, events);
+      queueEvolutionMoves(pokemon, state.growth!.queue[0]);
+      continueGrowth(state, events);
+      break;
+    }
+    case "CHOOSE_MOVE": {
+      if (state.phase !== "learn-move" || !state.growth) return previous;
+      const current = state.growth.queue[0];
+      const pokemon = findOwnedPokemon(state, current.ownerId, current.pokemonId);
+      const moveId = current.pendingMoveIds[0];
+      if (!pokemon || !moveId || pokemon.moveIds.length !== MOVE_SLOT_LIMIT) return previous;
+      if (action.replaceMoveId !== null) {
+        const index = pokemon.moveIds.indexOf(action.replaceMoveId);
+        if (index < 0) return previous;
+        pokemon.moveIds[index] = moveId;
+        addLog(state, `${byId[pokemon.speciesId].name}, ${movesById[action.replaceMoveId].name} 대신 ${movesById[moveId].name}을(를) 배웠습니다!`);
+      } else {
+        addLog(state, `${byId[pokemon.speciesId].name}, ${movesById[moveId].name}을(를) 배우지 않았습니다.`);
+      }
+      current.pendingMoveIds.shift();
+      continueGrowth(state, events);
       break;
     }
     case "CAPTURE": {

@@ -4,7 +4,7 @@ export type TileKind = "center" | "grass" | "road";
 export const BOARD_SIZE = 40;
 export const BOARD_SIDE_LENGTH = 10;
 export const BOARD_HALF_EXTENT = 5;
-const grassTiles = new Set([1, 5, 9, 14, 18, 23, 27, 32, 36]);
+const grassTiles = new Set([2, 7, 12, 18, 22, 28, 32, 35, 38]);
 export const BOARD_TILES: TileKind[] = Array.from(
   { length: BOARD_SIZE },
   (_, index) =>

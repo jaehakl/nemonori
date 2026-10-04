@@ -1643,6 +1643,18 @@ button.tradingCard:focus-visible {
   width: min(260px, 90%);
   margin: 0;
 }
+.turnOptions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  padding-top: 6px;
+}
+.turnOptions button {
+  padding: 8px 10px;
+  font-size: 12px;
+}
 .exchangeFooter {
   display: flex;
   justify-content: flex-end;

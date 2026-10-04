@@ -287,12 +287,12 @@ export default function BattlePanel({
               aria-label={
                 partyFull
                   ? "파티가 가득 차 포획할 수 없습니다"
-                  : `포켓볼 던지기, 성공률 ${Math.round(getCaptureChance(battle.wild) * 100)}%`
+                  : `포켓볼 던지기, 성공률 ${Math.round(getCaptureChance(battle.wild, attacker?.level) * 100)}%`
               }
               title={
                 partyFull
                   ? "파티 6칸이 모두 차서 포획할 수 없습니다. 센터에서 파티를 정리하세요."
-                  : "HP를 낮추면 포획 확률이 높아집니다. 실패하면 상대가 공격합니다."
+                  : "출전 포켓몬의 레벨이 상대보다 높거나 상대 HP가 낮을수록 포획 확률이 높아집니다. 실패하면 상대가 공격합니다."
               }
             >
               <svg
@@ -324,7 +324,7 @@ export default function BattlePanel({
               <small>
                 {partyFull
                   ? "파티 가득 참"
-                  : `성공률 ${Math.round(getCaptureChance(battle.wild) * 100)}%`}
+                  : `성공률 ${Math.round(getCaptureChance(battle.wild, attacker?.level) * 100)}%`}
               </small>
             </button>
           )}

@@ -1,4 +1,4 @@
-import { getNextRollPlayer, hasExtraRoll, transition } from "./engine";
+import { canMoveToCenter, getNextRollPlayer, hasExtraRoll, transition } from "./engine";
 import { BOARD_TILES, PLAYER_COLORS } from "./board";
 import { speciesById } from "./pokemon-data";
 import { PokemonSprite, TypeBadge } from "./PokemonSprite";
@@ -7,6 +7,7 @@ import type { GameAction, GameState } from "./types";
 import PokemonCard from "./PokemonCard";
 import { getPartyLeader, sortPartyByLevel } from "./party";
 import DiceCradle from "./DiceCradle";
+import MoveLearningPanel from "./MoveLearningPanel";
 import type { PresentationEvent } from "./presentation-events";
 import styles from "./PokemonMarble.module.css";
 
@@ -23,14 +24,15 @@ function TurnHeading({ state }: { state: GameState }) {
 function RollButton({ state, dispatch }: { state: GameState; dispatch: (action: GameAction) => void }) {
   const player = getNextRollPlayer(state);
   if (!player) return null;
-  const label = `${player.name} ${hasExtraRoll(state) ? "한 번 더 " : ""}주사위 굴리기`;
+  const resting = player.restTurnsRemaining > 0;
+  const label = `${player.name} ${resting ? "탈출 " : hasExtraRoll(state) ? "한 번 더 " : ""}주사위 굴리기`;
   return (
     <button
       type="button"
       className={styles.rollButton}
       style={{ "--player-color": PLAYER_COLORS[player.id] } as React.CSSProperties}
       aria-label={label}
-      onClick={() => dispatch({ type: state.phase === "roll" ? "ROLL" : "END_TURN_AND_ROLL" })}
+      onClick={() => dispatch({ type: state.phase === "roll" || state.phase === "rest-roll" ? "ROLL" : "END_TURN_AND_ROLL" })}
     >
       <DiceCradle dice={state.dice} />
       <span className={styles.rollLabel}>
@@ -56,6 +58,8 @@ export default function ActionPanel({
   const allowed = (action: GameAction) => transition(state, action) !== state;
   const guardian = state.roads[player.position];
   const storedPokemon = state.phase === "center" ? player.box : guardian ? [guardian.pokemon] : [];
+
+  if (state.phase === "learn-move") return <MoveLearningPanel state={state} dispatch={dispatch} />;
 
   if (["choose-defender", "choose-attacker", "attack"].includes(state.phase))
     return (
@@ -174,10 +178,28 @@ export default function ActionPanel({
         </>
       ) : (
         <div className={styles.journeyCenter}>
+          {state.phase === "rest-roll" && (
+            <p className={styles.journeyHint}>남은 휴식 {player.restTurnsRemaining}턴 · 더블이면 즉시 회복하고 나온 눈의 합만큼 이동해요.</p>
+          )}
+          {state.phase === "rest-end" && (
+            <p className={styles.journeyHint} role="status">
+              {state.dice?.join(" · ")} · 더블이 아니에요. {player.restTurnsRemaining > 0
+                ? `남은 휴식 ${player.restTurnsRemaining}턴`
+                : "회복이 끝났어요. 다음 내 차례부터 이동할 수 있어요."}
+            </p>
+          )}
           <RollButton state={state} dispatch={dispatch} />
           {state.phase === "turn-end" && player.restTurnsRemaining > 0 && (
             <p className={styles.journeyHint} role="status">남은 휴식 {player.restTurnsRemaining}턴</p>
           )}
+        </div>
+      )}
+      {!state.exchangeActive && (
+        <div className={styles.turnOptions}>
+          {canMoveToCenter(state) && <button type="button" className={styles.secondaryButton}
+            onClick={() => dispatch({ type: "MOVE_TO_CENTER" })}>다음 포켓몬센터로 이동 · 3턴 휴식</button>}
+          {allowed({ type: "END_TURN" }) && <button type="button" className={styles.secondaryButton}
+            onClick={() => dispatch({ type: "END_TURN" })}>턴만 마치기</button>}
         </div>
       )}
     </section>
@@ -200,15 +222,21 @@ export function MovementPanel({
   const rolling = !reducedMotion && rollProgress < 0.86;
   const total = state.dice ? state.dice[0] + state.dice[1] : 0;
   const remaining = state.movement?.remaining ?? 0;
+  const restRoll = presentation?.event.kind === "roll" && presentation.event.snapshot.dicePurpose === "rest";
+  const restMessage = rolling ? "탈출 주사위를 굴리고 있어요!"
+    : state.dice?.[0] === state.dice?.[1] ? `더블! 모두 회복하고 ${total}칸 이동해요.`
+    : `더블이 아니에요. ${state.players[state.activePlayer].restTurnsRemaining > 0
+      ? `남은 휴식 ${state.players[state.activePlayer].restTurnsRemaining}턴`
+      : "회복 완료 · 다음 내 차례부터 이동해요."}`;
   return (
-    <section className={`${styles.actionPanel} ${styles.movementPanel} ${styles.journeyPanel}`} aria-label="주사위와 이동">
+    <section className={`${styles.actionPanel} ${styles.movementPanel} ${styles.journeyPanel}`} aria-label={restRoll ? "탈출 주사위" : "주사위와 이동"}>
       <TurnHeading state={state} />
       <div className={styles.journeyCenter}>
         <DiceCradle dice={state.dice} progress={rollProgress} reducedMotion={reducedMotion} />
         <p className={styles.journeyHint} role="status">
-          {notice ?? (rolling ? "주사위를 굴리고 있어요!" : `${total}칸 이동 · 앞으로 ${remaining}칸${hasExtraRoll(state) ? " · 더블!" : ""}`)}
+          {notice ?? (restRoll ? restMessage : rolling ? "주사위를 굴리고 있어요!" : `${total}칸 이동 · 앞으로 ${remaining}칸${hasExtraRoll(state) ? " · 더블!" : ""}`)}
         </p>
-        <progress aria-label="이동 진행" max={total || 1} value={rolling ? 0 : total - remaining} />
+        {!restRoll && <progress aria-label="이동 진행" max={total || 1} value={rolling ? 0 : total - remaining} />}
       </div>
     </section>
   );

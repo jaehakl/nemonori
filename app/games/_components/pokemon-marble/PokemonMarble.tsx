@@ -26,6 +26,7 @@ import { getAudioScene } from "./music-scene";
 import { useAutomaticAction } from "./use-automatic-action";
 import TabletopControls from "./TabletopControls";
 import GrowthPresentation, { hasGrowthPresentation } from "./GrowthPresentation";
+import MoveLearningPanel from "./MoveLearningPanel";
 import FullscreenToggle from "./FullscreenToggle";
 import SystemIcon from "./SystemIcon";
 import systemStyles from "./SystemControls.module.css";
@@ -75,6 +76,7 @@ export default function PokemonMarble() {
     : null;
   const growthEvent = hasGrowthPresentation(experience.frame.event) ? experience.frame.event : null;
   const growthOwner = growthEvent?.snapshot.players.find((player) => player.id === growthEvent.playerId);
+  const learning = game?.phase === "learn-move" && !experience.frame.event ? game.growth?.queue[0] : null;
   // A committed state can already belong to the next actor while its animations
   // are still playing. Keep the visible controls facing the previous actor.
   const nextControlLayout = resolveControlLayout(game, displayPreferences.mode, controlLayout, experience.busy);
@@ -277,6 +279,9 @@ export default function PokemonMarble() {
                   seatSide: growthOwner?.seatSide ?? controlLayout.seatSide,
                   render: (size) => <GrowthPresentation event={growthEvent} progress={experience.frame.progress}
                     reducedMotion={experience.reducedMotion} {...size} />,
+                } : learning ? {
+                  seatSide: game.players[learning.ownerId].seatSide,
+                  render: () => <MoveLearningPanel state={game} dispatch={(action) => dispatch(action, game.revision)} />,
                 } : undefined}
                 board={
                   <GameBoard
@@ -325,7 +330,7 @@ export default function PokemonMarble() {
                         <strong role="status">{experience.frame.event.message}</strong>
                         <progress aria-label="연출 진행" max={1} value={experience.frame.progress} />
                       </section>
-                    ) : (
+                    ) : learning ? null : (
                       <ActionPanel
                         key={`${game.activePlayer}-${game.turn}`}
                         state={game}

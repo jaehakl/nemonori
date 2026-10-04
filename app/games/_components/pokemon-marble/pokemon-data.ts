@@ -1,4 +1,5 @@
 import type { Move, Species } from "./data-types";
+import type { Pokemon } from "./types";
 import {
   importedMoves,
   importedSpecies,
@@ -78,4 +79,19 @@ export function getAvailableMoves(speciesId: number, level: number): Move[] {
     if (!selected.some((entry) => entry.id === move.id)) selected.push(move);
   }
   return selected;
+}
+
+export const MOVE_SLOT_LIMIT = 3;
+
+/** Learning order is stable even when several levels are gained at once. */
+export function getLearnableMoves(speciesId: number, level: number): Move[] {
+  return (speciesById[speciesId]?.learnset ?? [])
+    .filter((entry) => entry.level <= level)
+    .toSorted((left, right) => left.level - right.level || left.moveId - right.moveId)
+    .map((entry) => movesById[entry.moveId])
+    .filter((move): move is Move => Boolean(move) && move.effects.support !== "excluded" && move.id !== 165);
+}
+
+export function getPokemonMoves(pokemon: Pokemon): Move[] {
+  return pokemon.moveIds.map((id) => movesById[id]);
 }

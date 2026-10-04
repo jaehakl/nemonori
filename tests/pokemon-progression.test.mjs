@@ -1,24 +1,28 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { loadGameSource, pokemonBattleAction } from "./game-test-helpers.mjs";
+import { loadGameSource, pokemonBattleAction, declineNewMoves } from "./game-test-helpers.mjs";
 
 const path = "app/games/_components/pokemon-marble/";
 const { XP_PER_LEVEL, getVictoryExperience, getExperienceGrowth, getCaptureChance } = loadGameSource(`${path}progression.ts`);
 const { sortPartyByLevel, getPartyLeader } = loadGameSource(`${path}party.ts`);
 const { createGame, transition, transitionWithEvents, getStats } = loadGameSource(`${path}engine.ts`);
-const { speciesById } = loadGameSource(`${path}pokemon-data.ts`);
+const { speciesById, getAvailableMoves } = loadGameSource(`${path}pokemon-data.ts`);
 const { BOARD_TILES } = loadGameSource(`${path}board.ts`);
 
 function encounter(seed = 9182) {
   const initial = createGame([1], [], seed);
   initial.players[0].party[0].level = 50;
+  initial.players[0].party[0].moveIds = getAvailableMoves(1, 50).map((move) => move.id);
   initial.players[0].party[0].hp = getStats(initial.players[0].party[0]).hp;
+  initial.players[0].position = 1;
   initial.phase = "moving";
   initial.dice = [1, 2];
+  initial.dicePurpose = "movement";
   initial.movement = { remaining: 1, encounters: [] };
   let state = transition(initial, { type: "STEP" });
   state = transition(state, { type: "CHOOSE_POKEMON", pokemonId: state.players[0].party[0].id });
-  state = transition(state, { type: "WILD_ATTACK" });
+  // These scenarios start at the player's throw decision, independent of wild damage.
+  state.battle.turn = "attacker";
   return state;
 }
 
@@ -62,10 +66,10 @@ test("party sorting is stable and does not mutate the saved order", () => {
 test("capture probability starts at 25% and increases continuously as HP falls", () => {
   const pokemon = { id: "p1", speciesId: 1, level: 30, xp: 0, hp: 0 };
   const maxHp = getStats(pokemon).hp;
-  assert.equal(getCaptureChance({ ...pokemon, hp: maxHp }), 0.25);
-  assert.ok(Math.abs(getCaptureChance({ ...pokemon, hp: maxHp / 2 }) - 0.575) < 1e-10);
-  assert.equal(getCaptureChance(pokemon), 0.9);
-  assert.ok(getCaptureChance({ ...pokemon, hp: 1 }) > getCaptureChance({ ...pokemon, hp: maxHp / 2 }));
+  assert.equal(getCaptureChance({ ...pokemon, hp: maxHp }, 30), 0.25);
+  assert.ok(Math.abs(getCaptureChance({ ...pokemon, hp: maxHp / 2 }, 30) - 0.575) < 1e-10);
+  assert.equal(getCaptureChance(pokemon, 30), 0.9);
+  assert.ok(getCaptureChance({ ...pokemon, hp: 1 }, 30) > getCaptureChance({ ...pokemon, hp: maxHp / 2 }, 30));
 });
 
 test("a failed throw consumes a turn, preserves HP and XP, and replays deterministically", () => {
@@ -91,6 +95,7 @@ test("successful capture awards experience once and transfers the living wild af
   const attacker = state.players[0].party[0];
   attacker.speciesId = 133;
   attacker.level = 19;
+  attacker.moveIds = getAvailableMoves(133, 19).map((move) => move.id);
   attacker.xp = 900;
   attacker.hp = 10;
   state.battle.wild.level = 3;
@@ -98,6 +103,7 @@ test("successful capture awards experience once and transfers the living wild af
   state.rng = 1;
   const wildId = state.battle.wild.id;
   const result = transitionWithEvents(state, { type: "THROW_BALL" });
+  result.state = declineNewMoves(result.state);
   assert.equal(result.state.phase, "evolution");
   assert.deepEqual(result.state.battle.outcome, { kind: "capture" });
   assert.equal(result.state.players[0].party.length, 1);
@@ -110,7 +116,7 @@ test("successful capture awards experience once and transfers the living wild af
   assert.deepEqual(result.state.battle.outcome, { kind: "capture" });
   assert.equal(resultEvent.snapshot.battle.defender.hp, 1);
   assert.equal(result.events.filter((event) => event.kind === "experience-gain").length, 1);
-  const evolved = transition(JSON.parse(JSON.stringify(result.state)), { type: "CHOOSE_EVOLUTION", speciesId: 134 });
+  const evolved = declineNewMoves(transition(JSON.parse(JSON.stringify(result.state)), { type: "CHOOSE_EVOLUTION", speciesId: 134 }));
   assert.equal(evolved.phase, "turn-end");
   assert.equal(evolved.players[0].party[0].xp, xp);
   assert.equal(evolved.players[0].party[0].hp, 10);
@@ -122,7 +128,7 @@ test("successful capture awards experience once and transfers the living wild af
 test("knocked-out wild Pokemon cannot be captured", () => {
   const state = encounter();
   state.battle.wild.hp = 1;
-  const result = transition(state, pokemonBattleAction(state));
+  const result = declineNewMoves(transition(state, pokemonBattleAction(state)));
   assert.equal(result.phase, "turn-end");
   assert.equal(result.battle, null);
   assert.equal(result.players[0].party.length, 1);
@@ -144,35 +150,47 @@ test("grass encounters retain rarity categories while excluding evolved species"
 test("one player can complete recovery and doubles without an opponent", () => {
   const initial = createGame([1], [], 1);
   initial.phase = "turn-end";
-  initial.dice = [1, 2];
+  initial.dice = null;
+  initial.dicePurpose = null;
   initial.players[0].party[0].hp = 0;
   initial.players[0].restTurnsRemaining = 3;
   const result = transitionWithEvents(initial, { type: "END_TURN" });
   assert.equal(result.state.activePlayer, 0);
-  assert.equal(result.state.phase, "roll");
-  assert.equal(result.state.players[0].restTurnsRemaining, 0);
-  assert.equal(result.state.players[0].party[0].hp, getStats(result.state.players[0].party[0]).hp);
-  assert.equal(result.events.filter((event) => event.kind === "rest").length, 3);
-  result.state.phase = "turn-end";
-  result.state.dice = [2, 2];
-  result.state.movement = { remaining: 0, encounters: [] };
-  assert.equal(transition(result.state, { type: "END_TURN" }).turn, result.state.turn);
+  assert.equal(result.state.phase, "rest-roll");
+  assert.equal(result.state.players[0].restTurnsRemaining, 3);
+  assert.equal(result.events.filter((event) => event.kind === "rest").length, 0);
+  let recovered = result.state;
+  for (const remaining of [2, 1, 0]) {
+    recovered.rng = 12345;
+    recovered = transition(recovered, { type: "ROLL" });
+    assert.equal(recovered.players[0].restTurnsRemaining, remaining);
+    assert.equal(recovered.phase, "rest-end");
+    recovered = transition(recovered, { type: "END_TURN" });
+  }
+  assert.equal(recovered.phase, "roll");
+  assert.equal(recovered.players[0].party[0].hp, getStats(recovered.players[0].party[0]).hp);
+  recovered.phase = "turn-end";
+  recovered.dice = [2, 2];
+  recovered.dicePurpose = "movement";
+  recovered.movement = { remaining: 0, encounters: [] };
+  assert.equal(transition(recovered, { type: "END_TURN" }).turn, recovered.turn);
 });
 
 test("a solo adventure wins when the player deploys the last road guardian", () => {
   const initial = createGame([1], [], 1);
   const nextPokemon = () => ({ ...initial.players[0].party[0], id: `p${initial.nextPokemonId++}` });
   for (const [tile, kind] of BOARD_TILES.entries())
-    if (kind === "road" && tile !== 2) initial.roads[tile] = { ownerId: 0, pokemon: nextPokemon() };
+    if (kind === "road" && tile !== 1) initial.roads[tile] = { ownerId: 0, pokemon: nextPokemon() };
   const lastGuardian = nextPokemon();
   initial.players[0].party.push(lastGuardian);
-  initial.players[0].position = 2;
+  initial.players[0].position = 1;
   initial.phase = "road";
   initial.dice = [1, 2];
+  initial.dicePurpose = "movement";
   initial.movement = { remaining: 0, encounters: [] };
   let state = transition(initial, { type: "START_EXCHANGE" });
   state = transition(state, { type: "DEPLOY", pokemonId: lastGuardian.id });
   assert.equal(state.phase, "finished");
   assert.equal(state.winner, 0);
-  assert.equal(state.roads[2].pokemon.id, lastGuardian.id);
+  assert.equal(state.roads[1].pokemon.id, lastGuardian.id);
 });

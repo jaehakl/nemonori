@@ -31,8 +31,9 @@ export function getExperienceGrowth(
   return { level, xp: level === 100 ? 0 : total % XP_PER_LEVEL };
 }
 
-/** A living wild Pokemon has a 25–90% chance, increasing as its HP falls. */
-export function getCaptureChance(pokemon: Pokemon): number {
+/** HP gives 25–90%; each positive level advantage adds one point, up to 95%. */
+export function getCaptureChance(pokemon: Pokemon, attackerLevel = pokemon.level): number {
   const healthFraction = Math.max(0, Math.min(1, pokemon.hp / getStats(pokemon).hp));
-  return 0.25 + 0.65 * (1 - healthFraction);
+  const levelBonus = Math.max(0, attackerLevel - pokemon.level) * 0.01;
+  return Math.min(0.95, 0.25 + 0.65 * (1 - healthFraction) + levelBonus);
 }
